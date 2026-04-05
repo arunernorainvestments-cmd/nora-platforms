@@ -16,6 +16,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isLoading = false;
   String? _error;
 
+  @override
+  void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
   Future<void> _signIn() async {
     setState(() { _isLoading = true; _error = null; });
     try {
@@ -67,6 +74,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 decoration: const InputDecoration(
                   labelText: 'Password',
                   prefixIcon: Icon(Icons.lock_outline, color: AppTheme.textSecondary),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: GestureDetector(
+                  onTap: () => context.go('/forgot-password'),
+                  child: const Padding(
+                    padding: EdgeInsets.only(top: 8),
+                    child: Text(
+                      'Forgot password?',
+                      style: TextStyle(color: AppTheme.primary, fontSize: 13),
+                    ),
+                  ),
                 ),
               ),
               if (_error != null) ...[

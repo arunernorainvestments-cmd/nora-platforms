@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../providers/auth_provider.dart';
 
@@ -12,19 +13,91 @@ class SignupScreen extends ConsumerStatefulWidget {
 }
 
 class _SignupScreenState extends ConsumerState<SignupScreen> {
+  final _usernameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _isLoading = false;
   String? _error;
   String? _success;
+  String? _usernameError;
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  /// Returns an error string or null if valid.
+  String? _validateUsername(String username) {
+    if (username.isEmpty) return null; // optional
+    if (username.length > 30) return 'Max 30 characters';
+    if (!RegExp(r'^[a-z0-9_]+$').hasMatch(username)) {
+      return 'Lowercase letters, numbers, and underscores only';
+    }
+    return null;
+  }
+
+  Future<bool> _isUsernameTaken(String username) async {
+    final existing = await Supabase.instance.client
+        .from('profiles')
+        .select('id')
+        .eq('username', username)
+        .maybeSingle();
+    return existing != null;
+  }
 
   Future<void> _signUp() async {
-    setState(() { _isLoading = true; _error = null; _success = null; });
+    setState(() {
+      _isLoading = true;
+      _error = null;
+      _success = null;
+      _usernameError = null;
+    });
+
     try {
+      final rawUsername = _usernameController.text.trim();
+      final email = _emailController.text.trim();
+
+      // Validate username format
+      final formatError = _validateUsername(rawUsername);
+      if (formatError != null) {
+        setState(() {
+          _usernameError = formatError;
+          _isLoading = false;
+        });
+        return;
+      }
+
+      // Determine effective username
+      final effectiveUsername = rawUsername.isNotEmpty
+          ? rawUsername
+          : email.contains('@')
+              ? email.split('@').first.toLowerCase().replaceAll(
+                  RegExp(r'[^a-z0-9_]'), '_')
+              : '';
+
+      // Check uniqueness
+      if (effectiveUsername.isNotEmpty) {
+        final taken = await _isUsernameTaken(effectiveUsername);
+        if (taken) {
+          setState(() {
+            _usernameError = rawUsername.isNotEmpty
+                ? 'Username is already taken'
+                : 'Default username "$effectiveUsername" is taken — please choose one';
+            _isLoading = false;
+          });
+          return;
+        }
+      }
+
       await ref.read(authActionsProvider).signUpWithEmail(
-        _emailController.text.trim(),
-        _passwordController.text,
-      );
+            email,
+            _passwordController.text,
+            username: effectiveUsername.isNotEmpty ? effectiveUsername : null,
+          );
+
       setState(() {
         _success = 'Account created! Check your email to confirm.';
       });
@@ -58,6 +131,23 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               const Text('Join N.O.R.A. Platforms',
                 style: TextStyle(color: AppTheme.textSecondary)),
               const SizedBox(height: 40),
+              TextField(
+                controller: _usernameController,
+                keyboardType: TextInputType.text,
+                autocorrect: false,
+                decoration: InputDecoration(
+                  hintText: 'Username (optional)',
+                  prefixIcon: const Icon(Icons.alternate_email,
+                      color: AppTheme.textSecondary),
+                  errorText: _usernameError,
+                ),
+                onChanged: (_) {
+                  if (_usernameError != null) {
+                    setState(() { _usernameError = null; });
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
               TextField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,

@@ -18,8 +18,22 @@ class AuthActions {
     await _client.auth.signInWithPassword(email: email, password: password);
   }
 
-  Future<void> signUpWithEmail(String email, String password) async {
-    await _client.auth.signUp(email: email, password: password);
+  Future<void> signUpWithEmail(String email, String password,
+      {String? username}) async {
+    final response =
+        await _client.auth.signUp(email: email, password: password);
+    if (username != null &&
+        username.isNotEmpty &&
+        response.user != null) {
+      // Best-effort: update profile username. Silently ignored if no session yet
+      // (email confirmation required).
+      try {
+        await _client
+            .from('profiles')
+            .update({'username': username})
+            .eq('id', response.user!.id);
+      } catch (_) {}
+    }
   }
 
   Future<void> signInWithGoogle() async {
