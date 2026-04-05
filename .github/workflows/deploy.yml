@@ -27,11 +27,26 @@ jobs:
       - name: Build web
         run: cd flutter_app && flutter build web --release --no-tree-shake-icons
 
+      - name: Prepare Vercel output structure
+        run: |
+          mkdir -p .vercel/output/static
+          cp -r flutter_app/build/web/. .vercel/output/static/
+          cat > .vercel/output/config.json << 'JSON'
+          {
+            "version": 3,
+            "routes": [
+              {
+                "src": "/.*",
+                "dest": "/index.html"
+              }
+            ]
+          }
+          JSON
+
       - name: Install Vercel CLI
         run: npm install -g vercel@latest
 
       - name: Deploy to Vercel
-        working-directory: flutter_app/build/web
         run: vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --yes --prebuilt
         env:
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
