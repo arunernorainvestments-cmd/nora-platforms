@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../providers/auth_provider.dart';
+import '../providers/referral_provider.dart';
 
 class SignupScreen extends ConsumerStatefulWidget {
   const SignupScreen({super.key});
@@ -92,11 +93,17 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
         }
       }
 
+      final referral = ref.read(referralInfoProvider);
+
       await ref.read(authActionsProvider).signUpWithEmail(
             email,
             _passwordController.text,
             username: effectiveUsername.isNotEmpty ? effectiveUsername : null,
+            referredByCode: referral?.code,
           );
+
+      // Clear referral now that it's been consumed
+      ref.read(referralInfoProvider.notifier).state = null;
 
       setState(() {
         _success = 'Account created! Check your email to confirm.';
@@ -110,6 +117,8 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final referral = ref.watch(referralInfoProvider);
+
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
@@ -130,6 +139,34 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
               const SizedBox(height: 8),
               const Text('Join N.O.R.A. Platforms',
                 style: TextStyle(color: AppTheme.textSecondary)),
+              if (referral != null) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: AppTheme.success.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: AppTheme.success.withValues(alpha: 0.35)),
+                  ),
+                  child: Row(
+                    children: [
+                      const Text('🎉', style: TextStyle(fontSize: 18)),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          'You were invited by @${referral.username} — you\'ll both get bonus tokens!',
+                          style: const TextStyle(
+                            color: AppTheme.success,
+                            fontSize: 13,
+                            height: 1.4,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               const SizedBox(height: 40),
               TextField(
                 controller: _usernameController,

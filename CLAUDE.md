@@ -58,3 +58,11 @@ The `.env` file is loaded as an asset at runtime via `flutter_dotenv`.
 Push to `main` triggers the GitHub Actions workflow (`.github/workflows/deploy.yml`), which builds the Flutter web app and deploys to Vercel. The `vercel.json` at the repo root rewrites all paths to `/index.html` for SPA routing.
 
 Required GitHub secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`.
+
+## Deferred Features (Build Later)
+
+### Profile Picture
+- Profile pictures should be pulled automatically from the first social media account a user connects (Phase 3)
+- No manual profile picture upload should ever be added — avatar always comes from connected social accounts
+- Until a social account is connected, show the first letter of username as avatar (current behavior is correct)
+- When social connection is built in Phase 3, update profile_providers.dart to pull avatar_url from the connected platform and save it to profiles.avatar_url

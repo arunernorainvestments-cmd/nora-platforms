@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../notifications/providers/notification_providers.dart';
 import '../providers/home_providers.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -10,13 +12,49 @@ class HomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final unreadCount = ref.watch(unreadCountProvider);
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('N.O.R.A. Platforms'),
         actions: [
           IconButton(
-            icon: const Icon(Icons.notifications_outlined),
-            onPressed: () {},
+            tooltip: 'Notifications',
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.notifications_outlined),
+                if (unreadCount > 0)
+                  Positioned(
+                    right: -3,
+                    top: -3,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                        color: AppTheme.danger,
+                        shape: BoxShape.circle,
+                      ),
+                      constraints:
+                          const BoxConstraints(minWidth: 16, minHeight: 16),
+                      child: Text(
+                        unreadCount > 99 ? '99+' : '$unreadCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+            onPressed: () => showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => const _NotificationSheet(),
+            ),
           ),
         ],
       ),
@@ -611,6 +649,209 @@ class _InlineShimmer extends StatelessWidget {
           borderRadius: BorderRadius.circular(4),
         ),
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// NOTIFICATION SHEET
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _NotificationSheet extends ConsumerWidget {
+  const _NotificationSheet();
+
+  IconData _iconForType(String type) => switch (type) {
+        'market_opened' => Icons.bar_chart_outlined,
+        'bet_won' => Icons.emoji_events_outlined,
+        'bet_lost' => Icons.sentiment_dissatisfied_outlined,
+        'market_closing_soon' => Icons.timer_outlined,
+        'referral_bonus' => Icons.people_outline,
+        'token_earned' => Icons.toll_outlined,
+        _ => Icons.notifications_outlined,
+      };
+
+  Color _colorForType(String type) => switch (type) {
+        'bet_won' || 'token_earned' || 'referral_bonus' => AppTheme.success,
+        'bet_lost' => AppTheme.danger,
+        'market_closing_soon' => const Color(0xFFFFD700),
+        _ => AppTheme.primary,
+      };
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final notificationsAsync = ref.watch(notificationsProvider);
+
+    return DraggableScrollableSheet(
+      initialChildSize: 0.6,
+      minChildSize: 0.4,
+      maxChildSize: 0.92,
+      builder: (context, scrollController) {
+        return Container(
+          decoration: const BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            children: [
+              // Drag handle + header
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+                child: Column(
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 40,
+                        height: 4,
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: AppTheme.cardBorder,
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                    const Text(
+                      'Notifications',
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 17,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Divider(color: AppTheme.cardBorder, height: 1),
+              Expanded(
+                child: notificationsAsync.when(
+                  loading: () =>
+                      const Center(child: CircularProgressIndicator()),
+                  error: (_, __) => const Center(
+                    child: Text('Could not load notifications',
+                        style: TextStyle(color: AppTheme.textSecondary)),
+                  ),
+                  data: (notifications) {
+                    if (notifications.isEmpty) {
+                      return const Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.notifications_off_outlined,
+                                size: 48, color: AppTheme.textSecondary),
+                            SizedBox(height: 16),
+                            Text(
+                              'No notifications yet',
+                              style: TextStyle(
+                                color: AppTheme.textSecondary,
+                                fontSize: 15,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
+                    return ListView.separated(
+                      controller: scrollController,
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: notifications.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(color: AppTheme.cardBorder, height: 1),
+                      itemBuilder: (context, i) {
+                        final n = notifications[i];
+                        final color = _colorForType(n.type);
+                        return InkWell(
+                          onTap: n.isRead
+                              ? null
+                              : () async {
+                                  await ref
+                                      .read(notificationActionsProvider)
+                                      .markRead(n.id);
+                                  ref.invalidate(notificationsProvider);
+                                },
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 20, vertical: 14),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Type icon
+                                Container(
+                                  width: 36,
+                                  height: 36,
+                                  decoration: BoxDecoration(
+                                    color: color.withValues(alpha: 0.12),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(_iconForType(n.type),
+                                      color: color, size: 18),
+                                ),
+                                const SizedBox(width: 12),
+                                // Title + body + time
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              n.title,
+                                              style: TextStyle(
+                                                color: AppTheme.textPrimary,
+                                                fontSize: 14,
+                                                fontWeight: n.isRead
+                                                    ? FontWeight.normal
+                                                    : FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                          if (!n.isRead)
+                                            Container(
+                                              width: 8,
+                                              height: 8,
+                                              margin: const EdgeInsets.only(
+                                                  left: 8),
+                                              decoration: const BoxDecoration(
+                                                color: AppTheme.primary,
+                                                shape: BoxShape.circle,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        n.body,
+                                        style: const TextStyle(
+                                          color: AppTheme.textSecondary,
+                                          fontSize: 13,
+                                          height: 1.4,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 5),
+                                      Text(
+                                        timeago.format(n.createdAt),
+                                        style: const TextStyle(
+                                          color: AppTheme.textSecondary,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

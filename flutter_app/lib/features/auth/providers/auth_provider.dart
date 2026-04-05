@@ -19,9 +19,19 @@ class AuthActions {
   }
 
   Future<void> signUpWithEmail(String email, String password,
-      {String? username}) async {
-    final response =
-        await _client.auth.signUp(email: email, password: password);
+      {String? username, String? referredByCode}) async {
+    // referred_by_code must arrive at trigger time via raw_user_meta_data
+    final meta = <String, dynamic>{};
+    if (referredByCode != null && referredByCode.isNotEmpty) {
+      meta['referred_by_code'] = referredByCode;
+    }
+
+    final response = await _client.auth.signUp(
+      email: email,
+      password: password,
+      data: meta.isNotEmpty ? meta : null,
+    );
+
     if (username != null &&
         username.isNotEmpty &&
         response.user != null) {
