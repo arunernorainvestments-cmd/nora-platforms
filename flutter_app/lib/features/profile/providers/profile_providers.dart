@@ -11,6 +11,7 @@ class UserProfile {
   final String? displayName;
   final String? bio;
   final bool isCreator;
+  final String? referralCode;
 
   const UserProfile({
     required this.id,
@@ -18,6 +19,7 @@ class UserProfile {
     this.displayName,
     this.bio,
     required this.isCreator,
+    this.referralCode,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
@@ -26,6 +28,7 @@ class UserProfile {
         displayName: json['display_name'] as String?,
         bio: json['bio'] as String?,
         isCreator: json['is_creator'] as bool? ?? false,
+        referralCode: json['referral_code'] as String?,
       );
 }
 
@@ -39,7 +42,7 @@ final userProfileProvider = FutureProvider.autoDispose<UserProfile?>((ref) async
 
   final data = await Supabase.instance.client
       .from('profiles')
-      .select('id, username, display_name, bio, is_creator')
+      .select('id, username, display_name, bio, is_creator, referral_code')
       .eq('id', userId)
       .single();
 

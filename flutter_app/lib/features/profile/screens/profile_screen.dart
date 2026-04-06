@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -204,6 +205,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       );
                     },
                   ),
+                const SizedBox(height: 24),
+
+                // ── Invite friends ────────────────────────────────────────
+                if (profile.referralCode != null)
+                  _InviteFriendsCard(referralCode: profile.referralCode!),
                 const SizedBox(height: 24),
 
                 // ── Edit profile ──────────────────────────────────────────
@@ -474,6 +480,105 @@ class _SocialButton extends StatelessWidget {
         side: const BorderSide(color: AppTheme.cardBorder),
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+}
+
+class _InviteFriendsCard extends StatelessWidget {
+  final String referralCode;
+  const _InviteFriendsCard({required this.referralCode});
+
+  String get _link =>
+      'nora-platforms.vercel.app/join?ref=$referralCode';
+
+  void _copyLink(BuildContext context) {
+    Clipboard.setData(ClipboardData(text: 'https://$_link'));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Link copied!'),
+        backgroundColor: AppTheme.surface,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: AppTheme.cardBorder),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.secondary.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.secondary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.people_outline,
+                    color: AppTheme.secondary, size: 20),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Invite Friends',
+                style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.textPrimary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          const Text(
+            'Invite friends and earn 25 tokens for each signup',
+            style: TextStyle(color: AppTheme.textSecondary, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            decoration: BoxDecoration(
+              color: AppTheme.background,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.cardBorder),
+            ),
+            child: Text(
+              _link,
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 12,
+                fontFamily: 'monospace',
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _copyLink(context),
+              icon: const Icon(Icons.copy_outlined, size: 16),
+              label: const Text('Copy Link'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.secondary,
+                side: BorderSide(color: AppTheme.secondary.withValues(alpha: 0.5)),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -22,21 +22,25 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isLoggedIn = authState.value?.session != null;
       final loc = state.matchedLocation;
 
-      // Routes accessible without login
-      final isPublicRoute = loc == '/login' ||
-          loc == '/signup' ||
-          loc == '/forgot-password' ||
-          loc == '/join' ||
-          loc.startsWith('/u/');
+      // Only these routes require authentication
+      const protectedRoutes = ['/markets', '/profile', '/wallet'];
+      final isProtected = protectedRoutes.contains(loc);
 
-      if (!isLoggedIn && !isPublicRoute) return '/login';
-      // Redirect logged-in users away from auth-only pages
+      // Logged-out user hits a protected route → login with ?next= for return
+      if (!isLoggedIn && isProtected) {
+        return '/login?next=${Uri.encodeComponent(loc)}';
+      }
+
+      // Logged-in user hits an auth page → go home (or ?next= destination)
       if (isLoggedIn &&
           (loc == '/login' ||
               loc == '/signup' ||
               loc == '/forgot-password')) {
+        final next = state.uri.queryParameters['next'];
+        if (next != null && next.isNotEmpty) return next;
         return '/home';
       }
+
       return null;
     },
     routes: [
