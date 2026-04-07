@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../markets/widgets/bet_bottom_sheet.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MODELS
@@ -12,25 +14,25 @@ import '../../auth/providers/auth_provider.dart';
 
 class PublicMarket {
   final String id;
-  final String title;
   final String timeframe;
   final double yesPool;
   final double noPool;
+  final DateTime endAt;
 
   const PublicMarket({
     required this.id,
-    required this.title,
     required this.timeframe,
     required this.yesPool,
     required this.noPool,
+    required this.endAt,
   });
 
   factory PublicMarket.fromJson(Map<String, dynamic> json) => PublicMarket(
         id: json['id'] as String,
-        title: json['title'] as String,
         timeframe: json['timeframe'] as String,
         yesPool: (json['yes_pool'] as num?)?.toDouble() ?? 0,
         noPool: (json['no_pool'] as num?)?.toDouble() ?? 0,
+        endAt: DateTime.parse(json['end_at'] as String),
       );
 
   double get totalPool => yesPool + noPool;
@@ -46,6 +48,10 @@ class PublicProfileData {
   final bool popularityScorePublic;
   final String? avatarUrl;
   final String? spotlightTier;
+  // TODO: migration 004 should add a public read policy for the platform column
+  // only on social_connections (currently restricted to own-user reads by RLS).
+  // Until then connectedPlatforms will be empty for other users; the UI handles
+  // this gracefully via try/catch in the provider.
   final List<String> connectedPlatforms;
   final List<PublicMarket> openMarkets;
 
@@ -76,7 +82,8 @@ final publicProfileProvider =
   final profileData = await client
       .from('profiles')
       .select(
-          'id, username, display_name, bio, is_market_maker, popularity_score, popularity_score_public, avatar_url')
+          'id, username, display_name, bio, is_market_maker, popularity_score, '
+          'popularity_score_public, avatar_url')
       .eq('username', username)
       .maybeSingle();
 
@@ -85,7 +92,6 @@ final publicProfileProvider =
   final profileId = profileData['id'] as String;
   final isMarketMaker = profileData['is_market_maker'] as bool? ?? false;
 
-  // Only fetch extended data for market makers
   String? spotlightTier;
   List<String> connectedPlatforms = [];
   List<PublicMarket> openMarkets = [];
@@ -100,7 +106,8 @@ final publicProfileProvider =
     spotlightTier = spotlightData?['tier'] as String?;
 
     // Social connections — readable only if viewer is the owner due to RLS.
-    // The result will be empty for other viewers; the UI handles this gracefully.
+    // TODO: migration 004 adds a public-read view for platform column only.
+    // Until then this will be empty for other viewers (catch swallows the error).
     try {
       final connectionsData = await client
           .from('social_connections')
@@ -115,7 +122,7 @@ final publicProfileProvider =
     // Open markets for this creator
     final marketsData = await client
         .from('markets')
-        .select('id, title, timeframe, yes_pool, no_pool')
+        .select('id, timeframe, yes_pool, no_pool, end_at')
         .eq('creator_id', profileId)
         .eq('status', 'open')
         .order('created_at', ascending: false);
@@ -131,7 +138,8 @@ final publicProfileProvider =
     bio: profileData['bio'] as String?,
     isMarketMaker: isMarketMaker,
     popularityScore: (profileData['popularity_score'] as num?)?.toDouble(),
-    popularityScorePublic: profileData['popularity_score_public'] as bool? ?? false,
+    popularityScorePublic:
+        profileData['popularity_score_public'] as bool? ?? false,
     avatarUrl: profileData['avatar_url'] as String?,
     spotlightTier: spotlightTier,
     connectedPlatforms: connectedPlatforms,
@@ -186,7 +194,8 @@ class PublicProfileScreen extends ConsumerWidget {
       ),
       body: profileAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => _ErrorState(onRetry: () => ref.invalidate(publicProfileProvider(username))),
+        error: (e, _) => _ErrorState(
+            onRetry: () => ref.invalidate(publicProfileProvider(username))),
         data: (profile) {
           if (profile == null || !profile.isMarketMaker) {
             return _PrivateState(profile: profile);
@@ -194,7 +203,7 @@ class PublicProfileScreen extends ConsumerWidget {
           return _PublicProfileBody(
             profile: profile,
             currentUser: currentUser,
-            onMarketCreated: () => ref.invalidate(publicProfileProvider(username)),
+            onBetPlaced: () => ref.invalidate(publicProfileProvider(username)),
           );
         },
       ),
@@ -258,15 +267,15 @@ class _PrivateState extends StatelessWidget {
 class _PublicProfileBody extends StatelessWidget {
   final PublicProfileData profile;
   final User? currentUser;
-  final VoidCallback onMarketCreated;
+  final VoidCallback onBetPlaced;
 
   const _PublicProfileBody({
     required this.profile,
     required this.currentUser,
-    required this.onMarketCreated,
+    required this.onBetPlaced,
   });
 
-  void _onOpenMarket(BuildContext context) {
+  void _openBetSheet(BuildContext context, {String? initialTimeframe}) {
     if (currentUser == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -286,16 +295,12 @@ class _PublicProfileBody extends StatelessWidget {
       );
       return;
     }
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _OpenMarketSheet(
-        creatorId: profile.id,
-        creatorUsername: profile.username,
-        currentUserId: currentUser!.id,
-        onCreated: onMarketCreated,
-      ),
+    showBetBottomSheet(
+      context,
+      creatorId: profile.id,
+      creatorUsername: profile.username,
+      initialTimeframe: initialTimeframe,
+      onBetPlaced: onBetPlaced,
     );
   }
 
@@ -407,224 +412,26 @@ class _PublicProfileBody extends StatelessWidget {
               ),
               child: const Center(
                 child: Text(
-                  'No open markets yet',
+                  'No open markets yet — be the first!',
                   style: TextStyle(color: AppTheme.textSecondary),
                 ),
               ),
             )
           else
-            ...profile.openMarkets.map((m) => _MarketCard(market: m)),
+            ...profile.openMarkets.map((m) => _MarketCard(
+                  market: m,
+                  onJoin: () => _openBetSheet(context,
+                      initialTimeframe: m.timeframe),
+                )),
           const SizedBox(height: 20),
 
           // ── Open a Market button ─────────────────────────────────────────────
           ElevatedButton.icon(
-            onPressed: () => _onOpenMarket(context),
+            onPressed: () => _openBetSheet(context),
             icon: const Icon(Icons.add_chart_outlined, size: 18),
             label: const Text('Open a Market'),
           ),
           const SizedBox(height: 32),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// OPEN MARKET BOTTOM SHEET
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _OpenMarketSheet extends StatefulWidget {
-  final String creatorId;
-  final String creatorUsername;
-  final String currentUserId;
-  final VoidCallback onCreated;
-
-  const _OpenMarketSheet({
-    required this.creatorId,
-    required this.creatorUsername,
-    required this.currentUserId,
-    required this.onCreated,
-  });
-
-  @override
-  State<_OpenMarketSheet> createState() => _OpenMarketSheetState();
-}
-
-class _OpenMarketSheetState extends State<_OpenMarketSheet> {
-  final _titleController = TextEditingController();
-  final _changePctController = TextEditingController(text: '5');
-  String _timeframe = '7d';
-  bool _isSubmitting = false;
-  String? _error;
-
-  static const _timeframes = ['24h', '7d', '30d'];
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _changePctController.dispose();
-    super.dispose();
-  }
-
-  DateTime _endAt(String timeframe) {
-    final now = DateTime.now().toUtc();
-    return switch (timeframe) {
-      '24h' => now.add(const Duration(hours: 24)),
-      '7d' => now.add(const Duration(days: 7)),
-      _ => now.add(const Duration(days: 30)),
-    };
-  }
-
-  Future<void> _submit() async {
-    final title = _titleController.text.trim();
-    if (title.isEmpty) {
-      setState(() => _error = 'Title is required');
-      return;
-    }
-    final changePct = double.tryParse(_changePctController.text.trim());
-    if (changePct == null || changePct <= 0) {
-      setState(() => _error = 'Enter a valid target % change');
-      return;
-    }
-
-    setState(() {
-      _isSubmitting = true;
-      _error = null;
-    });
-
-    try {
-      await Supabase.instance.client.from('markets').insert({
-        'creator_id': widget.creatorId,
-        'created_by': widget.currentUserId,
-        'opened_by': widget.currentUserId,
-        'title': title,
-        'timeframe': _timeframe,
-        'target_change_pct': changePct,
-        'end_at': _endAt(_timeframe).toIso8601String(),
-        'status': 'open',
-      });
-      if (mounted) {
-        Navigator.of(context).pop();
-        widget.onCreated();
-      }
-    } catch (e) {
-      if (mounted) setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _isSubmitting = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
-
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: EdgeInsets.fromLTRB(24, 20, 24, 24 + keyboardHeight),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Drag handle
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 20),
-              decoration: BoxDecoration(
-                color: AppTheme.cardBorder,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
-          Text(
-            'Open a Market on @${widget.creatorUsername}',
-            style: const TextStyle(
-              color: AppTheme.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 20),
-          TextField(
-            controller: _titleController,
-            decoration: const InputDecoration(
-              labelText: 'Market title',
-              hintText: 'e.g. Will they hit 1M followers?',
-            ),
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _changePctController,
-                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Target change %',
-                    suffixText: '%',
-                  ),
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: InputDecorator(
-                  decoration: InputDecoration(
-                    labelText: 'Timeframe',
-                    labelStyle: const TextStyle(color: AppTheme.textSecondary),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppTheme.cardBorder),
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: AppTheme.cardBorder),
-                    ),
-                    filled: true,
-                    fillColor: AppTheme.surfaceLight,
-                    contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 4),
-                  ),
-                  child: DropdownButtonHideUnderline(
-                    child: DropdownButton<String>(
-                      value: _timeframe,
-                      dropdownColor: AppTheme.surface,
-                      isExpanded: true,
-                      style: const TextStyle(color: AppTheme.textPrimary),
-                      items: _timeframes
-                          .map((t) => DropdownMenuItem(
-                                value: t,
-                                child: Text(t),
-                              ))
-                          .toList(),
-                      onChanged: (v) {
-                        if (v != null) setState(() => _timeframe = v);
-                      },
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (_error != null) ...[
-            const SizedBox(height: 10),
-            Text(_error!,
-                style: const TextStyle(color: AppTheme.danger, fontSize: 13)),
-          ],
-          const SizedBox(height: 20),
-          ElevatedButton(
-            onPressed: _isSubmitting ? null : _submit,
-            child: _isSubmitting
-                ? const SizedBox(
-                    height: 20,
-                    width: 20,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Text('Create Market'),
-          ),
         ],
       ),
     );
@@ -696,7 +503,8 @@ class _ScoreBadge extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppTheme.secondary.withValues(alpha: 0.15),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.secondary.withValues(alpha: 0.5)),
+          border:
+              Border.all(color: AppTheme.secondary.withValues(alpha: 0.5)),
         ),
         child: Text(
           'Score ${score.toStringAsFixed(1)}',
@@ -756,10 +564,23 @@ class _PlatformChip extends StatelessWidget {
 
 class _MarketCard extends StatelessWidget {
   final PublicMarket market;
-  const _MarketCard({required this.market});
+  final VoidCallback onJoin;
+
+  const _MarketCard({required this.market, required this.onJoin});
+
+  String _timeRemaining() {
+    final now = DateTime.now();
+    final diff = market.endAt.difference(now);
+    if (diff.isNegative) return 'Ended';
+    return 'closes ${timeago.format(market.endAt, allowFromNow: true)}';
+  }
 
   @override
   Widget build(BuildContext context) {
+    final total = market.totalPool;
+    final yesRatio = total > 0 ? market.yesPool / total : 0.5;
+    const timeframeLabels = {'24h': '24h', '7d': '7d', '30d': '30d'};
+
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.all(14),
@@ -768,45 +589,103 @@ class _MarketCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.cardBorder),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  market.title,
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
+          // Timeframe + status + time remaining
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '${timeframeLabels[market.timeframe] ?? market.timeframe} market',
+                style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.success.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                      color: AppTheme.success.withValues(alpha: 0.4)),
+                ),
+                child: const Text(
+                  'OPEN',
+                  style: TextStyle(
+                    color: AppTheme.success,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '${market.timeframe} · ${market.totalPool.toStringAsFixed(0)} tokens pooled',
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 12,
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _timeRemaining(),
+            style: const TextStyle(
+                color: AppTheme.textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: 10),
+
+          // Pool bar
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              height: 6,
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: (yesRatio * 100).round().clamp(1, 99),
+                    child: Container(color: AppTheme.success),
                   ),
-                ),
-              ],
+                  Expanded(
+                    flex: ((1 - yesRatio) * 100).round().clamp(1, 99),
+                    child: Container(color: AppTheme.danger),
+                  ),
+                ],
+              ),
             ),
           ),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppTheme.success.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(6),
-              border: Border.all(color: AppTheme.success.withValues(alpha: 0.4)),
-            ),
-            child: const Text(
-              'OPEN',
-              style: TextStyle(
-                color: AppTheme.success,
-                fontSize: 11,
-                fontWeight: FontWeight.bold,
+          const SizedBox(height: 6),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '📈 ${market.yesPool.toStringAsFixed(0)} tokens',
+                style: const TextStyle(
+                    color: AppTheme.success,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600),
               ),
+              Text(
+                '${market.noPool.toStringAsFixed(0)} tokens 📉',
+                style: const TextStyle(
+                    color: AppTheme.danger,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: onJoin,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.primary,
+                side:
+                    BorderSide(color: AppTheme.primary.withValues(alpha: 0.5)),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Join Market'),
             ),
           ),
         ],

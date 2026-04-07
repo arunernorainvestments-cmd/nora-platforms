@@ -59,6 +59,36 @@ Push to `main` triggers the GitHub Actions workflow (`.github/workflows/deploy.y
 
 Required GitHub secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`.
 
+## Current Build Status (as of Phase 2 completion)
+
+### Completed Features
+- Auth: email signup/login, forgot password, username selection, Google OAuth placeholder
+- Token economy: 100 signup bonus, token_balances, token_transactions, referral system (+25 tokens)
+- Famous creators: 20 seeded creators, public discover page, no betting allowed
+- Discover screen: Famous tab + Rising tab with spotlight tiers
+- Wallet screen: token balance, transaction history, cash balance placeholder
+- Home screen: real data, spotlight section, famous creators carousel, notification bell
+- Profile screen: full profile edit, Market Maker opt-in 3-step flow, opt-out with open market protection, invite friends card with referral link
+- Public profiles: /u/username route, shareable, no login required
+- Referral system: /join?ref=username route, referral tracking, bonus tokens
+- Notification system: in-app bell, notification center, mark as read
+- Markets tab: Open Markets + My Bets tabs, pool ratio bars, time remaining
+- Betting UI: 4-step bottom sheet, timeframe + position + amount + confirmation, payout estimate
+- DB triggers: auto pool updates, token deduction, creator notifications on bet
+
+### Migrations Run (in order)
+- 001_initial_schema.sql
+- 002_token_economy.sql
+- 003_user_types_and_notifications.sql
+- 004_bet_mechanics.sql
+
+### Deferred to Phase 3+
+- Social OAuth connections (Phase 3) — YouTube, TikTok, X, Instagram, Kick, Pinterest
+- Real popularity score from social APIs (Phase 3)
+- Stripe payments for token purchases (Phase 4)
+- Market resolution logic and payout distribution (Phase 5)
+- Event markets system (post-Phase 5)
+
 ## Deferred Features (Build Later)
 
 ### Profile Picture

@@ -10,7 +10,10 @@ class UserProfile {
   final String? username;
   final String? displayName;
   final String? bio;
-  final bool isCreator;
+  final bool isCreator; // spotlight-score eligibility (is_creator column)
+  final bool isMarketMaker;
+  final bool pendingOptOut;
+  final bool popularityScorePublic;
   final String? referralCode;
 
   const UserProfile({
@@ -19,6 +22,9 @@ class UserProfile {
     this.displayName,
     this.bio,
     required this.isCreator,
+    required this.isMarketMaker,
+    required this.pendingOptOut,
+    required this.popularityScorePublic,
     this.referralCode,
   });
 
@@ -28,6 +34,9 @@ class UserProfile {
         displayName: json['display_name'] as String?,
         bio: json['bio'] as String?,
         isCreator: json['is_creator'] as bool? ?? false,
+        isMarketMaker: json['is_market_maker'] as bool? ?? false,
+        pendingOptOut: json['pending_opt_out'] as bool? ?? false,
+        popularityScorePublic: json['popularity_score_public'] as bool? ?? false,
         referralCode: json['referral_code'] as String?,
       );
 }
@@ -42,7 +51,9 @@ final userProfileProvider = FutureProvider.autoDispose<UserProfile?>((ref) async
 
   final data = await Supabase.instance.client
       .from('profiles')
-      .select('id, username, display_name, bio, is_creator, referral_code')
+      .select(
+          'id, username, display_name, bio, is_creator, is_market_maker, '
+          'pending_opt_out, popularity_score_public, referral_code')
       .eq('id', userId)
       .single();
 
@@ -82,13 +93,53 @@ final spotlightTierProvider = FutureProvider.autoDispose<String?>((ref) async {
 class ProfileActions {
   final _client = Supabase.instance.client;
 
-  Future<void> becomeCreator() async {
+  Future<void> becomeMarketMaker() async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) throw Exception('Not authenticated');
-    await _client
-        .from('profiles')
-        .update({'is_creator': true})
-        .eq('id', userId);
+    await _client.from('profiles').update({
+      'is_market_maker': true,
+      'is_creator': true, // enables spotlight-score eligibility
+      'popularity_score_public': true,
+      'market_maker_opted_in_at': DateTime.now().toUtc().toIso8601String(),
+    }).eq('id', userId);
+  }
+
+  Future<bool> checkHasOpenMarkets() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) return false;
+    final result = await _client
+        .from('markets')
+        .select('id')
+        .eq('creator_id', userId)
+        .eq('status', 'open')
+        .limit(1);
+    return (result as List).isNotEmpty;
+  }
+
+  Future<void> optOutMarketMaker() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated');
+
+    final hasOpen = await checkHasOpenMarkets();
+    if (hasOpen) {
+      await _client.from('profiles').update({
+        'pending_opt_out': true,
+      }).eq('id', userId);
+    } else {
+      await _client.from('profiles').update({
+        'is_market_maker': false,
+        'popularity_score_public': false,
+        'pending_opt_out': false,
+      }).eq('id', userId);
+    }
+  }
+
+  Future<void> resumeMarketMaker() async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated');
+    await _client.from('profiles').update({
+      'pending_opt_out': false,
+    }).eq('id', userId);
   }
 
   Future<void> updateProfile({String? displayName, String? bio}) async {

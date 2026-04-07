@@ -17,7 +17,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _bioController = TextEditingController();
   bool _editInitialized = false;
   bool _isSaving = false;
-  bool _isBecomingCreator = false;
+  bool _isTogglingMarketMaker = false;
 
   @override
   void dispose() {
@@ -33,25 +33,53 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _editInitialized = true;
   }
 
-  Future<void> _becomeCreator() async {
-    setState(() { _isBecomingCreator = true; });
+  void _openMarketMakerSheet(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _MarketMakerOptInSheet(
+        onComplete: () {
+          ref.invalidate(userProfileProvider);
+          ref.invalidate(spotlightTierProvider);
+        },
+      ),
+    );
+  }
+
+  Future<void> _toggleMarketMaker(
+      BuildContext context, UserProfile profile) async {
+    setState(() => _isTogglingMarketMaker = true);
+    final messenger = ScaffoldMessenger.of(context);
     try {
-      await ref.read(profileActionsProvider).becomeCreator();
-      ref.invalidate(userProfileProvider);
-      ref.invalidate(spotlightTierProvider);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Welcome to the creator community!')),
-        );
+      final actions = ref.read(profileActionsProvider);
+      if (profile.isMarketMaker && !profile.pendingOptOut) {
+        await actions.optOutMarketMaker();
+        ref.invalidate(userProfileProvider);
+        if (mounted) {
+          // Refresh to check if pending_opt_out was set
+          final updated = await ref.read(userProfileProvider.future);
+          if (mounted && updated != null && updated.pendingOptOut) {
+            messenger.showSnackBar(
+              const SnackBar(
+                content: Text(
+                    'You will be opted out after your current markets close'),
+              ),
+            );
+          }
+        }
+      } else if (profile.pendingOptOut) {
+        await actions.resumeMarketMaker();
+        ref.invalidate(userProfileProvider);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(content: Text('Error: $e')),
         );
       }
     } finally {
-      if (mounted) setState(() { _isBecomingCreator = false; });
+      if (mounted) setState(() => _isTogglingMarketMaker = false);
     }
   }
 
@@ -100,10 +128,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha:0.15),
+                    color: AppTheme.primary.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(20),
                     border: Border.all(
-                        color: AppTheme.primary.withValues(alpha:0.4)),
+                        color: AppTheme.primary.withValues(alpha: 0.4)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -187,20 +215,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 ),
                 const SizedBox(height: 28),
 
-                // ── Creator section ───────────────────────────────────────
-                if (!profile.isCreator)
-                  _BecomeCreatorCard(
-                    isLoading: _isBecomingCreator,
-                    onTap: _becomeCreator,
+                // ── Market Maker section ──────────────────────────────────
+                if (!profile.isMarketMaker)
+                  _MarketMakerOptInCard(
+                    onGetStarted: () => _openMarketMakerSheet(context),
                   )
                 else
-                  _CreatorDashboardCard(
+                  _MarketMakerDashboard(
                     tierAsync: tierAsync,
+                    username: displayUsername,
+                    pendingOptOut: profile.pendingOptOut,
+                    isToggling: _isTogglingMarketMaker,
+                    onToggle: () => _toggleMarketMaker(context, profile),
                     onSocialConnect: (platform) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text(
-                              'Social connections coming in Phase 3'),
+                          content: Text('Social connections coming in Phase 3'),
                         ),
                       );
                     },
@@ -269,31 +299,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// WIDGETS
+// MARKET MAKER OPT-IN CARD (when not yet a market maker)
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _SectionTitle extends StatelessWidget {
-  final String title;
-  const _SectionTitle(this.title);
-
-  @override
-  Widget build(BuildContext context) => Padding(
-        padding: const EdgeInsets.only(bottom: 4),
-        child: Text(
-          title,
-          style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: AppTheme.textPrimary),
-        ),
-      );
-}
-
-class _BecomeCreatorCard extends StatelessWidget {
-  final bool isLoading;
-  final VoidCallback onTap;
-
-  const _BecomeCreatorCard({required this.isLoading, required this.onTap});
+class _MarketMakerOptInCard extends StatelessWidget {
+  final VoidCallback onGetStarted;
+  const _MarketMakerOptInCard({required this.onGetStarted});
 
   @override
   Widget build(BuildContext context) {
@@ -302,7 +313,7 @@ class _BecomeCreatorCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.primary.withValues(alpha:0.4)),
+        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -312,15 +323,15 @@ class _BecomeCreatorCard extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: AppTheme.primary.withValues(alpha:0.15),
+                  color: AppTheme.primary.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: const Icon(Icons.star_outline,
+                child: const Icon(Icons.show_chart,
                     color: AppTheme.primary, size: 22),
               ),
               const SizedBox(width: 12),
               const Text(
-                'Become a Creator',
+                'Become a Market Maker',
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -330,21 +341,26 @@ class _BecomeCreatorCard extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           const Text(
-            'Connect your social accounts and let the community bet on your popularity. Get discovered.',
+            'Let the community bet on your popularity. Get discovered by new followers.',
             style: TextStyle(color: AppTheme.textSecondary, height: 1.5),
           ),
           const SizedBox(height: 16),
+
+          // Step indicators
+          const _StepIndicator(
+            steps: [
+              '1. Connect a social account',
+              '2. Accept terms',
+              '3. Go live',
+            ],
+          ),
+          const SizedBox(height: 16),
+
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: isLoading ? null : onTap,
-              child: isLoading
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Text('Claim Your Spot'),
+              onPressed: onGetStarted,
+              child: const Text('Get Started'),
             ),
           ),
         ],
@@ -353,12 +369,65 @@ class _BecomeCreatorCard extends StatelessWidget {
   }
 }
 
-class _CreatorDashboardCard extends StatelessWidget {
-  final AsyncValue<String?> tierAsync;
-  final void Function(String platform) onSocialConnect;
+class _StepIndicator extends StatelessWidget {
+  final List<String> steps;
+  const _StepIndicator({required this.steps});
 
-  const _CreatorDashboardCard(
-      {required this.tierAsync, required this.onSocialConnect});
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: steps.map((s) => Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Row(
+          children: [
+            const Icon(Icons.circle, size: 6, color: AppTheme.primary),
+            const SizedBox(width: 8),
+            Text(s, style: const TextStyle(
+                color: AppTheme.textSecondary, fontSize: 13)),
+          ],
+        ),
+      )).toList(),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKET MAKER DASHBOARD (when already a market maker)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MarketMakerDashboard extends StatelessWidget {
+  final AsyncValue<String?> tierAsync;
+  final String username;
+  final bool pendingOptOut;
+  final bool isToggling;
+  final VoidCallback onToggle;
+  final void Function(String) onSocialConnect;
+
+  const _MarketMakerDashboard({
+    required this.tierAsync,
+    required this.username,
+    required this.pendingOptOut,
+    required this.isToggling,
+    required this.onToggle,
+    required this.onSocialConnect,
+  });
+
+  void _copyProfileLink(BuildContext context) {
+    const base = 'https://nora-platforms.vercel.app/u/';
+    Clipboard.setData(ClipboardData(text: '$base$username'));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text('Profile link copied to clipboard'),
+        backgroundColor: AppTheme.surface,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: const BorderSide(color: AppTheme.cardBorder),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -367,16 +436,17 @@ class _CreatorDashboardCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.secondary.withValues(alpha:0.4)),
+        border: Border.all(color: AppTheme.secondary.withValues(alpha: 0.4)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Title row + tier badge
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'Creator Dashboard',
+                'Market Maker',
                 style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
@@ -391,7 +461,107 @@ class _CreatorDashboardCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 14),
+
+          // Public profile link
+          GestureDetector(
+            onTap: () => _copyProfileLink(context),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: AppTheme.background,
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.cardBorder),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.link, size: 15, color: AppTheme.primary),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'nora-platforms.vercel.app/u/$username',
+                      style: const TextStyle(
+                        color: AppTheme.primary,
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const Icon(Icons.copy_outlined,
+                      size: 14, color: AppTheme.textSecondary),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // Accept new markets toggle
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppTheme.surfaceLight,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppTheme.cardBorder),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Accept new markets',
+                            style: TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          SizedBox(height: 2),
+                          Text(
+                            'Allow users to open prediction markets on you',
+                            style: TextStyle(
+                                color: AppTheme.textSecondary, fontSize: 12),
+                          ),
+                        ],
+                      ),
+                    ),
+                    isToggling
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: AppTheme.primary),
+                          )
+                        : Switch(
+                            value: !pendingOptOut,
+                            onChanged: (_) => onToggle(),
+                            activeThumbColor: AppTheme.primary,
+                            activeTrackColor:
+                                AppTheme.primary.withValues(alpha: 0.4),
+                          ),
+                  ],
+                ),
+                if (pendingOptOut) ...[
+                  const SizedBox(height: 6),
+                  const Text(
+                    'You will be opted out after your current markets close',
+                    style: TextStyle(
+                        color: AppTheme.danger,
+                        fontSize: 12),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+
+          // Social connect buttons
           const Text(
             'Connect Social Accounts',
             style: TextStyle(
@@ -424,6 +594,317 @@ class _CreatorDashboardCard extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKET MAKER OPT-IN BOTTOM SHEET (3 steps)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MarketMakerOptInSheet extends ConsumerStatefulWidget {
+  final VoidCallback onComplete;
+  const _MarketMakerOptInSheet({required this.onComplete});
+
+  @override
+  ConsumerState<_MarketMakerOptInSheet> createState() =>
+      _MarketMakerOptInSheetState();
+}
+
+class _MarketMakerOptInSheetState
+    extends ConsumerState<_MarketMakerOptInSheet> {
+  int _step = 0;
+  final Set<String> _attemptedPlatforms = {};
+  bool _agreed = false;
+  bool _isSubmitting = false;
+  String? _error;
+
+  static const _platforms = [
+    ('youtube', 'YouTube', Icons.play_circle_outline),
+    ('tiktok', 'TikTok', Icons.music_note_outlined),
+    ('x', 'X', Icons.alternate_email),
+    ('instagram', 'Instagram', Icons.photo_camera_outlined),
+    ('kick', 'Kick', Icons.sports_esports_outlined),
+    ('pinterest', 'Pinterest', Icons.push_pin_outlined),
+  ];
+
+  void _tapPlatform(BuildContext context, String platform) {
+    setState(() => _attemptedPlatforms.add(platform));
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Social connections coming in Phase 3'),
+        duration: Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _goLive() async {
+    setState(() { _isSubmitting = true; _error = null; });
+    try {
+      await ref.read(profileActionsProvider).becomeMarketMaker();
+      if (mounted) {
+        Navigator.of(context).pop();
+        widget.onComplete();
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Something went wrong. Please try again.';
+          _isSubmitting = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final keyboardPad = MediaQuery.of(context).viewInsets.bottom;
+
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.fromLTRB(24, 20, 24, 24 + keyboardPad),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: AppTheme.cardBorder,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+
+          // Step indicator pills
+          Row(
+            children: List.generate(3, (i) {
+              final isActive = i == _step;
+              final isDone = i < _step;
+              return Expanded(
+                child: Container(
+                  margin: EdgeInsets.only(right: i < 2 ? 6 : 0),
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: isDone || isActive
+                        ? AppTheme.primary
+                        : AppTheme.cardBorder,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+              );
+            }),
+          ),
+          const SizedBox(height: 24),
+
+          if (_step == 0) _buildStep1(context),
+          if (_step == 1) _buildStep2(context),
+          if (_step == 2) _buildStep3(context),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStep1(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Text(
+          'Connect a Social Account',
+          style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Tap at least one platform to continue. Social connections are coming in Phase 3 — tap to register your interest.',
+          style: TextStyle(
+              color: AppTheme.textSecondary, height: 1.5, fontSize: 13),
+        ),
+        const SizedBox(height: 20),
+        Wrap(
+          spacing: 10,
+          runSpacing: 10,
+          children: _platforms.map((p) {
+            final connected = _attemptedPlatforms.contains(p.$1);
+            return OutlinedButton.icon(
+              onPressed: () => _tapPlatform(context, p.$1),
+              icon: Icon(p.$3, size: 16,
+                  color: connected ? AppTheme.primary : AppTheme.textSecondary),
+              label: Text(
+                connected ? '${p.$2} ✓' : p.$2,
+                style: TextStyle(
+                  fontSize: 13,
+                  color: connected ? AppTheme.primary : AppTheme.textSecondary,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(
+                  color: connected ? AppTheme.primary : AppTheme.cardBorder,
+                ),
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 10),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 20),
+        ElevatedButton(
+          onPressed: _attemptedPlatforms.isNotEmpty
+              ? () => setState(() => _step = 1)
+              : null,
+          child: const Text('Next'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStep2(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            IconButton(
+              onPressed: () => setState(() => _step = 0),
+              icon: const Icon(Icons.arrow_back,
+                  color: AppTheme.textSecondary, size: 20),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+            const SizedBox(width: 8),
+            const Text(
+              'Accept Terms',
+              style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceLight,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.cardBorder),
+          ),
+          child: const Text(
+            'By becoming a Market Maker you agree that other users can open prediction markets on your popularity score. Your score is calculated from your linked social accounts. You can opt out at any time unless a market is currently open.',
+            style: TextStyle(
+                color: AppTheme.textSecondary, height: 1.6, fontSize: 14),
+          ),
+        ),
+        const SizedBox(height: 16),
+        GestureDetector(
+          onTap: () => setState(() => _agreed = !_agreed),
+          child: Row(
+            children: [
+              Checkbox(
+                value: _agreed,
+                onChanged: (v) => setState(() => _agreed = v ?? false),
+                checkColor: Colors.white,
+                fillColor: WidgetStateProperty.resolveWith(
+                  (s) => s.contains(WidgetState.selected)
+                      ? AppTheme.primary
+                      : null,
+                ),
+              ),
+              const SizedBox(width: 8),
+              const Expanded(
+                child: Text(
+                  'I understand and agree',
+                  style: TextStyle(
+                      color: AppTheme.textPrimary, fontSize: 14),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        ElevatedButton(
+          onPressed: _agreed ? () => setState(() => _step = 2) : null,
+          child: const Text('Continue'),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildStep3(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const Center(
+          child: Icon(Icons.rocket_launch_outlined,
+              size: 56, color: AppTheme.primary),
+        ),
+        const SizedBox(height: 16),
+        const Text(
+          'You\'re live as a Market Maker!',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary),
+        ),
+        const SizedBox(height: 10),
+        const Text(
+          'Your profile is now public and bettable. The community can open prediction markets on your popularity.',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+              color: AppTheme.textSecondary, height: 1.5, fontSize: 14),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 12),
+          Text(_error!,
+              textAlign: TextAlign.center,
+              style: const TextStyle(color: AppTheme.danger, fontSize: 13)),
+        ],
+        const SizedBox(height: 24),
+        ElevatedButton(
+          onPressed: _isSubmitting ? null : _goLive,
+          child: _isSubmitting
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                      strokeWidth: 2, color: Colors.white))
+              : const Text('Let\'s Go'),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED WIDGETS
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SectionTitle extends StatelessWidget {
+  final String title;
+  const _SectionTitle(this.title);
+
+  @override
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 4),
+        child: Text(
+          title,
+          style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary),
+        ),
+      );
+}
+
 class _TierBadge extends StatelessWidget {
   final String tier;
   const _TierBadge(this.tier);
@@ -449,9 +930,9 @@ class _TierBadge extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha:0.15),
+        color: color.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withValues(alpha:0.5)),
+        border: Border.all(color: color.withValues(alpha: 0.5)),
       ),
       child: Text(
         label,
@@ -489,8 +970,7 @@ class _InviteFriendsCard extends StatelessWidget {
   final String referralCode;
   const _InviteFriendsCard({required this.referralCode});
 
-  String get _link =>
-      'nora-platforms.vercel.app/join?ref=$referralCode';
+  String get _link => 'nora-platforms.vercel.app/join?ref=$referralCode';
 
   void _copyLink(BuildContext context) {
     Clipboard.setData(ClipboardData(text: 'https://$_link'));
@@ -572,7 +1052,8 @@ class _InviteFriendsCard extends StatelessWidget {
               label: const Text('Copy Link'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppTheme.secondary,
-                side: BorderSide(color: AppTheme.secondary.withValues(alpha: 0.5)),
+                side: BorderSide(
+                    color: AppTheme.secondary.withValues(alpha: 0.5)),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
               ),
