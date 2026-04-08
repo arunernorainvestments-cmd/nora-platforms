@@ -78,12 +78,13 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _editInitialized = true;
   }
 
-  void _openMarketMakerSheet(BuildContext context) {
+  void _openMarketMakerSheet(BuildContext context, {bool skipToTerms = false}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _MarketMakerOptInSheet(
+        skipToTerms: skipToTerms,
         onComplete: () {
           ref.invalidate(userProfileProvider);
           ref.invalidate(spotlightTierProvider);
@@ -94,6 +95,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   Future<void> _toggleMarketMaker(
       BuildContext context, UserProfile profile) async {
+    // Re-activating from fully opted-out state: show Accept Terms directly
+    if (!profile.isMarketMaker && !profile.pendingOptOut) {
+      _openMarketMakerSheet(context, skipToTerms: true);
+      return;
+    }
+
     setState(() => _isTogglingMarketMaker = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -158,6 +165,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final balanceAsync = ref.watch(profileTokenBalanceProvider);
     final tierAsync = ref.watch(spotlightTierProvider);
     final user = ref.watch(currentUserProvider);
+    final connectionsAsync = ref.watch(platformConnectionsProvider);
+    final hasConnectedPlatforms =
+        connectionsAsync.valueOrNull?.any((c) => c.isActive) ?? false;
 
     profileAsync.whenData((p) { if (p != null) _maybeInitControllers(p); });
 
@@ -261,7 +271,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 const SizedBox(height: 28),
 
                 // ── Market Maker section ──────────────────────────────────
-                if (!profile.isMarketMaker)
+                // Show Get Started card only if user has no connected platforms.
+                // Once they have connected platforms, keep the dashboard so the
+                // toggle remains accessible even after fully opting out.
+                if (!profile.isMarketMaker && !hasConnectedPlatforms)
                   _MarketMakerOptInCard(
                     onGetStarted: () => _openMarketMakerSheet(context),
                   )
@@ -269,6 +282,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   _MarketMakerDashboard(
                     tierAsync: tierAsync,
                     username: displayUsername,
+                    isMarketMaker: profile.isMarketMaker,
                     pendingOptOut: profile.pendingOptOut,
                     isToggling: _isTogglingMarketMaker,
                     onToggle: () => _toggleMarketMaker(context, profile),
@@ -437,6 +451,7 @@ class _StepIndicator extends StatelessWidget {
 class _MarketMakerDashboard extends StatelessWidget {
   final AsyncValue<String?> tierAsync;
   final String username;
+  final bool isMarketMaker;
   final bool pendingOptOut;
   final bool isToggling;
   final VoidCallback onToggle;
@@ -444,6 +459,7 @@ class _MarketMakerDashboard extends StatelessWidget {
   const _MarketMakerDashboard({
     required this.tierAsync,
     required this.username,
+    required this.isMarketMaker,
     required this.pendingOptOut,
     required this.isToggling,
     required this.onToggle,
@@ -575,7 +591,7 @@ class _MarketMakerDashboard extends StatelessWidget {
                                 color: AppTheme.primary),
                           )
                         : Switch(
-                            value: !pendingOptOut,
+                            value: isMarketMaker && !pendingOptOut,
                             onChanged: (_) => onToggle(),
                             activeThumbColor: AppTheme.primary,
                             activeTrackColor:
@@ -630,7 +646,11 @@ class _MarketMakerDashboard extends StatelessWidget {
 
 class _MarketMakerOptInSheet extends ConsumerStatefulWidget {
   final VoidCallback onComplete;
-  const _MarketMakerOptInSheet({required this.onComplete});
+  final bool skipToTerms;
+  const _MarketMakerOptInSheet({
+    required this.onComplete,
+    this.skipToTerms = false,
+  });
 
   @override
   ConsumerState<_MarketMakerOptInSheet> createState() =>
@@ -639,8 +659,14 @@ class _MarketMakerOptInSheet extends ConsumerStatefulWidget {
 
 class _MarketMakerOptInSheetState
     extends ConsumerState<_MarketMakerOptInSheet> {
-  int _step = 0;
+  late int _step;
   final Set<String> _attemptedPlatforms = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _step = widget.skipToTerms ? 1 : 0;
+  }
   bool _agreed = false;
   bool _isSubmitting = false;
   String? _error;
@@ -669,6 +695,9 @@ class _MarketMakerOptInSheetState
         final authUrl = res.data['auth_url'] as String?;
         if (authUrl != null) {
           await openUrlInBrowser(authUrl);
+          // Advance to Accept Terms automatically — the OAuth flow continues
+          // in the new tab; the user doesn't need to manually click Next.
+          if (mounted) setState(() => _step = 1);
         }
       } catch (_) {
         if (mounted) {

@@ -1,5 +1,7 @@
 // supabase/functions/disconnect-platform/index.ts
 // Revokes the OAuth token with the platform and removes the connection from DB.
+// Deployed with --no-verify-jwt; auth is verified via supabase.auth.getUser() instead,
+// because this project uses ES256 JWTs which are incompatible with the runtime's HS256 check.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
