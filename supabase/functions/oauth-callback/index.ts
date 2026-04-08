@@ -5,6 +5,9 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// Guard against double-invocation consuming a single-use auth code
+const processedCodes = new Set<string>();
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': 'https://nora-platforms.vercel.app',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
@@ -36,6 +39,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (!code || !state) {
     return Response.redirect(`${appUrl}/profile?error=missing_params`, 302);
   }
+
+  // Guard against double-invocation (Twitch codes are single-use)
+  if (processedCodes.has(code)) {
+    console.warn('[oauth-callback] Duplicate request for code, ignoring');
+    return Response.redirect(`${appUrl}/profile?error=duplicate_request`, 302);
+  }
+  processedCodes.add(code);
 
   // ── Verify CSRF state ────────────────────────────────────────────────────
   const stateSecret = Deno.env.get('OAUTH_STATE_SECRET') ?? '';
@@ -92,7 +102,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         access_token: tokens.access_token,
         refresh_token: tokens.refresh_token ?? null,
         token_expires_at: expiresAt,
-        scopes: tokens.scope ? tokens.scope.split(/[ ,]+/) : [],
+        scopes: Array.isArray(tokens.scope)
+          ? tokens.scope
+          : (tokens.scope ?? '').split(/[ ,]+/).filter(Boolean),
         connected_at: new Date().toISOString(),
         is_active: true,
       },
@@ -133,7 +145,7 @@ interface TokenResponse {
   access_token: string;
   refresh_token?: string;
   expires_in?: number;
-  scope?: string;
+  scope?: string | string[];
 }
 
 interface PlatformUser {

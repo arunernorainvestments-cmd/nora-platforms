@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../../core/utils/open_url.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/platform_connection_providers.dart';
@@ -626,8 +626,7 @@ class _MarketMakerOptInSheetState
         );
         final authUrl = res.data['auth_url'] as String?;
         if (authUrl != null) {
-          await launchUrl(Uri.parse(authUrl),
-              mode: LaunchMode.externalApplication);
+          await openUrlInBrowser(authUrl);
         }
       } catch (_) {
         if (mounted) {
@@ -1011,7 +1010,7 @@ class _PlatformConnectionTileState
       );
       final authUrl = res.data['auth_url'] as String?;
       if (authUrl == null) throw Exception('No auth URL returned');
-      await launchUrl(Uri.parse(authUrl), mode: LaunchMode.externalApplication);
+      await openUrlInBrowser(authUrl);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
