@@ -76,7 +76,7 @@ RETURNS TRIGGER AS $$
 BEGIN
   UPDATE spotlight_scores
   SET score      = NEW.heat_score,
-      updated_at = now()
+      computed_at = now()
   WHERE user_id = NEW.user_id;
   RETURN NEW;
 END;
