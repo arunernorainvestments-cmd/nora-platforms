@@ -59,6 +59,16 @@ Push to `main` triggers the GitHub Actions workflow (`.github/workflows/deploy.y
 
 Required GitHub secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `SUPABASE_URL`, `SUPABASE_ANON_KEY`.
 
+### Supabase Edge Function Deployment
+
+Edge functions are deployed manually via the Supabase CLI:
+```bash
+export SUPABASE_ACCESS_TOKEN=your_token_here
+npx supabase functions deploy <function-name> --project-ref cceisywxwhgljdpisjrl
+```
+
+**IMPORTANT — before sharing repo access or adding collaborators:** Rotate the `SUPABASE_ACCESS_TOKEN` at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens). The token used during development may have been exposed in conversation history and must be revoked before granting others access.
+
 ## Current Build Status (as of Phase 2 completion)
 
 ### Completed Features

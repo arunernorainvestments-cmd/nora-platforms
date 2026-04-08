@@ -1,6 +1,10 @@
 // supabase/functions/oauth-initiate/index.ts
 // Generates the platform OAuth authorization URL and returns it to the Flutter app.
 // Flutter opens the URL with url_launcher; the user grants access in their browser.
+// Deployed with --no-verify-jwt; auth is verified via supabase.auth.getUser() instead,
+// because this project uses ES256 JWTs which are incompatible with the runtime's HS256 check.
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': 'https://nora-platforms.vercel.app',
@@ -22,10 +26,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: 'Method not allowed' }, 405, corsHeaders);
   }
 
-  // Require a valid user JWT
+  // Verify the user JWT via Supabase Auth (handles ES256 asymmetric keys)
   const authHeader = req.headers.get('Authorization');
   if (!authHeader?.startsWith('Bearer ')) {
     return json({ error: 'Unauthorized' }, 401, corsHeaders);
+  }
+  const token = authHeader.replace('Bearer ', '');
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+  );
+  const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+  if (authError || !user) {
+    return json({ error: 'Unauthorized', detail: authError?.message }, 401, corsHeaders);
   }
 
   let body: InitiateRequest;
