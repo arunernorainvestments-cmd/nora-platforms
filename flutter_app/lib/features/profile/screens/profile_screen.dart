@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../providers/platform_connection_providers.dart';
 import '../providers/profile_providers.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
@@ -227,13 +230,6 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     pendingOptOut: profile.pendingOptOut,
                     isToggling: _isTogglingMarketMaker,
                     onToggle: () => _toggleMarketMaker(context, profile),
-                    onSocialConnect: (platform) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Social connections coming in Phase 3'),
-                        ),
-                      );
-                    },
                   ),
                 const SizedBox(height: 24),
 
@@ -402,7 +398,6 @@ class _MarketMakerDashboard extends StatelessWidget {
   final bool pendingOptOut;
   final bool isToggling;
   final VoidCallback onToggle;
-  final void Function(String) onSocialConnect;
 
   const _MarketMakerDashboard({
     required this.tierAsync,
@@ -410,7 +405,6 @@ class _MarketMakerDashboard extends StatelessWidget {
     required this.pendingOptOut,
     required this.isToggling,
     required this.onToggle,
-    required this.onSocialConnect,
   });
 
   void _copyProfileLink(BuildContext context) {
@@ -570,22 +564,16 @@ class _MarketMakerDashboard extends StatelessWidget {
                 color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 12),
-          Wrap(
+          const Wrap(
             spacing: 10,
             runSpacing: 10,
             children: [
-              _SocialButton('YouTube', Icons.play_circle_outline,
-                  () => onSocialConnect('youtube')),
-              _SocialButton('TikTok', Icons.music_note_outlined,
-                  () => onSocialConnect('tiktok')),
-              _SocialButton('X', Icons.alternate_email,
-                  () => onSocialConnect('x')),
-              _SocialButton('Instagram', Icons.photo_camera_outlined,
-                  () => onSocialConnect('instagram')),
-              _SocialButton('Kick', Icons.sports_esports_outlined,
-                  () => onSocialConnect('kick')),
-              _SocialButton('Pinterest', Icons.push_pin_outlined,
-                  () => onSocialConnect('pinterest')),
+              _PlatformConnectionTile(platform: 'youtube'),
+              _PlatformConnectionTile(platform: 'twitch'),
+              _PlatformConnectionTile(platform: 'tiktok', isStub: true),
+              _PlatformConnectionTile(platform: 'x', isStub: true),
+              _PlatformConnectionTile(platform: 'instagram', isStub: true),
+              _PlatformConnectionTile(platform: 'kick', isStub: true),
             ],
           ),
         ],
@@ -617,18 +605,47 @@ class _MarketMakerOptInSheetState
 
   static const _platforms = [
     ('youtube', 'YouTube', Icons.play_circle_outline),
+    ('twitch', 'Twitch', Icons.sports_esports_outlined),
     ('tiktok', 'TikTok', Icons.music_note_outlined),
     ('x', 'X', Icons.alternate_email),
     ('instagram', 'Instagram', Icons.photo_camera_outlined),
     ('kick', 'Kick', Icons.sports_esports_outlined),
-    ('pinterest', 'Pinterest', Icons.push_pin_outlined),
   ];
 
-  void _tapPlatform(BuildContext context, String platform) {
+  Future<void> _tapPlatform(BuildContext context, String platform) async {
     setState(() => _attemptedPlatforms.add(platform));
+
+    if (platform == 'youtube' || platform == 'twitch') {
+      final messenger = ScaffoldMessenger.of(context);
+      try {
+        final user = Supabase.instance.client.auth.currentUser;
+        if (user == null) throw Exception('Not authenticated');
+        final res = await Supabase.instance.client.functions.invoke(
+          'oauth-initiate',
+          body: {'platform': platform, 'user_id': user.id},
+        );
+        final authUrl = res.data['auth_url'] as String?;
+        if (authUrl != null) {
+          await launchUrl(Uri.parse(authUrl),
+              mode: LaunchMode.externalApplication);
+        }
+      } catch (_) {
+        if (mounted) {
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text('Failed to start connection. Try again.'),
+              duration: Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      }
+      return;
+    }
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('Social connections coming in Phase 3'),
+        content: Text('Coming in a future update'),
         duration: Duration(seconds: 2),
         behavior: SnackBarBehavior.floating,
       ),
@@ -733,7 +750,7 @@ class _MarketMakerOptInSheetState
           children: _platforms.map((p) {
             final connected = _attemptedPlatforms.contains(p.$1);
             return OutlinedButton.icon(
-              onPressed: () => _tapPlatform(context, p.$1),
+              onPressed: () => _tapPlatform(context, p.$1).ignore(),
               icon: Icon(p.$3, size: 16,
                   color: connected ? AppTheme.primary : AppTheme.textSecondary),
               label: Text(
@@ -943,24 +960,236 @@ class _TierBadge extends StatelessWidget {
   }
 }
 
-class _SocialButton extends StatelessWidget {
-  final String platform;
-  final IconData icon;
-  final VoidCallback onTap;
+// ─────────────────────────────────────────────────────────────────────────────
+// PLATFORM CONNECTION TILE
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const _SocialButton(this.platform, this.icon, this.onTap);
+class _PlatformConnectionTile extends ConsumerStatefulWidget {
+  final String platform;
+  final bool isStub;
+
+  const _PlatformConnectionTile({
+    required this.platform,
+    this.isStub = false,
+  });
+
+  @override
+  ConsumerState<_PlatformConnectionTile> createState() =>
+      _PlatformConnectionTileState();
+}
+
+class _PlatformConnectionTileState
+    extends ConsumerState<_PlatformConnectionTile> {
+  bool _isLoading = false;
+
+  static const _labels = {
+    'youtube': 'YouTube',
+    'twitch': 'Twitch',
+    'tiktok': 'TikTok',
+    'x': 'X',
+    'instagram': 'Instagram',
+    'kick': 'Kick',
+  };
+
+  static const _icons = {
+    'youtube': Icons.play_circle_outline,
+    'twitch': Icons.sports_esports_outlined,
+    'tiktok': Icons.music_note_outlined,
+    'x': Icons.alternate_email,
+    'instagram': Icons.photo_camera_outlined,
+    'kick': Icons.videogame_asset_outlined,
+  };
+
+  Future<void> _connect() async {
+    setState(() => _isLoading = true);
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) throw Exception('Not authenticated');
+      final res = await Supabase.instance.client.functions.invoke(
+        'oauth-initiate',
+        body: {'platform': widget.platform, 'user_id': user.id},
+      );
+      final authUrl = res.data['auth_url'] as String?;
+      if (authUrl == null) throw Exception('No auth URL returned');
+      await launchUrl(Uri.parse(authUrl), mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to connect: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _confirmDisconnect() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Disconnect',
+            style: TextStyle(color: AppTheme.textPrimary)),
+        content: Text(
+          'Disconnect your ${_labels[widget.platform] ?? widget.platform} account?',
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            style: TextButton.styleFrom(foregroundColor: AppTheme.danger),
+            child: const Text('Disconnect'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _isLoading = true);
+    try {
+      await Supabase.instance.client.functions.invoke(
+        'disconnect-platform',
+        body: {'platform': widget.platform},
+      );
+      ref.invalidate(platformConnectionsProvider);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to disconnect: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      icon: Icon(icon, size: 16),
-      label: Text(platform, style: const TextStyle(fontSize: 13)),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: AppTheme.textSecondary,
-        side: const BorderSide(color: AppTheme.cardBorder),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    final label = _labels[widget.platform] ?? widget.platform;
+    final icon = _icons[widget.platform] ?? Icons.link;
+
+    if (widget.isStub) {
+      return OutlinedButton.icon(
+        onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Coming in a future update'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        ),
+        icon: Icon(icon, size: 16),
+        label: Text(label, style: const TextStyle(fontSize: 13)),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppTheme.textSecondary,
+          side: const BorderSide(color: AppTheme.cardBorder),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+      );
+    }
+
+    final connectionsAsync = ref.watch(platformConnectionsProvider);
+    return connectionsAsync.when(
+      loading: () => _buildTile(
+          label: label, icon: icon, isConnected: false, username: null),
+      error: (_, __) => _buildTile(
+          label: label, icon: icon, isConnected: false, username: null),
+      data: (connections) {
+        final conn = connections
+            .where((c) => c.platform == widget.platform && c.isActive)
+            .firstOrNull;
+        return _buildTile(
+          label: label,
+          icon: icon,
+          isConnected: conn != null,
+          username: conn?.platformUsername,
+        );
+      },
+    );
+  }
+
+  Widget _buildTile({
+    required String label,
+    required IconData icon,
+    required bool isConnected,
+    required String? username,
+  }) {
+    return GestureDetector(
+      onLongPress: isConnected ? _confirmDisconnect : null,
+      child: OutlinedButton(
+        onPressed: _isLoading
+            ? null
+            : isConnected
+                ? null
+                : _connect,
+        style: OutlinedButton.styleFrom(
+          foregroundColor:
+              isConnected ? AppTheme.success : AppTheme.textSecondary,
+          side: BorderSide(
+            color: isConnected
+                ? AppTheme.success.withValues(alpha: 0.5)
+                : AppTheme.cardBorder,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        child: _isLoading
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(
+                    strokeWidth: 2, color: AppTheme.primary),
+              )
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 16),
+                  const SizedBox(width: 6),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(label,
+                              style: const TextStyle(fontSize: 13)),
+                          if (isConnected) ...[
+                            const SizedBox(width: 5),
+                            Container(
+                              width: 7,
+                              height: 7,
+                              decoration: const BoxDecoration(
+                                color: AppTheme.success,
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (isConnected && username != null)
+                        Text(
+                          '@$username',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
       ),
     );
   }

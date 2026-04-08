@@ -10,6 +10,7 @@ import '../../features/discover/screens/discover_screen.dart';
 import '../../features/markets/screens/markets_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/profile/screens/public_profile_screen.dart';
+import '../../features/profile/providers/platform_connection_providers.dart';
 import '../../features/wallet/screens/wallet_screen.dart';
 import '../shell/main_shell.dart';
 
@@ -90,6 +91,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/profile',
+            redirect: (context, state) {
+              final connected = state.uri.queryParameters['connected'];
+              if (connected != null) {
+                ref.invalidate(platformConnectionsProvider);
+              }
+              return null;
+            },
             builder: (context, state) => const ProfileScreen(),
           ),
           GoRoute(

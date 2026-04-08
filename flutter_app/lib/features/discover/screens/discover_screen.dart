@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../profile/models/platform_metric.dart';
+import '../../profile/providers/platform_connection_providers.dart';
 import '../providers/discover_providers.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,7 +77,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -103,6 +105,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen>
           tabs: const [
             Tab(text: 'Famous'),
             Tab(text: 'Rising'),
+            Tab(text: 'Who\'s Live'),
           ],
         ),
       ),
@@ -111,6 +114,7 @@ class _DiscoverScreenState extends ConsumerState<DiscoverScreen>
         children: const [
           _FamousTab(),
           _RisingTab(),
+          _LiveTab(),
         ],
       ),
     );
@@ -127,6 +131,7 @@ class _FamousTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final creatorsAsync = ref.watch(famousCreatorsProvider);
+    final liveUserIds = ref.watch(liveUserIdsProvider).valueOrNull ?? {};
     return creatorsAsync.when(
       loading: () => const _ShimmerList(),
       error: (_, __) => _ErrorState(
@@ -139,7 +144,10 @@ class _FamousTab extends ConsumerWidget {
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           itemCount: creators.length,
-          itemBuilder: (context, i) => _FamousCreatorCard(creator: creators[i]),
+          itemBuilder: (context, i) => _FamousCreatorCard(
+            creator: creators[i],
+            isLive: liveUserIds.contains(creators[i].id),
+          ),
         );
       },
     );
@@ -148,7 +156,8 @@ class _FamousTab extends ConsumerWidget {
 
 class _FamousCreatorCard extends StatelessWidget {
   final FamousCreator creator;
-  const _FamousCreatorCard({required this.creator});
+  final bool isLive;
+  const _FamousCreatorCard({required this.creator, this.isLive = false});
 
   void _openSheet(BuildContext context) {
     showModalBottomSheet(
@@ -180,13 +189,24 @@ class _FamousCreatorCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      creator.name,
-                      style: const TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            creator.name,
+                            style: const TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 15,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        if (isLive) ...[
+                          const SizedBox(width: 8),
+                          const _LiveBadge(),
+                        ],
+                      ],
                     ),
                     const SizedBox(height: 6),
                     Wrap(
@@ -412,6 +432,7 @@ class _RisingTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final creatorsAsync = ref.watch(risingCreatorsProvider);
+    final liveUserIds = ref.watch(liveUserIdsProvider).valueOrNull ?? {};
     return creatorsAsync.when(
       loading: () => const _ShimmerList(),
       error: (_, __) => _ErrorState(
@@ -428,8 +449,10 @@ class _RisingTab extends ConsumerWidget {
         return ListView.builder(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           itemCount: creators.length,
-          itemBuilder: (context, i) =>
-              _RisingCreatorCard(creator: creators[i]),
+          itemBuilder: (context, i) => _RisingCreatorCard(
+            creator: creators[i],
+            isLive: liveUserIds.contains(creators[i].id),
+          ),
         );
       },
     );
@@ -438,7 +461,8 @@ class _RisingTab extends ConsumerWidget {
 
 class _RisingCreatorCard extends StatelessWidget {
   final RisingCreator creator;
-  const _RisingCreatorCard({required this.creator});
+  final bool isLive;
+  const _RisingCreatorCard({required this.creator, this.isLive = false});
 
   @override
   Widget build(BuildContext context) {
@@ -479,7 +503,10 @@ class _RisingCreatorCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                         ),
                       ),
-                      if (hasTier) ...[
+                      if (isLive) ...[
+                        const SizedBox(width: 8),
+                        const _LiveBadge(),
+                      ] else if (hasTier) ...[
                         const SizedBox(width: 8),
                         _TierBadge(tier: tier),
                       ],
@@ -551,6 +578,250 @@ class _BetButton extends StatelessWidget {
         ),
       ),
       child: const Text('Bet'),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TAB 3 — WHO'S LIVE
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _LiveTab extends ConsumerWidget {
+  const _LiveTab();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final feedAsync = ref.watch(liveMetricsFeedProvider);
+    return feedAsync.when(
+      loading: () => const _ShimmerList(),
+      error: (_, __) => _ErrorState(
+        onRetry: () => ref.invalidate(liveMetricsFeedProvider),
+      ),
+      data: (metrics) {
+        if (metrics.isEmpty) {
+          return const _EmptyState(
+            message: 'No creators are live right now.\nCheck back later!',
+            icon: Icons.live_tv_outlined,
+          );
+        }
+        return ListView.builder(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+          itemCount: metrics.length,
+          itemBuilder: (context, i) => _LiveFeedCard(metric: metrics[i]),
+        );
+      },
+    );
+  }
+}
+
+class _LiveFeedCard extends StatelessWidget {
+  final PlatformMetric metric;
+  const _LiveFeedCard({required this.metric});
+
+  @override
+  Widget build(BuildContext context) {
+    final platformLabel = metric.platform == 'youtube' ? 'YT' : 'Twitch';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.cardBorder),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Platform + username + heat score
+            Row(
+              children: [
+                _PlatformChip(label: platformLabel),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    metric.platformUsername != null
+                        ? '@${metric.platformUsername}'
+                        : 'Unknown',
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Heat score badge
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: AppTheme.primary.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.local_fire_department,
+                          size: 12, color: AppTheme.primary),
+                      const SizedBox(width: 3),
+                      Text(
+                        metric.heatScore.toStringAsFixed(1),
+                        style: const TextStyle(
+                          color: AppTheme.primary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            // Stream title
+            if (metric.streamTitle != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                metric.streamTitle!,
+                style: const TextStyle(
+                    color: AppTheme.textPrimary, fontSize: 14),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+
+            // Stream category
+            if (metric.streamCategory != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                metric.streamCategory!,
+                style: const TextStyle(
+                    color: AppTheme.textSecondary, fontSize: 12),
+              ),
+            ],
+
+            const SizedBox(height: 12),
+
+            // Viewer count + Bet Now
+            Row(
+              children: [
+                const Icon(Icons.remove_red_eye_outlined,
+                    size: 14, color: AppTheme.danger),
+                const SizedBox(width: 4),
+                Text(
+                  _formatFollowers(metric.liveViewerCount),
+                  style: const TextStyle(
+                    color: AppTheme.danger,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Text(
+                  'watching',
+                  style: TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 12),
+                ),
+                const Spacer(),
+                OutlinedButton(
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Betting from live feed coming soon'),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
+                  },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primary,
+                    side: const BorderSide(color: AppTheme.primary),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 8),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                    minimumSize: const Size(0, 36),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    textStyle: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w600),
+                  ),
+                  child: const Text('Bet Now'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIVE BADGE — pulsing red dot + "Live Now" text
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _LiveBadge extends StatefulWidget {
+  const _LiveBadge();
+
+  @override
+  State<_LiveBadge> createState() => _LiveBadgeState();
+}
+
+class _LiveBadgeState extends State<_LiveBadge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat(reverse: true);
+    _fade = Tween<double>(begin: 0.35, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        AnimatedBuilder(
+          animation: _fade,
+          builder: (_, __) => Opacity(
+            opacity: _fade.value,
+            child: Container(
+              width: 7,
+              height: 7,
+              decoration: const BoxDecoration(
+                color: AppTheme.danger,
+                shape: BoxShape.circle,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 4),
+        const Text(
+          'Live Now',
+          style: TextStyle(
+            color: AppTheme.danger,
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
