@@ -1379,6 +1379,65 @@ class _AlreadyConnectedSheet extends StatelessWidget {
             "You're already connected. No action needed.",
             style: TextStyle(color: AppTheme.textSecondary, height: 1.5),
           ),
+
+          // Twitch-specific warning
+          if (connection.platform == 'twitch') ...[
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFA726).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFFFA726).withValues(alpha: 0.5)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.warning_amber_rounded,
+                          color: Color(0xFFFFA726), size: 18),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Connecting a different Twitch account?',
+                          style: TextStyle(
+                            color: Color(0xFFFFA726),
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'You will also need to disconnect N.O.R.A. Platforms from Twitch directly. Visit your Twitch connections settings, scroll down to "Other Connections", and remove N.O.R.A. Platforms.',
+                    style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  GestureDetector(
+                    onTap: () => openUrlInBrowser(
+                        'https://www.twitch.tv/settings/connections'),
+                    child: const Text(
+                      'twitch.tv/settings/connections',
+                      style: TextStyle(
+                        color: Color(0xFFFFA726),
+                        fontSize: 13,
+                        decoration: TextDecoration.underline,
+                        decorationColor: Color(0xFFFFA726),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 28),
 
           // Disconnect button
