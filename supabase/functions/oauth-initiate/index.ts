@@ -89,6 +89,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       response_type: 'code',
       scope: 'user:read:follows channel:read:stream_key',
       state,
+      force_verify: 'true', // always show consent page; prevents silent re-auth redirect loop
     });
     authUrl = `https://id.twitch.tv/oauth2/authorize?${params.toString()}`;
   }
