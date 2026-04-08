@@ -98,7 +98,9 @@ final routerProvider = Provider<GoRouter>((ref) {
               }
               return null;
             },
-            builder: (context, state) => const ProfileScreen(),
+            builder: (context, state) => ProfileScreen(
+              connectedPlatform: state.uri.queryParameters['connected'],
+            ),
           ),
           GoRoute(
             path: '/wallet',

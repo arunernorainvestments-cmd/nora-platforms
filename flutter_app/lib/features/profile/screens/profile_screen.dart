@@ -5,11 +5,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/utils/open_url.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../models/platform_connection.dart';
 import '../providers/platform_connection_providers.dart';
 import '../providers/profile_providers.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
-  const ProfileScreen({super.key});
+  final String? connectedPlatform;
+  const ProfileScreen({super.key, this.connectedPlatform});
 
   @override
   ConsumerState<ProfileScreen> createState() => _ProfileScreenState();
@@ -21,6 +23,46 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _editInitialized = false;
   bool _isSaving = false;
   bool _isTogglingMarketMaker = false;
+  String? _shownConnectedPlatform;
+
+  static const _platformLabels = {
+    'youtube': 'YouTube',
+    'twitch': 'Twitch',
+    'tiktok': 'TikTok',
+    'x': 'X',
+    'instagram': 'Instagram',
+    'kick': 'Kick',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _scheduleConnectedSnackbar(widget.connectedPlatform);
+  }
+
+  @override
+  void didUpdateWidget(ProfileScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.connectedPlatform != oldWidget.connectedPlatform) {
+      _scheduleConnectedSnackbar(widget.connectedPlatform);
+    }
+  }
+
+  void _scheduleConnectedSnackbar(String? platform) {
+    if (platform == null || platform == _shownConnectedPlatform) return;
+    _shownConnectedPlatform = platform;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final label = _platformLabels[platform] ?? platform;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('$label connected successfully!'),
+          backgroundColor: AppTheme.success,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    });
+  }
 
   @override
   void dispose() {
@@ -1025,6 +1067,28 @@ class _PlatformConnectionTileState
     }
   }
 
+  Future<void> _disconnect() async {
+    setState(() => _isLoading = true);
+    try {
+      await Supabase.instance.client.functions.invoke(
+        'disconnect-platform',
+        body: {'platform': widget.platform},
+      );
+      ref.invalidate(platformConnectionsProvider);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to disconnect: $e'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
   Future<void> _confirmDisconnect() async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -1051,26 +1115,22 @@ class _PlatformConnectionTileState
     );
 
     if (confirmed != true || !mounted) return;
+    await _disconnect();
+  }
 
-    setState(() => _isLoading = true);
-    try {
-      await Supabase.instance.client.functions.invoke(
-        'disconnect-platform',
-        body: {'platform': widget.platform},
-      );
-      ref.invalidate(platformConnectionsProvider);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to disconnect: $e'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
+  void _showAlreadyConnectedSheet(PlatformConnection conn) {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => _AlreadyConnectedSheet(
+        connection: conn,
+        label: _labels[widget.platform] ?? widget.platform,
+        onDisconnect: () async {
+          Navigator.of(ctx).pop();
+          await _disconnect();
+        },
+      ),
+    );
   }
 
   @override
@@ -1100,9 +1160,11 @@ class _PlatformConnectionTileState
     final connectionsAsync = ref.watch(platformConnectionsProvider);
     return connectionsAsync.when(
       loading: () => _buildTile(
-          label: label, icon: icon, isConnected: false, username: null),
+          label: label, icon: icon, isConnected: false,
+          username: null, connection: null),
       error: (_, __) => _buildTile(
-          label: label, icon: icon, isConnected: false, username: null),
+          label: label, icon: icon, isConnected: false,
+          username: null, connection: null),
       data: (connections) {
         final conn = connections
             .where((c) => c.platform == widget.platform && c.isActive)
@@ -1112,6 +1174,7 @@ class _PlatformConnectionTileState
           icon: icon,
           isConnected: conn != null,
           username: conn?.platformUsername,
+          connection: conn,
         );
       },
     );
@@ -1122,6 +1185,7 @@ class _PlatformConnectionTileState
     required IconData icon,
     required bool isConnected,
     required String? username,
+    required PlatformConnection? connection,
   }) {
     return GestureDetector(
       onLongPress: isConnected ? _confirmDisconnect : null,
@@ -1129,7 +1193,7 @@ class _PlatformConnectionTileState
         onPressed: _isLoading
             ? null
             : isConnected
-                ? null
+                ? () => _showAlreadyConnectedSheet(connection!)
                 : _connect,
         style: OutlinedButton.styleFrom(
           foregroundColor:
@@ -1189,6 +1253,134 @@ class _PlatformConnectionTileState
                   ),
                 ],
               ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ALREADY CONNECTED SHEET
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AlreadyConnectedSheet extends StatelessWidget {
+  final PlatformConnection connection;
+  final String label;
+  final Future<void> Function() onDisconnect;
+
+  const _AlreadyConnectedSheet({
+    required this.connection,
+    required this.label,
+    required this.onDisconnect,
+  });
+
+  static String _formatDate(DateTime dt) {
+    const months = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December',
+    ];
+    return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomPad = MediaQuery.of(context).padding.bottom;
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      padding: EdgeInsets.fromLTRB(24, 16, 24, 24 + bottomPad),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Drag handle
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppTheme.cardBorder,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+
+          // Platform name + checkmark
+          Row(
+            children: [
+              const Icon(Icons.check_circle, color: AppTheme.success, size: 26),
+              const SizedBox(width: 10),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Username
+          if (connection.platformUsername != null) ...[
+            Text(
+              '@${connection.platformUsername}',
+              style: const TextStyle(
+                fontSize: 15,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
+
+          // Connected since date
+          Text(
+            'Connected since ${_formatDate(connection.connectedAt)}',
+            style: const TextStyle(
+              fontSize: 13,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          const Text(
+            "You're already connected. No action needed.",
+            style: TextStyle(color: AppTheme.textSecondary, height: 1.5),
+          ),
+          const SizedBox(height: 28),
+
+          // Disconnect button
+          OutlinedButton(
+            onPressed: onDisconnect,
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.danger,
+              side: const BorderSide(color: AppTheme.danger),
+              minimumSize: const Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Disconnect'),
+          ),
+          const SizedBox(height: 10),
+
+          // Close button
+          OutlinedButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: AppTheme.textSecondary,
+              side: const BorderSide(color: AppTheme.cardBorder),
+              minimumSize: const Size(double.infinity, 50),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text('Close'),
+          ),
+        ],
       ),
     );
   }
