@@ -2,6 +2,33 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
+// TOKEN PACKAGES
+// ─────────────────────────────────────────────────────────────────────────────
+
+class TokenPackage {
+  final String id;
+  final String label;
+  final int tokens;
+  final String priceDisplay;
+  final String? badge;
+
+  const TokenPackage({
+    required this.id,
+    required this.label,
+    required this.tokens,
+    required this.priceDisplay,
+    this.badge,
+  });
+}
+
+const kTokenPackages = [
+  TokenPackage(id: 'starter', label: 'Starter',  tokens: 120,  priceDisplay: r'$0.99'),
+  TokenPackage(id: 'popular', label: 'Popular',  tokens: 650,  priceDisplay: r'$4.99',  badge: 'Most Popular'),
+  TokenPackage(id: 'pro',     label: 'Pro',      tokens: 1650, priceDisplay: r'$9.99',  badge: 'Best Value'),
+  TokenPackage(id: 'elite',   label: 'Elite',    tokens: 3500, priceDisplay: r'$19.99'),
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
 // MODELS
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -61,7 +88,7 @@ class TokenTransaction {
         'bet_won' => '🏆',
         'bet_lost' => '💸',
         'promoted' => '📣',
-        'purchased' => '🛒',
+        'purchase' => '🛒',
         'verification_bonus' => '✅',
         _ => '🪙',
       };
@@ -71,7 +98,7 @@ class TokenTransaction {
         'bet_won' => 'Bet Won',
         'bet_lost' => 'Bet Lost',
         'promoted' => 'Promoted Creator',
-        'purchased' => 'Tokens Purchased',
+        'purchase' => 'Tokens Purchased',
         'verification_bonus' => 'Platform Connected',
         _ => 'Token Activity',
       };

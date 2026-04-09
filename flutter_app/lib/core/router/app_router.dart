@@ -104,7 +104,9 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/wallet',
-            builder: (context, state) => const WalletScreen(),
+            builder: (context, state) => WalletScreen(
+              purchaseResult: state.uri.queryParameters['purchase'],
+            ),
           ),
         ],
       ),
