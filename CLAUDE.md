@@ -49,9 +49,9 @@ The `.env` file is loaded as an asset at runtime via `flutter_dotenv`.
 
 **Routing**: GoRouter (`lib/core/router/app_router.dart`). Unauthenticated users redirect to `/login`; authenticated users land on `/home`. The main shell (`lib/core/shell/main_shell.dart`) wraps authenticated routes with a bottom nav bar.
 
-**Feature structure**: Each feature lives in `lib/features/<name>/` with subdirectories for `screens/`, `widgets/`, and `providers/`. Features currently implemented: `auth`, `home`, `profile`. Stubs exist for `discover` (Phase 3), `wallet`/Stripe (Phase 4), and `markets` (Phase 5).
+**Feature structure**: Each feature lives in `lib/features/<name>/` with subdirectories for `screens/`, `widgets/`, and `providers/`. Features currently implemented: `auth`, `home`, `profile`, `discover`, `markets`. Stub exists for `wallet`/Stripe (Phase 4).
 
-**Supabase schema** (`supabase/migrations/001_initial_schema.sql`): tables are `profiles`, `social_connections`, `metrics_history`, `markets`, `bets`, `balances`, `transactions`. All have RLS enabled. A trigger auto-creates a profile + balance row on signup.
+**Supabase schema**: tables are `profiles`, `platform_connections`, `platform_metrics`, `markets`, `bets`, `token_balances`, `token_transactions`, `spotlight_scores`, `notifications`. All have RLS enabled. A trigger auto-creates a profile + balance row on signup.
 
 ## Deployment
 
