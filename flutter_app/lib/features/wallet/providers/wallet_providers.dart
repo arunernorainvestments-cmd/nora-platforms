@@ -88,7 +88,7 @@ class TokenTransaction {
         'bet_won' => '🏆',
         'bet_lost' => '💸',
         'promoted' => '📣',
-        'purchase' => '🛒',
+        'purchased' => '🛒',
         'verification_bonus' => '✅',
         _ => '🪙',
       };
@@ -98,7 +98,7 @@ class TokenTransaction {
         'bet_won' => 'Bet Won',
         'bet_lost' => 'Bet Lost',
         'promoted' => 'Promoted Creator',
-        'purchase' => 'Tokens Purchased',
+        'purchased' => 'Tokens Purchased',
         'verification_bonus' => 'Platform Connected',
         _ => 'Token Activity',
       };
