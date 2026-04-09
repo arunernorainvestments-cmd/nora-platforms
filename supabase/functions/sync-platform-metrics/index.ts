@@ -113,6 +113,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
           : await fetchTwitchMetrics(conn.platform_user_id, accessToken);
 
       // ── Upsert platform_metrics ─────────────────────────────────────────
+      const heatScore = computeHeatScore(metrics);
+
+      // resolution_score: raw API number only — never modified by promotions
+      // YouTube: raw subscriberCount; Twitch: raw follower total
+      const resolutionScore =
+        conn.platform === 'youtube'
+          ? (metrics.subscriberCount ?? 0)
+          : metrics.followers;
+
+      // display_score: heat_score for now; future phases add promotion modifiers
+      const displayScore = heatScore;
+
       const { error: upsertErr } = await supabase
         .from('platform_metrics')
         .upsert(
@@ -126,7 +138,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
             subscriber_count: metrics.subscriberCount ?? 0,
             stream_title: metrics.streamTitle ?? null,
             stream_category: metrics.streamCategory ?? null,
-            heat_score: computeHeatScore(metrics),
+            heat_score: heatScore,
+            display_score: displayScore,
+            resolution_score: resolutionScore,
             raw_metrics: metrics.raw,
             fetched_at: new Date().toISOString(),
           },
