@@ -69,13 +69,13 @@ npx supabase functions deploy <function-name> --project-ref cceisywxwhgljdpisjrl
 
 **IMPORTANT — before sharing repo access or adding collaborators:** Rotate the `SUPABASE_ACCESS_TOKEN` at [supabase.com/dashboard/account/tokens](https://supabase.com/dashboard/account/tokens). The token used during development may have been exposed in conversation history and must be revoked before granting others access.
 
-## Current Build Status (as of Phase 2 completion)
+## Current Build Status (as of Phase 3.5 completion)
 
 ### Completed Features
 - Auth: email signup/login, forgot password, username selection, Google OAuth placeholder
 - Token economy: 100 signup bonus, token_balances, token_transactions, referral system (+25 tokens)
 - Famous creators: 20 seeded creators, public discover page, no betting allowed
-- Discover screen: Famous tab + Rising tab with spotlight tiers
+- Discover screen: Famous tab + Rising tab with spotlight tiers + Who's Live tab
 - Wallet screen: token balance, transaction history, cash balance placeholder
 - Home screen: real data, spotlight section, famous creators carousel, notification bell
 - Profile screen: full profile edit, Market Maker opt-in 3-step flow, opt-out with open market protection, invite friends card with referral link
@@ -85,18 +85,23 @@ npx supabase functions deploy <function-name> --project-ref cceisywxwhgljdpisjrl
 - Markets tab: Open Markets + My Bets tabs, pool ratio bars, time remaining
 - Betting UI: 4-step bottom sheet, timeframe + position + amount + confirmation, payout estimate
 - DB triggers: auto pool updates, token deduction, creator notifications on bet
+- Social OAuth: YouTube + Twitch connect/disconnect, OAuth callback edge functions, token refresh
+- Heat Score: computed from live viewers + follower reach + live bonus (0–100 scale)
+- Live Now badges: is_live flag synced every 5 min via pg_cron + sync-platform-metrics edge function
+- Two-score system: display_score (= heat_score now; ready for promotion modifiers) + resolution_score (raw API count, never modified by promotions); market open snapshots both scores
 
 ### Migrations Run (in order)
 - 001_initial_schema.sql
 - 002_token_economy.sql
 - 003_user_types_and_notifications.sql
 - 004_bet_mechanics.sql
+- 005_social_oauth.sql
+- 006_two_score_system.sql
 
-### Deferred to Phase 3+
-- Social OAuth connections (Phase 3) — YouTube, TikTok, X, Instagram, Kick, Pinterest
-- Real popularity score from social APIs (Phase 3)
+### Deferred to Phase 4+
 - Stripe payments for token purchases (Phase 4)
 - Market resolution logic and payout distribution (Phase 5)
+- Promotion/power-up modifiers that adjust display_score (post-Phase 5)
 - Event markets system (post-Phase 5)
 
 ## Deferred Features (Build Later)
