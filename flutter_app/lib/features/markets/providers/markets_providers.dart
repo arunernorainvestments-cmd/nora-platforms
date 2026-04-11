@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:intl/intl.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MODELS
@@ -125,6 +126,131 @@ final openMarketsProvider =
   markets.sort((a, b) => b.totalPool.compareTo(a.totalPool));
   return markets;
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKET DETAIL
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MarketDetail {
+  final String id;
+  final String creatorId;
+  final String creatorUsername;
+  final String title;
+  final String timeframe;
+  final String? durationLabel;
+  final double yesPool;
+  final double noPool;
+  final DateTime endAt;
+  final int? openingResolutionScore;
+  final double? displayScore;
+  final bool isLive;
+  final int liveViewerCount;
+  final String? primaryPlatform;
+  final String? primaryPlatformUsername;
+  final String status;
+
+  const MarketDetail({
+    required this.id,
+    required this.creatorId,
+    required this.creatorUsername,
+    required this.title,
+    required this.timeframe,
+    this.durationLabel,
+    required this.yesPool,
+    required this.noPool,
+    required this.endAt,
+    this.openingResolutionScore,
+    this.displayScore,
+    required this.isLive,
+    required this.liveViewerCount,
+    this.primaryPlatform,
+    this.primaryPlatformUsername,
+    required this.status,
+  });
+
+  double get totalPool => yesPool + noPool;
+
+  String get durationDisplay =>
+      durationLabel ?? timeframe;
+
+  String get formattedTarget {
+    if (openingResolutionScore == null) return '--';
+    return NumberFormat('#,###').format(openingResolutionScore);
+  }
+
+  static MarketDetail fromParts(
+    Map<String, dynamic> market,
+    Map<String, dynamic>? metrics,
+  ) {
+    final creator = market['creator'] as Map<String, dynamic>? ?? {};
+    final conn = metrics?['platform_connections'] as Map<String, dynamic>?;
+    return MarketDetail(
+      id: market['id'] as String,
+      creatorId: market['creator_id'] as String,
+      creatorUsername: creator['username'] as String? ?? 'unknown',
+      title: market['title'] as String? ?? '',
+      timeframe: market['timeframe'] as String? ?? '',
+      durationLabel: market['duration_label'] as String?,
+      yesPool: (market['yes_pool'] as num?)?.toDouble() ?? 0,
+      noPool: (market['no_pool'] as num?)?.toDouble() ?? 0,
+      endAt: DateTime.parse(market['end_at'] as String),
+      openingResolutionScore:
+          (market['opening_resolution_score'] as num?)?.toInt(),
+      displayScore: (metrics?['display_score'] as num?)?.toDouble(),
+      isLive: metrics?['is_live'] as bool? ?? false,
+      liveViewerCount:
+          (metrics?['live_viewer_count'] as num?)?.toInt() ?? 0,
+      primaryPlatform: metrics?['platform'] as String?,
+      primaryPlatformUsername: conn?['platform_username'] as String?,
+      status: market['status'] as String? ?? 'open',
+    );
+  }
+}
+
+final tokenBalanceProvider = FutureProvider.autoDispose<int>((ref) async {
+  final userId = Supabase.instance.client.auth.currentUser?.id;
+  if (userId == null) return 0;
+  final res = await Supabase.instance.client
+      .from('token_balances')
+      .select('available_tokens')
+      .eq('user_id', userId)
+      .maybeSingle();
+  return (res?['available_tokens'] as num?)?.toInt() ?? 0;
+});
+
+final marketDetailProvider =
+    FutureProvider.autoDispose.family<MarketDetail, String>((ref, marketId) async {
+  final client = Supabase.instance.client;
+
+  final marketData = await client
+      .from('markets')
+      .select(
+        'id, creator_id, title, timeframe, duration_label, '
+        'yes_pool, no_pool, end_at, opening_resolution_score, status, '
+        'creator:profiles!creator_id(username)',
+      )
+      .eq('id', marketId)
+      .single();
+
+  final creatorId = marketData['creator_id'] as String;
+
+  final metricsData = await client
+      .from('platform_metrics')
+      .select(
+        'display_score, is_live, live_viewer_count, platform, '
+        'platform_connections(platform_username)',
+      )
+      .eq('user_id', creatorId)
+      .limit(1)
+      .maybeSingle();
+
+  return MarketDetail.fromParts(
+    marketData,
+    metricsData,
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 final myBetsProvider =
     FutureProvider.autoDispose<List<MyBet>>((ref) async {

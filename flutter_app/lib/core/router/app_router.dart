@@ -11,6 +11,7 @@ import '../../features/markets/screens/markets_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/profile/screens/public_profile_screen.dart';
 import '../../features/profile/providers/platform_connection_providers.dart';
+import '../../features/markets/screens/market_detail_screen.dart';
 import '../../features/wallet/screens/wallet_screen.dart';
 import '../shell/main_shell.dart';
 
@@ -70,6 +71,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/u/:username',
         builder: (context, state) => PublicProfileScreen(
           username: state.pathParameters['username']!,
+        ),
+      ),
+      GoRoute(
+        path: '/markets/:id',
+        builder: (context, state) => MarketDetailScreen(
+          marketId: state.pathParameters['id']!,
         ),
       ),
 

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/markets_providers.dart';
-import '../widgets/bet_bottom_sheet.dart';
 
 class MarketsScreen extends ConsumerStatefulWidget {
   const MarketsScreen({super.key});
@@ -128,26 +128,9 @@ class _OpenMarketsTab extends ConsumerWidget {
                 itemBuilder: (context, i) => _MarketCard(
                   market: markets[i],
                   isLoggedIn: currentUser != null,
-                  onBet: () {
-                    if (currentUser == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Sign in to place a bet'),
-                          behavior: SnackBarBehavior.floating,
-                        ),
-                      );
-                      return;
-                    }
-                    showBetBottomSheet(
-                      context,
-                      creatorId: markets[i].creatorId,
-                      creatorUsername: markets[i].creatorUsername,
-                      initialTimeframe: markets[i].timeframe,
-                      onBetPlaced: () {
-                        ref.invalidate(openMarketsProvider);
-                        ref.invalidate(myBetsProvider);
-                      },
-                    );
+                  onTap: () {
+                    debugPrint('navigating to /markets/${markets[i].id}');
+                    context.push('/markets/${markets[i].id}');
                   },
                 ),
               ),
@@ -159,12 +142,12 @@ class _OpenMarketsTab extends ConsumerWidget {
 class _MarketCard extends StatelessWidget {
   final MarketListing market;
   final bool isLoggedIn;
-  final VoidCallback onBet;
+  final VoidCallback onTap;
 
   const _MarketCard({
     required this.market,
     required this.isLoggedIn,
-    required this.onBet,
+    required this.onTap,
   });
 
   String _timeRemaining() {
@@ -178,9 +161,11 @@ class _MarketCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = market.totalPool;
     final yesRatio = total > 0 ? market.yesPool / total : 0.5;
-    const timeframeLabels = {'24h': '24h', '7d': '7d', '30d': '30d'};
+    const timeframeLabels = {'15m': '15 min', '1h': '1 Hour', '4h': '4 Hours', '24h': '1 Day'};
 
-    return Container(
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: AppTheme.surface,
@@ -290,21 +275,22 @@ class _MarketCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // Bet button
+            // View button
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: onBet,
+                onPressed: onTap,
                 style: ElevatedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 10),
                   textStyle: const TextStyle(fontSize: 14),
                 ),
-                child: const Text('Bet'),
+                child: const Text('View & Bet'),
               ),
             ),
           ],
         ),
       ),
+    ),
     );
   }
 }
@@ -411,7 +397,7 @@ class _BetCard extends StatelessWidget {
         bet.position == 'yes' ? AppTheme.success : AppTheme.danger;
     final positionLabel =
         bet.position == 'yes' ? '📈 Will Increase' : '📉 Will Decrease';
-    const timeframeLabels = {'24h': '24h', '7d': '7d', '30d': '30d'};
+    const timeframeLabels = {'15m': '15 min', '1h': '1 Hour', '4h': '4 Hours', '24h': '1 Day'};
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),

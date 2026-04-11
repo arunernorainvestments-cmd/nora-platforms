@@ -275,35 +275,6 @@ class _PublicProfileBody extends StatelessWidget {
     required this.onBetPlaced,
   });
 
-  void _openBetSheet(BuildContext context, {String? initialTimeframe}) {
-    if (currentUser == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Sign in to open a market'),
-          action: SnackBarAction(
-            label: 'Sign In',
-            textColor: AppTheme.primary,
-            onPressed: () => context.go('/login'),
-          ),
-          backgroundColor: AppTheme.surface,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-            side: const BorderSide(color: AppTheme.cardBorder),
-          ),
-        ),
-      );
-      return;
-    }
-    showBetBottomSheet(
-      context,
-      creatorId: profile.id,
-      creatorUsername: profile.username,
-      initialTimeframe: initialTimeframe,
-      onBetPlaced: onBetPlaced,
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final avatarLetter = profile.username.isNotEmpty
@@ -420,14 +391,39 @@ class _PublicProfileBody extends StatelessWidget {
           else
             ...profile.openMarkets.map((m) => _MarketCard(
                   market: m,
-                  onJoin: () => _openBetSheet(context,
-                      initialTimeframe: m.timeframe),
+                  onJoin: () => context.push('/markets/${m.id}'),
                 )),
           const SizedBox(height: 20),
 
-          // ── Open a Market button ─────────────────────────────────────────────
+          // ── Open a Market button — creates a new market via bet sheet ────────
           ElevatedButton.icon(
-            onPressed: () => _openBetSheet(context),
+            onPressed: () {
+              if (currentUser == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Sign in to open a market'),
+                    action: SnackBarAction(
+                      label: 'Sign In',
+                      textColor: AppTheme.primary,
+                      onPressed: () => context.go('/login'),
+                    ),
+                    backgroundColor: AppTheme.surface,
+                    behavior: SnackBarBehavior.floating,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      side: const BorderSide(color: AppTheme.cardBorder),
+                    ),
+                  ),
+                );
+                return;
+              }
+              showBetBottomSheet(
+                context,
+                creatorId: profile.id,
+                creatorUsername: profile.username,
+                onBetPlaced: onBetPlaced,
+              );
+            },
             icon: const Icon(Icons.add_chart_outlined, size: 18),
             label: const Text('Open a Market'),
           ),
@@ -579,7 +575,7 @@ class _MarketCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final total = market.totalPool;
     final yesRatio = total > 0 ? market.yesPool / total : 0.5;
-    const timeframeLabels = {'24h': '24h', '7d': '7d', '30d': '30d'};
+    const timeframeLabels = {'15m': '15 min', '1h': '1 Hour', '4h': '4 Hours', '24h': '1 Day'};
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),

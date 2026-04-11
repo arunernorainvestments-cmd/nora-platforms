@@ -1,0 +1,367 @@
+// supabase/functions/resolve-markets/index.ts
+// Triggered by pg_cron every 15 minutes.
+// Resolves all markets whose end_at has passed and status is still 'open'.
+import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': 'https://nora-platforms.vercel.app',
+  'Access-Control-Allow-Headers': 'content-type, authorization',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+
+interface Market {
+  id: string;
+  creator_id: string;
+  opened_by: string | null;
+  title: string;
+  opening_resolution_score: number | null;
+  end_at: string;
+}
+
+interface Bet {
+  id: string;
+  user_id: string;
+  position: string; // 'yes' | 'no'
+  amount: number;
+}
+
+serve(async (req: Request) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: CORS_HEADERS });
+  }
+
+  // Verify shared secret to prevent unauthorized triggering
+  const cronSecret = Deno.env.get('CRON_SECRET') ?? '';
+  if (cronSecret && req.headers.get('x-cron-secret') !== cronSecret) {
+    return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+      status: 401,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    return new Response(JSON.stringify({ error: 'Server misconfigured' }), {
+      status: 500,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+  }
+
+  const db = createClient(supabaseUrl, serviceRoleKey);
+
+  try {
+    // Query all markets where end_at <= now() and status = 'open'
+    // Note: uses end_at (the original close timestamp) rather than a separate
+    // closes_at column, since migration 009 adds resolution columns only.
+    const { data: markets, error: marketsError } = await db
+      .from('markets')
+      .select('id, creator_id, opened_by, title, opening_resolution_score, end_at')
+      .lte('end_at', new Date().toISOString())
+      .eq('status', 'open');
+
+    if (marketsError) throw marketsError;
+
+    if (!markets || markets.length === 0) {
+      console.log('No markets to resolve');
+      return new Response(JSON.stringify({ resolved: 0 }), {
+        status: 200,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log(`Found ${markets.length} market(s) to resolve`);
+
+    let resolvedCount = 0;
+    const errors: string[] = [];
+
+    for (const market of markets) {
+      try {
+        await resolveMarket(db, market as Market);
+        resolvedCount++;
+      } catch (err) {
+        const msg = `Market ${market.id}: ${err instanceof Error ? err.message : String(err)}`;
+        console.error(msg);
+        errors.push(msg);
+      }
+    }
+
+    return new Response(JSON.stringify({ resolved: resolvedCount, errors }), {
+      status: 200,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+  } catch (err) {
+    console.error('resolve-markets top-level error:', err);
+    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+      status: 500,
+      headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    });
+  }
+});
+
+async function resolveMarket(
+  db: ReturnType<typeof createClient>,
+  market: Market,
+): Promise<void> {
+  console.log(`Resolving market ${market.id} (creator: ${market.creator_id})`);
+
+  // 1. Fetch creator's current resolution_score.
+  //    LIMIT 1 matches the snapshot behavior in trg_snapshot_market_scores (migration 006).
+  const { data: metrics } = await db
+    .from('platform_metrics')
+    .select('resolution_score')
+    .eq('user_id', market.creator_id)
+    .limit(1)
+    .maybeSingle();
+
+  // 2. Determine result
+  let result: 'above' | 'below' | 'refund';
+
+  if (
+    metrics === null ||
+    metrics.resolution_score === null ||
+    market.opening_resolution_score === null
+  ) {
+    result = 'refund';
+    console.log(`Market ${market.id}: missing metrics or snapshot → refund`);
+  } else {
+    const current = Number(metrics.resolution_score);
+    const opening = Number(market.opening_resolution_score);
+    if (current > opening) result = 'above';
+    else if (current < opening) result = 'below';
+    else result = 'refund';
+    console.log(`Market ${market.id}: current=${current}, opening=${opening} → ${result}`);
+  }
+
+  // 3. Fetch all active bets for this market
+  const { data: bets, error: betsError } = await db
+    .from('bets')
+    .select('id, user_id, position, amount')
+    .eq('market_id', market.id)
+    .eq('status', 'active');
+
+  if (betsError) throw betsError;
+
+  // No bets at all → void the market silently
+  if (!bets || bets.length === 0) {
+    await db.from('markets').update({
+      status: 'voided',
+      resolution_result: 'voided',
+      resolved_at: new Date().toISOString(),
+      platform_fee_collected: 0,
+      market_maker_fee_collected: 0,
+    }).eq('id', market.id);
+    console.log(`Market ${market.id}: no bets → voided`);
+    return;
+  }
+
+  // If winning side has zero bets → force refund (void market)
+  if (result !== 'refund') {
+    const winningPosition = result === 'above' ? 'yes' : 'no';
+    const hasWinningSideBets = (bets as Bet[]).some((b) => b.position === winningPosition);
+    if (!hasWinningSideBets) {
+      result = 'refund';
+      console.log(`Market ${market.id}: no bets on winning side → refund`);
+    }
+  }
+
+  // 4. Fetch creator username for notification messages
+  const { data: creatorProfile } = await db
+    .from('profiles')
+    .select('username')
+    .eq('id', market.creator_id)
+    .single();
+  const creatorName = creatorProfile?.username ?? 'the creator';
+
+  if (result === 'refund') {
+    await processRefund(db, market, bets as Bet[], creatorName);
+  } else {
+    await processPayout(db, market, bets as Bet[], result, creatorName);
+  }
+}
+
+async function processRefund(
+  db: ReturnType<typeof createClient>,
+  market: Market,
+  bets: Bet[],
+  creatorName: string,
+): Promise<void> {
+  console.log(`Refunding market ${market.id} — ${bets.length} bet(s)`);
+
+  for (const bet of bets) {
+    const amount = Math.floor(Number(bet.amount));
+
+    // Credit tokens back to bettor
+    const { error: creditError } = await db.rpc('increment_token_balance', {
+      p_user_id: bet.user_id,
+      p_amount: amount,
+    });
+    if (creditError) {
+      console.error(`Refund credit failed for bet ${bet.id}:`, creditError);
+    }
+
+    // Record refund transaction
+    await db.from('token_transactions').insert({
+      user_id: bet.user_id,
+      type: 'refund',
+      amount,
+      reference_id: bet.id,
+      description: `Bet refunded — market voided`,
+    });
+
+    // Update bet status
+    await db.from('bets')
+      .update({ status: 'refunded', settled_at: new Date().toISOString() })
+      .eq('id', bet.id);
+
+    // Notify bettor
+    await db.from('notifications').insert({
+      user_id: bet.user_id,
+      type: 'bet_refunded',
+      title: 'Market voided',
+      body: `Your bet on ${creatorName} was refunded — market voided.`,
+      reference_id: market.id,
+    });
+  }
+
+  // Mark market as voided
+  await db.from('markets').update({
+    status: 'voided',
+    resolution_result: 'voided',
+    resolved_at: new Date().toISOString(),
+    platform_fee_collected: 0,
+    market_maker_fee_collected: 0,
+  }).eq('id', market.id);
+
+  console.log(`Market ${market.id} voided, ${bets.length} bet(s) refunded`);
+}
+
+async function processPayout(
+  db: ReturnType<typeof createClient>,
+  market: Market,
+  bets: Bet[],
+  result: 'above' | 'below',
+  creatorName: string,
+): Promise<void> {
+  // 'above' maps to 'yes' position; 'below' maps to 'no' position
+  const winningPosition = result === 'above' ? 'yes' : 'no';
+  const losingPosition  = result === 'above' ? 'no'  : 'yes';
+
+  const winningBets = bets.filter((b) => b.position === winningPosition);
+  const losingBets  = bets.filter((b) => b.position === losingPosition);
+
+  const totalWinning = winningBets.reduce((sum, b) => sum + Math.floor(Number(b.amount)), 0);
+  const totalLosing  = losingBets.reduce((sum, b) => sum + Math.floor(Number(b.amount)), 0);
+  const totalPool    = totalWinning + totalLosing;
+
+  // Integer rake calculation (all percentages of losing pool, rounded down)
+  const rake           = Math.floor(totalLosing * 0.10);
+  const platformFee    = Math.floor(totalLosing * 0.05);
+  const marketMakerFee = rake - platformFee;
+  const winningPool    = totalPool - rake;
+
+  console.log(
+    `Market ${market.id}: pool=${totalPool}, winning=${totalWinning}, losing=${totalLosing}, ` +
+    `rake=${rake}, platformFee=${platformFee}, mmFee=${marketMakerFee}, winningPool=${winningPool}`,
+  );
+
+  // --- Distribute winnings proportionally to winning bettors ---
+  for (const bet of winningBets) {
+    const betAmount = Math.floor(Number(bet.amount));
+    const payout = totalWinning > 0
+      ? Math.floor(winningPool * (betAmount / totalWinning))
+      : 0;
+
+    const { error: creditError } = await db.rpc('increment_token_balance', {
+      p_user_id: bet.user_id,
+      p_amount: payout,
+    });
+    if (creditError) {
+      console.error(`Payout credit failed for bet ${bet.id}:`, creditError);
+    }
+
+    await db.from('token_transactions').insert({
+      user_id: bet.user_id,
+      type: 'bet_won',
+      amount: payout,
+      reference_id: bet.id,
+      description: `Won bet on ${creatorName}`,
+    });
+
+    await db.from('bets')
+      .update({ status: 'won', settled_at: new Date().toISOString() })
+      .eq('id', bet.id);
+
+    await db.from('notifications').insert({
+      user_id: bet.user_id,
+      type: 'bet_won',
+      title: 'You won!',
+      body: `Your bet on ${creatorName} paid out — you won ${payout} tokens!`,
+      reference_id: market.id,
+    });
+  }
+
+  // --- Record bet_lost for losing bettors (amount = 0 per spec) ---
+  for (const bet of losingBets) {
+    await db.from('token_transactions').insert({
+      user_id: bet.user_id,
+      type: 'bet_lost',
+      amount: 0,
+      reference_id: bet.id,
+      description: `Lost bet on ${creatorName}`,
+    });
+
+    await db.from('bets')
+      .update({ status: 'lost', settled_at: new Date().toISOString() })
+      .eq('id', bet.id);
+
+    await db.from('notifications').insert({
+      user_id: bet.user_id,
+      type: 'bet_lost',
+      title: 'Bet lost',
+      body: `Your bet on ${creatorName} did not pay out.`,
+      reference_id: market.id,
+    });
+  }
+
+  // --- Credit Market Maker fee ---
+  if (market.opened_by && marketMakerFee > 0) {
+    const { error: mmCreditError } = await db.rpc('increment_token_balance', {
+      p_user_id: market.opened_by,
+      p_amount: marketMakerFee,
+    });
+    if (mmCreditError) {
+      console.error(`MM fee credit failed for market ${market.id}:`, mmCreditError);
+    }
+
+    await db.from('token_transactions').insert({
+      user_id: market.opened_by,
+      type: 'promoted',
+      amount: marketMakerFee,
+      reference_id: market.id,
+      description: `Market Maker fee — market resolved`,
+    });
+
+    await db.from('notifications').insert({
+      user_id: market.opened_by,
+      type: 'market_resolved',
+      title: 'Market resolved',
+      body: `Your market on ${creatorName} resolved. You earned ${marketMakerFee} tokens.`,
+      reference_id: market.id,
+    });
+  }
+
+  // --- Update market to resolved ---
+  await db.from('markets').update({
+    status: 'resolved',
+    resolution_result: result,
+    resolved_at: new Date().toISOString(),
+    platform_fee_collected: platformFee,
+    market_maker_fee_collected: marketMakerFee,
+  }).eq('id', market.id);
+
+  console.log(`Market ${market.id} resolved as '${result}'`);
+}

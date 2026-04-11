@@ -75,15 +75,16 @@ class _BetBottomSheetState extends ConsumerState<BetBottomSheet> {
   bool _success = false;
 
   static const _timeframeLabels = {
-    '24h': '24 Hours',
-    '7d': '7 Days',
-    '30d': '30 Days',
+    '15m': '15 min',
+    '1h': '1 Hour',
+    '4h': '4 Hours',
+    '24h': '1 Day',
   };
 
   @override
   void initState() {
     super.initState();
-    _timeframe = widget.initialTimeframe ?? '7d';
+    _timeframe = widget.initialTimeframe ?? '1h';
     _step = widget.initialTimeframe != null ? 1 : 0;
     if (widget.initialTimeframe != null) {
       _loadStep2Data();
@@ -111,9 +112,10 @@ class _BetBottomSheetState extends ConsumerState<BetBottomSheet> {
   DateTime _endAt(String timeframe) {
     final now = DateTime.now().toUtc();
     return switch (timeframe) {
-      '24h' => now.add(const Duration(hours: 24)),
-      '7d' => now.add(const Duration(days: 7)),
-      _ => now.add(const Duration(days: 30)),
+      '15m' => now.add(const Duration(minutes: 15)),
+      '1h'  => now.add(const Duration(hours: 1)),
+      '4h'  => now.add(const Duration(hours: 4)),
+      _     => now.add(const Duration(hours: 24)),
     };
   }
 
@@ -188,6 +190,7 @@ class _BetBottomSheetState extends ConsumerState<BetBottomSheet> {
           'opened_by': userId,
           'title': '@${widget.creatorUsername}\'s ${_timeframeLabels[_timeframe]} popularity market',
           'timeframe': _timeframe,
+          'duration_label': _timeframeLabels[_timeframe] ?? _timeframe,
           'end_at': _endAt(_timeframe).toIso8601String(),
           'status': 'open',
         }).select('id').single();
@@ -358,9 +361,10 @@ class _StepTimeframe extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const timeframes = [
-      ('24h', '24 Hours', 'Resolves based on popularity score change over 24 hours'),
-      ('7d', '7 Days', 'Resolves based on popularity score change over 7 days'),
-      ('30d', '30 Days', 'Resolves based on popularity score change over 30 days'),
+      ('15m', '15 min',  'Fastest resolution — closes in 15 minutes'),
+      ('1h',  '1 Hour',  'Resolves based on 1 hour popularity change'),
+      ('4h',  '4 Hours', 'Resolves based on 4 hour popularity change'),
+      ('24h', '1 Day',   'Resolves based on 24 hour popularity change'),
     ];
 
     return Column(
@@ -931,7 +935,7 @@ class _StepConfirm extends StatelessWidget {
     final positionColor =
         position == 'yes' ? AppTheme.success : AppTheme.danger;
     final positionLabel = position == 'yes' ? '📈 Will Increase' : '📉 Will Decrease';
-    final timeframeLabels = {'24h': '24 Hours', '7d': '7 Days', '30d': '30 Days'};
+    final timeframeLabels = {'15m': '15 min', '1h': '1 Hour', '4h': '4 Hours', '24h': '1 Day'};
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
