@@ -139,7 +139,11 @@ class _MarketDetailScreenState extends ConsumerState<MarketDetailScreen> {
                         const SizedBox(height: 16),
                         _ScoreSection(market: market),
                         const SizedBox(height: 12),
-                        _CountdownTimer(endAt: market.endAt),
+                        _CountdownTimer(
+                          endAt: market.endAt,
+                          status: market.status,
+                          resolvedAt: market.resolvedAt,
+                        ),
                         const SizedBox(height: 12),
                         _PoolSection(market: market),
                       ],
@@ -147,6 +151,7 @@ class _MarketDetailScreenState extends ConsumerState<MarketDetailScreen> {
                   ),
                 ),
                 _BottomBar(
+                  market: market,
                   onAbove: () => _openDrawer('above'),
                   onBelow: () => _openDrawer('below'),
                 ),
@@ -369,7 +374,14 @@ class _ScoreSection extends StatelessWidget {
 
 class _CountdownTimer extends StatefulWidget {
   final DateTime endAt;
-  const _CountdownTimer({required this.endAt});
+  final String status;
+  final DateTime? resolvedAt;
+
+  const _CountdownTimer({
+    required this.endAt,
+    required this.status,
+    this.resolvedAt,
+  });
 
   @override
   State<_CountdownTimer> createState() => _CountdownTimerState();
@@ -411,9 +423,60 @@ class _CountdownTimerState extends State<_CountdownTimer> {
     return '${seconds}s';
   }
 
+  // Returns (icon, label, valueText, valueColor) for the current state.
+  ({IconData icon, Color iconColor, String label, String value, Color valueColor})
+      get _display {
+    final status = widget.status;
+
+    if (status == 'voided') {
+      return (
+        icon: Icons.cancel_outlined,
+        iconColor: AppTheme.textSecondary,
+        label: 'Market voided',
+        value: 'Refunded',
+        valueColor: AppTheme.textSecondary,
+      );
+    }
+
+    if (status == 'resolved') {
+      final at = widget.resolvedAt;
+      final timeStr = at != null
+          ? '${at.toLocal().hour.toString().padLeft(2, '0')}:'
+            '${at.toLocal().minute.toString().padLeft(2, '0')}'
+          : '';
+      return (
+        icon: Icons.check_circle_outline,
+        iconColor: AppTheme.success,
+        label: 'Resolved',
+        value: timeStr.isNotEmpty ? 'at $timeStr' : 'complete',
+        valueColor: AppTheme.success,
+      );
+    }
+
+    // status == 'open' (or any unexpected value)
+    final ended = _remaining.inSeconds <= 0;
+    if (ended) {
+      return (
+        icon: Icons.timer_off_outlined,
+        iconColor: AppTheme.danger,
+        label: 'Resolving...',
+        value: '',
+        valueColor: AppTheme.danger,
+      );
+    }
+
+    return (
+      icon: Icons.timer_outlined,
+      iconColor: AppTheme.primary,
+      label: 'Closes in',
+      value: _format(_remaining),
+      valueColor: AppTheme.textPrimary,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final ended = _remaining.inSeconds <= 0;
+    final d = _display;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       decoration: BoxDecoration(
@@ -423,27 +486,23 @@ class _CountdownTimerState extends State<_CountdownTimer> {
       ),
       child: Row(
         children: [
-          Icon(
-            ended ? Icons.timer_off_outlined : Icons.timer_outlined,
-            size: 18,
-            color: ended ? AppTheme.danger : AppTheme.primary,
-          ),
+          Icon(d.icon, size: 18, color: d.iconColor),
           const SizedBox(width: 10),
           Text(
-            ended ? 'Resolving...' : 'Closes in',
-            style: const TextStyle(
-                color: AppTheme.textSecondary, fontSize: 13),
+            d.label,
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
           ),
           const Spacer(),
-          Text(
-            _format(_remaining),
-            style: TextStyle(
-              color: ended ? AppTheme.danger : AppTheme.textPrimary,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              letterSpacing: 0.5,
+          if (d.value.isNotEmpty)
+            Text(
+              d.value,
+              style: TextStyle(
+                color: d.valueColor,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+              ),
             ),
-          ),
         ],
       ),
     );
@@ -546,60 +605,121 @@ class _PoolSection extends StatelessWidget {
 // BOTTOM BAR
 // ──────────────────────────────────────���──────────────────────────────────────
 
-class _BottomBar extends StatelessWidget {
+class _BottomBar extends StatefulWidget {
+  final MarketDetail market;
   final VoidCallback onAbove;
   final VoidCallback onBelow;
-  const _BottomBar({required this.onAbove, required this.onBelow});
+  const _BottomBar({
+    required this.market,
+    required this.onAbove,
+    required this.onBelow,
+  });
+
+  @override
+  State<_BottomBar> createState() => _BottomBarState();
+}
+
+class _BottomBarState extends State<_BottomBar> {
+  late Timer _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  bool get _isBettingBlocked {
+    if (widget.market.status != 'open') return true;
+    final secsLeft =
+        widget.market.endAt.difference(DateTime.now().toUtc()).inSeconds;
+    return secsLeft <= 15;
+  }
+
+  String get _blockedMessage {
+    if (widget.market.status != 'open') {
+      return 'Market ${widget.market.status}';
+    }
+    return 'Betting closed — market ending';
+  }
 
   @override
   Widget build(BuildContext context) {
     final bottomPad = MediaQuery.of(context).padding.bottom;
+    final blocked = _isBettingBlocked;
     return Container(
       decoration: const BoxDecoration(
         color: AppTheme.surface,
         border: Border(top: BorderSide(color: AppTheme.cardBorder)),
       ),
       padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + bottomPad),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: ElevatedButton(
-              onPressed: onAbove,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.success,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              child: const Text(
-                '📈 Above',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                ),
+          if (blocked) ...[
+            Text(
+              _blockedMessage,
+              style: const TextStyle(
+                color: AppTheme.danger,
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
               ),
             ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: ElevatedButton(
-              onPressed: onBelow,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.danger,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-              child: const Text(
-                '📉 Below',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
+            const SizedBox(height: 8),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: blocked ? null : widget.onAbove,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.success,
+                    disabledBackgroundColor:
+                        AppTheme.success.withValues(alpha: 0.3),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text(
+                    '📈 Above',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: ElevatedButton(
+                  onPressed: blocked ? null : widget.onBelow,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.danger,
+                    disabledBackgroundColor:
+                        AppTheme.danger.withValues(alpha: 0.3),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text(
+                    '📉 Below',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -642,6 +762,20 @@ class _BettingDrawerState extends ConsumerState<_BettingDrawer> {
     super.dispose();
   }
 
+  bool get _isBettingBlocked {
+    if (widget.market.status != 'open') return true;
+    final secsLeft =
+        widget.market.endAt.difference(DateTime.now().toUtc()).inSeconds;
+    return secsLeft <= 15;
+  }
+
+  String get _blockedMessage {
+    if (widget.market.status != 'open') {
+      return 'Market ${widget.market.status}';
+    }
+    return 'Betting closed — market ending';
+  }
+
   int get _payout {
     if (_amount <= 0) return 0;
     final myPool = widget.selectedPosition == 'above'
@@ -654,6 +788,10 @@ class _BettingDrawerState extends ConsumerState<_BettingDrawer> {
   }
 
   Future<void> _handleConfirm() async {
+    if (_isBettingBlocked) {
+      setState(() => _error = _blockedMessage);
+      return;
+    }
     if (_amount <= 0) {
       setState(() => _error = 'Enter a valid amount');
       return;
@@ -851,30 +989,50 @@ class _BettingDrawerState extends ConsumerState<_BettingDrawer> {
               const SizedBox(height: 16),
 
               // Confirm button
-              ElevatedButton(
-                onPressed: _isSubmitting ? null : _handleConfirm,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
+              if (_isBettingBlocked)
+                Container(
+                  width: double.infinity,
                   padding: const EdgeInsets.symmetric(vertical: 14),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
-                ),
-                child: _isSubmitting
-                    ? const SizedBox(
-                        height: 20,
-                        width: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Text(
-                        'Confirm Bet',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                  decoration: BoxDecoration(
+                    color: AppTheme.surfaceLight,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: AppTheme.danger.withValues(alpha: 0.4)),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    _blockedMessage,
+                    style: const TextStyle(
+                      color: AppTheme.danger,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                )
+              else
+                ElevatedButton(
+                  onPressed: _isSubmitting ? null : _handleConfirm,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text(
+                          'Confirm Bet',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
-                      ),
-              ),
+                ),
             ],
           ),
         ),

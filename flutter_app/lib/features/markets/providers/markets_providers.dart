@@ -148,6 +148,8 @@ class MarketDetail {
   final String? primaryPlatform;
   final String? primaryPlatformUsername;
   final String status;
+  final DateTime? resolvedAt;
+  final String? resolutionResult; // 'above' | 'below' | 'refund' | null
 
   const MarketDetail({
     required this.id,
@@ -166,6 +168,8 @@ class MarketDetail {
     this.primaryPlatform,
     this.primaryPlatformUsername,
     required this.status,
+    this.resolvedAt,
+    this.resolutionResult,
   });
 
   double get totalPool => yesPool + noPool;
@@ -203,6 +207,10 @@ class MarketDetail {
       primaryPlatform: metrics?['platform'] as String?,
       primaryPlatformUsername: conn?['platform_username'] as String?,
       status: market['status'] as String? ?? 'open',
+      resolvedAt: market['resolved_at'] != null
+          ? DateTime.parse(market['resolved_at'] as String)
+          : null,
+      resolutionResult: market['resolution_result'] as String?,
     );
   }
 }
@@ -227,6 +235,7 @@ final marketDetailProvider =
       .select(
         'id, creator_id, title, timeframe, duration_label, '
         'yes_pool, no_pool, end_at, opening_resolution_score, status, '
+        'resolved_at, resolution_result, '
         'creator:profiles!creator_id(username)',
       )
       .eq('id', marketId)
