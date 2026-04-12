@@ -68,6 +68,8 @@ class _BetBottomSheetState extends ConsumerState<BetBottomSheet> {
 
   // Fetched when entering step 2
   int _tokenBalance = 0;
+  String? _creatorCategory1;
+  String? _creatorCategory2;
 
   bool _isLoading = false;
   bool _isSubmitting = false;
@@ -80,6 +82,37 @@ class _BetBottomSheetState extends ConsumerState<BetBottomSheet> {
     '4h': '4 Hours',
     '24h': '1 Day',
   };
+
+  static const _categoryCodeMap = {
+    'Athlete': 'ATH', 'Influencer': 'INF', 'Musician': 'MUS',
+    'Healthcare': 'HLT', 'Doctor': 'DOC', 'Comedian': 'COM',
+    'Politician': 'POL', 'Gamer': 'GAM', 'Educator': 'EDU',
+    'Fitness': 'FIT', 'Business': 'BUS', 'Religion': 'REL',
+    'Researcher': 'RES', 'Sports': 'SPT',
+  };
+
+  static const _timeframeCodeMap = {
+    '15m': '15M', '1h': '1HR', '4h': '4HR', '24h': '1DY',
+  };
+
+  static const _monthNames = [
+    '', 'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
+    'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
+  ];
+
+  Map<String, String> _buildIdentifiers(DateTime endAt) {
+    final catCode = _categoryCodeMap[_creatorCategory1] ?? 'GEN';
+    final tfCode = _timeframeCodeMap[_timeframe] ?? '1HR';
+    final series = 'NP$catCode$tfCode';
+    final utc = endAt.toUtc();
+    final dd = utc.day.toString().padLeft(2, '0');
+    final mon = _monthNames[utc.month];
+    final hh = utc.hour.toString().padLeft(2, '0');
+    final mm = utc.minute.toString().padLeft(2, '0');
+    final event = '$series-$dd$mon$hh$mm';
+    final identifier = '$event-$mm';
+    return {'series': series, 'event': event, 'identifier': identifier};
+  }
 
   @override
   void initState() {
@@ -143,6 +176,15 @@ class _BetBottomSheetState extends ConsumerState<BetBottomSheet> {
         _existingNoPool = 0;
       }
 
+      // Load creator categories (for market identifier generation)
+      final creatorProfile = await client
+          .from('profiles')
+          .select('category_1, category_2')
+          .eq('id', widget.creatorId)
+          .maybeSingle();
+      _creatorCategory1 = creatorProfile?['category_1'] as String?;
+      _creatorCategory2 = creatorProfile?['category_2'] as String?;
+
       // Load token balance
       final userId = client.auth.currentUser?.id;
       if (userId != null) {
@@ -183,7 +225,9 @@ class _BetBottomSheetState extends ConsumerState<BetBottomSheet> {
       if (_existingMarketId != null) {
         marketId = _existingMarketId!;
       } else {
-        // Create a new market
+        // Create a new market with identifier + category snapshot
+        final endAt = _endAt(_timeframe);
+        final ids = _buildIdentifiers(endAt);
         final marketResult = await client.from('markets').insert({
           'creator_id': widget.creatorId,
           'created_by': userId,
@@ -191,8 +235,13 @@ class _BetBottomSheetState extends ConsumerState<BetBottomSheet> {
           'title': '@${widget.creatorUsername}\'s ${_timeframeLabels[_timeframe]} popularity market',
           'timeframe': _timeframe,
           'duration_label': _timeframeLabels[_timeframe] ?? _timeframe,
-          'end_at': _endAt(_timeframe).toIso8601String(),
+          'end_at': endAt.toIso8601String(),
           'status': 'open',
+          'market_series': ids['series'],
+          'market_event': ids['event'],
+          'market_identifier': ids['identifier'],
+          'category_1': _creatorCategory1,
+          'category_2': _creatorCategory2,
         }).select('id').single();
         marketId = marketResult['id'] as String;
       }

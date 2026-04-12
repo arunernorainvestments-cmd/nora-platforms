@@ -16,6 +16,8 @@ class MarketListing {
   final double yesPool;
   final double noPool;
   final DateTime endAt;
+  final String? category1;
+  final String? category2;
 
   const MarketListing({
     required this.id,
@@ -27,6 +29,8 @@ class MarketListing {
     required this.yesPool,
     required this.noPool,
     required this.endAt,
+    this.category1,
+    this.category2,
   });
 
   double get totalPool => yesPool + noPool;
@@ -48,6 +52,8 @@ class MarketListing {
       yesPool: (json['yes_pool'] as num?)?.toDouble() ?? 0,
       noPool: (json['no_pool'] as num?)?.toDouble() ?? 0,
       endAt: DateTime.parse(json['end_at'] as String),
+      category1: json['category_1'] as String?,
+      category2: json['category_2'] as String?,
     );
   }
 }
@@ -66,6 +72,7 @@ class MyBet {
   final DateTime marketEndAt;
   final String marketStatus;
   final bool? resolvedOutcome; // true = YES won
+  final String? identifier;
 
   const MyBet({
     required this.id,
@@ -81,6 +88,7 @@ class MyBet {
     required this.marketEndAt,
     required this.marketStatus,
     this.resolvedOutcome,
+    this.identifier,
   });
 
   factory MyBet.fromJson(Map<String, dynamic> json) {
@@ -101,6 +109,7 @@ class MyBet {
       marketEndAt: DateTime.parse(market['end_at'] as String),
       marketStatus: market['status'] as String? ?? 'open',
       resolvedOutcome: market['resolved_outcome'] as bool?,
+      identifier: market['market_identifier'] as String?,
     );
   }
 }
@@ -115,6 +124,7 @@ final openMarketsProvider =
       .from('markets')
       .select(
           'id, creator_id, title, timeframe, yes_pool, no_pool, end_at, '
+          'category_1, category_2, '
           'creator:profiles!creator_id(username, spotlight_scores(tier))')
       .eq('status', 'open');
 
@@ -141,6 +151,7 @@ class MarketDetail {
   final double yesPool;
   final double noPool;
   final DateTime endAt;
+  final DateTime? createdAt;
   final int? openingResolutionScore;
   final double? displayScore;
   final bool isLive;
@@ -150,6 +161,11 @@ class MarketDetail {
   final String status;
   final DateTime? resolvedAt;
   final String? resolutionResult; // 'above' | 'below' | 'refund' | null
+  final String? marketSeries;
+  final String? marketEvent;
+  final String? identifier;
+  final String? category1;
+  final String? category2;
 
   const MarketDetail({
     required this.id,
@@ -161,6 +177,7 @@ class MarketDetail {
     required this.yesPool,
     required this.noPool,
     required this.endAt,
+    this.createdAt,
     this.openingResolutionScore,
     this.displayScore,
     required this.isLive,
@@ -170,6 +187,11 @@ class MarketDetail {
     required this.status,
     this.resolvedAt,
     this.resolutionResult,
+    this.marketSeries,
+    this.marketEvent,
+    this.identifier,
+    this.category1,
+    this.category2,
   });
 
   double get totalPool => yesPool + noPool;
@@ -198,6 +220,9 @@ class MarketDetail {
       yesPool: (market['yes_pool'] as num?)?.toDouble() ?? 0,
       noPool: (market['no_pool'] as num?)?.toDouble() ?? 0,
       endAt: DateTime.parse(market['end_at'] as String),
+      createdAt: market['created_at'] != null
+          ? DateTime.parse(market['created_at'] as String)
+          : null,
       openingResolutionScore:
           (market['opening_resolution_score'] as num?)?.toInt(),
       displayScore: (metrics?['display_score'] as num?)?.toDouble(),
@@ -211,6 +236,11 @@ class MarketDetail {
           ? DateTime.parse(market['resolved_at'] as String)
           : null,
       resolutionResult: market['resolution_result'] as String?,
+      marketSeries: market['market_series'] as String?,
+      marketEvent: market['market_event'] as String?,
+      identifier: market['market_identifier'] as String?,
+      category1: market['category_1'] as String?,
+      category2: market['category_2'] as String?,
     );
   }
 }
@@ -234,8 +264,10 @@ final marketDetailProvider =
       .from('markets')
       .select(
         'id, creator_id, title, timeframe, duration_label, '
-        'yes_pool, no_pool, end_at, opening_resolution_score, status, '
+        'yes_pool, no_pool, end_at, created_at, opening_resolution_score, status, '
         'resolved_at, resolution_result, '
+        'market_series, market_event, market_identifier, '
+        'category_1, category_2, '
         'creator:profiles!creator_id(username)',
       )
       .eq('id', marketId)
@@ -271,7 +303,7 @@ final myBetsProvider =
       .select(
           'id, market_id, position, amount, potential_payout, status, placed_at, '
           'market:markets!market_id('
-          '  id, title, timeframe, end_at, yes_pool, no_pool, status, resolved_outcome, '
+          '  id, title, timeframe, end_at, yes_pool, no_pool, status, resolved_outcome, market_identifier, '
           '  creator:profiles!creator_id(username)'
           ')')
       .eq('user_id', userId)

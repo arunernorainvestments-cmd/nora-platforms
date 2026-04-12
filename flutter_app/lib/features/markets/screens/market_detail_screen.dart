@@ -988,6 +988,18 @@ class _BettingDrawerState extends ConsumerState<_BettingDrawer> {
               ),
               const SizedBox(height: 16),
 
+              // Timeline
+              _MarketTimeline(
+                openedAt: widget.market.createdAt,
+                closesAt: widget.market.endAt,
+              ),
+              const SizedBox(height: 12),
+
+              // Market identifier
+              if (widget.market.identifier != null)
+                _MarketIdentifierRow(identifier: widget.market.identifier!),
+              if (widget.market.identifier != null) const SizedBox(height: 16),
+
               // Confirm button
               if (_isBettingBlocked)
                 Container(
@@ -1118,6 +1130,140 @@ class _PlatformBadge extends StatelessWidget {
 // ─────────────────────────────────────────────��───────────────────────────────
 // LIVE BADGE — pulsing red dot
 // ──────────────────────────────────────────────────────────────────────────��──
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKET TIMELINE
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MarketTimeline extends StatelessWidget {
+  final DateTime? openedAt;
+  final DateTime closesAt;
+
+  const _MarketTimeline({this.openedAt, required this.closesAt});
+
+  String _fmt(DateTime dt) {
+    final local = dt.toLocal();
+    const months = [
+      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+    ];
+    final hh = local.hour.toString().padLeft(2, '0');
+    final mm = local.minute.toString().padLeft(2, '0');
+    return '${local.day} ${months[local.month]} · $hh:$mm';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceLight,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.cardBorder),
+      ),
+      child: Column(
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: const BoxDecoration(
+                  color: AppTheme.success,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Market open',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+              ),
+              const Spacer(),
+              Text(
+                openedAt != null ? _fmt(openedAt!) : '—',
+                style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+          Padding(
+            padding: const EdgeInsets.only(left: 4, top: 2, bottom: 2),
+            child: Row(
+              children: [
+                Container(width: 2, height: 16, color: AppTheme.cardBorder),
+              ],
+            ),
+          ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 10,
+                height: 10,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppTheme.textSecondary, width: 2),
+                ),
+              ),
+              const SizedBox(width: 10),
+              const Text(
+                'Market closes',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+              ),
+              const Spacer(),
+              Text(
+                _fmt(closesAt),
+                style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKET IDENTIFIER ROW
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MarketIdentifierRow extends StatelessWidget {
+  final String identifier;
+  const _MarketIdentifierRow({required this.identifier});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        const Text(
+          'Market',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+        ),
+        Text(
+          identifier,
+          style: const TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            letterSpacing: 0.8,
+            fontFamily: 'Courier New',
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIVE BADGE — pulsing red dot
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _LiveBadge extends StatefulWidget {
   const _LiveBadge();

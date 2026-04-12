@@ -60,11 +60,46 @@ class _MarketsScreenState extends ConsumerState<MarketsScreen>
 // OPEN MARKETS TAB
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _OpenMarketsTab extends ConsumerWidget {
+class _OpenMarketsTab extends ConsumerStatefulWidget {
   const _OpenMarketsTab({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_OpenMarketsTab> createState() => _OpenMarketsTabState();
+}
+
+class _OpenMarketsTabState extends ConsumerState<_OpenMarketsTab> {
+  String? _selectedCategory; // null = All
+
+  static const _allCategories = [
+    'Athlete', 'Influencer', 'Musician', 'Healthcare', 'Doctor', 'Comedian',
+    'Politician', 'Gamer', 'Educator', 'Fitness', 'Business', 'Religion',
+    'Researcher', 'Sports',
+  ];
+
+  Map<String, int> _categoryCounts(List<MarketListing> markets) {
+    final counts = <String, int>{};
+    for (final m in markets) {
+      if (m.category1 != null) {
+        counts[m.category1!] = (counts[m.category1!] ?? 0) + 1;
+      }
+      if (m.category2 != null) {
+        counts[m.category2!] = (counts[m.category2!] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }
+
+  List<MarketListing> _filtered(List<MarketListing> markets) {
+    if (_selectedCategory == null) return markets;
+    return markets
+        .where((m) =>
+            m.category1 == _selectedCategory ||
+            m.category2 == _selectedCategory)
+        .toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final marketsAsync = ref.watch(openMarketsProvider);
     final currentUser = ref.watch(currentUserProvider);
 
@@ -88,49 +123,155 @@ class _OpenMarketsTab extends ConsumerWidget {
           ],
         ),
       ),
-      data: (markets) => RefreshIndicator(
-        color: AppTheme.primary,
-        backgroundColor: AppTheme.surface,
-        onRefresh: () async => ref.invalidate(openMarketsProvider),
-        child: markets.isEmpty
-            ? const CustomScrollView(
-                slivers: [
-                  SliverFillRemaining(
-                    child: Center(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(Icons.bar_chart_outlined,
-                              size: 56, color: AppTheme.textSecondary),
-                          SizedBox(height: 16),
-                          Text(
-                            'No open markets yet',
-                            style: TextStyle(
-                              color: AppTheme.textPrimary,
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            'Visit a Market Maker\'s profile to open one',
-                            style: TextStyle(color: AppTheme.textSecondary),
-                          ),
-                        ],
-                      ),
+      data: (markets) {
+        final counts = _categoryCounts(markets);
+        final filtered = _filtered(markets);
+
+        return RefreshIndicator(
+          color: AppTheme.primary,
+          backgroundColor: AppTheme.surface,
+          onRefresh: () async => ref.invalidate(openMarketsProvider),
+          child: Column(
+            children: [
+              // ── Category filter chips ─────────────────────────────────
+              SizedBox(
+                height: 48,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 8),
+                  children: [
+                    // "All" chip
+                    _FilterChip(
+                      label: 'All',
+                      count: markets.length,
+                      selected: _selectedCategory == null,
+                      dimmed: false,
+                      onTap: () =>
+                          setState(() => _selectedCategory = null),
                     ),
-                  ),
-                ],
-              )
-            : ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: markets.length,
-                itemBuilder: (context, i) => _MarketCard(
-                  market: markets[i],
-                  isLoggedIn: currentUser != null,
-                  onTap: () => context.push('/markets/${markets[i].id}'),
+                    const SizedBox(width: 6),
+                    ..._allCategories.map((cat) {
+                      final count = counts[cat] ?? 0;
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: _FilterChip(
+                          label: cat,
+                          count: count,
+                          selected: _selectedCategory == cat,
+                          dimmed: count == 0,
+                          onTap: () =>
+                              setState(() => _selectedCategory = cat),
+                        ),
+                      );
+                    }),
+                  ],
                 ),
               ),
+
+              // ── Market list ───────────────────────────────────────────
+              Expanded(
+                child: filtered.isEmpty
+                    ? CustomScrollView(
+                        slivers: [
+                          SliverFillRemaining(
+                            child: Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.bar_chart_outlined,
+                                      size: 56,
+                                      color: AppTheme.textSecondary),
+                                  const SizedBox(height: 16),
+                                  Text(
+                                    _selectedCategory == null
+                                        ? 'No open markets yet'
+                                        : 'No $_selectedCategory markets',
+                                    style: const TextStyle(
+                                      color: AppTheme.textPrimary,
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _selectedCategory == null
+                                        ? 'Visit a Market Maker\'s profile to open one'
+                                        : 'Try another category',
+                                    style: const TextStyle(
+                                        color: AppTheme.textSecondary),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                        itemCount: filtered.length,
+                        itemBuilder: (context, i) => _MarketCard(
+                          market: filtered[i],
+                          isLoggedIn: currentUser != null,
+                          onTap: () =>
+                              context.push('/markets/${filtered[i].id}'),
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final int count;
+  final bool selected;
+  final bool dimmed;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.count,
+    required this.selected,
+    required this.dimmed,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTheme.primary
+              : AppTheme.surface,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: selected
+                ? AppTheme.primary
+                : dimmed
+                    ? AppTheme.cardBorder.withValues(alpha: 0.4)
+                    : AppTheme.cardBorder,
+          ),
+        ),
+        child: Text(
+          '$label ($count)',
+          style: TextStyle(
+            color: selected
+                ? Colors.white
+                : dimmed
+                    ? AppTheme.textSecondary.withValues(alpha: 0.45)
+                    : AppTheme.textSecondary,
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.normal,
+          ),
+        ),
       ),
     );
   }
@@ -445,6 +586,18 @@ class _BetCard extends StatelessWidget {
             style: const TextStyle(
                 color: AppTheme.textSecondary, fontSize: 12),
           ),
+          if (bet.identifier != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              bet.identifier!,
+              style: const TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 10,
+                letterSpacing: 0.8,
+                fontFamily: 'Courier New',
+              ),
+            ),
+          ],
           const Divider(
               height: 18, color: AppTheme.cardBorder),
 

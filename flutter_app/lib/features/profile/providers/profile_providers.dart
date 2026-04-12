@@ -15,6 +15,8 @@ class UserProfile {
   final bool pendingOptOut;
   final bool popularityScorePublic;
   final String? referralCode;
+  final String? category1;
+  final String? category2;
 
   const UserProfile({
     required this.id,
@@ -26,6 +28,8 @@ class UserProfile {
     required this.pendingOptOut,
     required this.popularityScorePublic,
     this.referralCode,
+    this.category1,
+    this.category2,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
@@ -38,6 +42,8 @@ class UserProfile {
         pendingOptOut: json['pending_opt_out'] as bool? ?? false,
         popularityScorePublic: json['popularity_score_public'] as bool? ?? false,
         referralCode: json['referral_code'] as String?,
+        category1: json['category_1'] as String?,
+        category2: json['category_2'] as String?,
       );
 }
 
@@ -53,7 +59,8 @@ final userProfileProvider = FutureProvider.autoDispose<UserProfile?>((ref) async
       .from('profiles')
       .select(
           'id, username, display_name, bio, is_creator, is_market_maker, '
-          'pending_opt_out, popularity_score_public, referral_code')
+          'pending_opt_out, popularity_score_public, referral_code, '
+          'category_1, category_2')
       .eq('id', userId)
       .single();
 
@@ -152,6 +159,15 @@ class ProfileActions {
     if (updates.isNotEmpty) {
       await _client.from('profiles').update(updates).eq('id', userId);
     }
+  }
+
+  Future<void> updateCategories(String? category1, String? category2) async {
+    final userId = _client.auth.currentUser?.id;
+    if (userId == null) throw Exception('Not authenticated');
+    await _client.from('profiles').update({
+      'category_1': category1,
+      'category_2': category2,
+    }).eq('id', userId);
   }
 }
 

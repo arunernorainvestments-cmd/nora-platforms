@@ -21,6 +21,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _displayNameController = TextEditingController();
   final _bioController = TextEditingController();
   bool _editInitialized = false;
+  bool _categoriesInitialized = false;
+  List<String> _selectedCategories = [];
   bool _isSaving = false;
   bool _isTogglingMarketMaker = false;
   String? _shownConnectedPlatform;
@@ -76,6 +78,25 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     _displayNameController.text = profile.displayName ?? '';
     _bioController.text = profile.bio ?? '';
     _editInitialized = true;
+  }
+
+  void _maybeInitCategories(UserProfile profile) {
+    if (_categoriesInitialized) return;
+    _selectedCategories = [
+      if (profile.category1 != null) profile.category1!,
+      if (profile.category2 != null) profile.category2!,
+    ];
+    _categoriesInitialized = true;
+  }
+
+  void _toggleCategory(String cat) {
+    setState(() {
+      if (_selectedCategories.contains(cat)) {
+        _selectedCategories = _selectedCategories.where((c) => c != cat).toList();
+      } else if (_selectedCategories.length < 2) {
+        _selectedCategories = [..._selectedCategories, cat];
+      }
+    });
   }
 
   void _openMarketMakerSheet(BuildContext context, {bool skipToTerms = false}) {
@@ -138,10 +159,17 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   Future<void> _saveProfile() async {
     setState(() { _isSaving = true; });
     try {
-      await ref.read(profileActionsProvider).updateProfile(
-        displayName: _displayNameController.text.trim(),
-        bio: _bioController.text.trim(),
-      );
+      final actions = ref.read(profileActionsProvider);
+      await Future.wait([
+        actions.updateProfile(
+          displayName: _displayNameController.text.trim(),
+          bio: _bioController.text.trim(),
+        ),
+        actions.updateCategories(
+          _selectedCategories.isNotEmpty ? _selectedCategories[0] : null,
+          _selectedCategories.length > 1 ? _selectedCategories[1] : null,
+        ),
+      ]);
       ref.invalidate(userProfileProvider);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -169,7 +197,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     final hasConnectedPlatforms =
         connectionsAsync.valueOrNull?.any((c) => c.isActive) ?? false;
 
-    profileAsync.whenData((p) { if (p != null) _maybeInitControllers(p); });
+    profileAsync.whenData((p) {
+      if (p != null) {
+        _maybeInitControllers(p);
+        _maybeInitCategories(p);
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(
@@ -315,6 +348,20 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                         color: AppTheme.textSecondary),
                     alignLabelWithHint: true,
                   ),
+                ),
+                const SizedBox(height: 24),
+
+                // ── Creator Category ──────────────────────────────────────
+                const _SectionTitle('Creator Category'),
+                const SizedBox(height: 4),
+                const Text(
+                  'Select up to 2 categories that best describe you',
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                _CategoryChips(
+                  selected: _selectedCategories,
+                  onToggle: _toggleCategory,
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
@@ -1569,6 +1616,68 @@ class _InviteFriendsCard extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CATEGORY CHIPS
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CategoryChips extends StatelessWidget {
+  final List<String> selected;
+  final void Function(String) onToggle;
+
+  const _CategoryChips({required this.selected, required this.onToggle});
+
+  static const _categories = [
+    'Athlete', 'Influencer', 'Musician', 'Healthcare', 'Doctor', 'Comedian',
+    'Politician', 'Gamer', 'Educator', 'Fitness', 'Business', 'Religion',
+    'Researcher', 'Sports',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: _categories.map((cat) {
+        final isSelected = selected.contains(cat);
+        final isBlocked = !isSelected && selected.length >= 2;
+        return GestureDetector(
+          onTap: isBlocked ? null : () => onToggle(cat),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? AppTheme.primary.withValues(alpha: 0.18)
+                  : AppTheme.surfaceLight,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: isSelected
+                    ? AppTheme.primary
+                    : isBlocked
+                        ? AppTheme.cardBorder.withValues(alpha: 0.4)
+                        : AppTheme.cardBorder,
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            child: Text(
+              cat,
+              style: TextStyle(
+                color: isSelected
+                    ? AppTheme.primary
+                    : isBlocked
+                        ? AppTheme.textSecondary.withValues(alpha: 0.5)
+                        : AppTheme.textSecondary,
+                fontSize: 13,
+                fontWeight:
+                    isSelected ? FontWeight.w600 : FontWeight.normal,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
     );
   }
 }
