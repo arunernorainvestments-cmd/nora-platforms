@@ -218,6 +218,28 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
   - market.endAt ≤ 15 seconds away (live countdown enforced by StatefulWidget timer)
 - MarketDetail model now includes resolvedAt (DateTime?) and resolutionResult (String?)
 
+### Completed (Post Phase 5 — Public Profile & Score Rename)
+- Migration 013: atomic rename of score columns (heat_score↔display_score swap +
+  opening_display_score→opening_heat_score); applied via SQL Editor only
+- sync-platform-metrics + resolve-markets edge functions redeployed after rename
+- Public profile screen (/u/:username) fully rebuilt with 5 sections:
+  - Header: avatar, username, bio, category chips, Heat Score badge
+  - Action buttons: Promote (own profile) or Bet + Promote (other MM profiles)
+  - Live Now: one card per live platform with viewer count
+  - Platform Stats: one card per connected platform with follower count, viewer
+    count (if live), Raw Score, Heat Score
+  - Recent Content: placeholder
+- Public profile visibility rules:
+  - Heat Score shown whenever connections.isNotEmpty; displays '---' if !isMarketMaker
+  - Platform Stats shown whenever connections.isNotEmpty; non-MM profiles show
+    per-connection cards with '---' for all numeric values (_RedactedStatCard)
+  - Action buttons (Bet/Promote) only visible when isMarketMaker && connections.isNotEmpty
+- publicProfileProvider queries public_platform_connections view (not platform_connections)
+  to avoid RLS block — view exposes only safe columns, filtered to is_active=true at DB level
+- "Preview Profile" button added to logged-in profile screen → pushes /u/:username
+- "Promote" button added below Market Maker dashboard on logged-in profile screen
+  (only visible when isMarketMaker == true); shows "Promotions coming soon!" snackbar
+
 ### Known Issues / Notes
 - YouTube OAuth is in Google Testing mode — only whitelisted emails can connect.
   Must submit for Google verification before public launch.
