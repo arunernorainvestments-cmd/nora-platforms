@@ -341,6 +341,36 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     isToggling: _isTogglingMarketMaker,
                     onToggle: () => _toggleMarketMaker(context, profile),
                   ),
+                if (profile.isMarketMaker) ...[
+                  const SizedBox(height: 12),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: const Text('Promotions coming soon!'),
+                            backgroundColor: AppTheme.surface,
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                              side: const BorderSide(color: AppTheme.cardBorder),
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.rocket_launch_outlined, size: 18),
+                      label: const Text('Promote'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.primary,
+                        side: const BorderSide(color: AppTheme.primary),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 24),
 
                 // ── Invite friends ────────────────────────────────────────
