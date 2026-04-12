@@ -669,7 +669,7 @@ class _LiveFeedCard extends StatelessWidget {
                           size: 12, color: AppTheme.primary),
                       const SizedBox(width: 3),
                       Text(
-                        metric.heatScore.toStringAsFixed(1),
+                        metric.displayScore.toStringAsFixed(1),
                         style: const TextStyle(
                           color: AppTheme.primary,
                           fontSize: 12,

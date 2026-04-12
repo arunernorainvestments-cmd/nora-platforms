@@ -270,7 +270,7 @@ class _ScoreSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final score = market.displayScore;
+    final score = market.heatScore;
     final scoreText = score != null
         ? score.toStringAsFixed(1)
         : '--';

@@ -153,7 +153,7 @@ class MarketDetail {
   final DateTime endAt;
   final DateTime? createdAt;
   final int? openingResolutionScore;
-  final double? displayScore;
+  final double? heatScore;
   final bool isLive;
   final int liveViewerCount;
   final String? primaryPlatform;
@@ -179,7 +179,7 @@ class MarketDetail {
     required this.endAt,
     this.createdAt,
     this.openingResolutionScore,
-    this.displayScore,
+    this.heatScore,
     required this.isLive,
     required this.liveViewerCount,
     this.primaryPlatform,
@@ -225,7 +225,7 @@ class MarketDetail {
           : null,
       openingResolutionScore:
           (market['opening_resolution_score'] as num?)?.toInt(),
-      displayScore: (metrics?['display_score'] as num?)?.toDouble(),
+      heatScore: (metrics?['heat_score'] as num?)?.toDouble(),
       isLive: metrics?['is_live'] as bool? ?? false,
       liveViewerCount:
           (metrics?['live_viewer_count'] as num?)?.toInt() ?? 0,
@@ -278,7 +278,7 @@ final marketDetailProvider =
   final metricsData = await client
       .from('platform_metrics')
       .select(
-        'display_score, is_live, live_viewer_count, platform, '
+        'heat_score, is_live, live_viewer_count, platform, '
         'platform_connections(platform_username)',
       )
       .eq('user_id', creatorId)

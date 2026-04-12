@@ -78,12 +78,14 @@ All tables have RLS enabled. Migrations run in order:
 | 003 | notifications; is_market_maker, referral_code, referred_by on profiles |
 | 004 | bet_placed/referral_bonus constraints; triggers: pool update, token deduct, notify |
 | 005 | platform_connections, platform_metrics; RLS; heat score → spotlight trigger |
-| 006 | display_score + resolution_score on platform_metrics; opening_resolution_score + opening_display_score on markets; updated spotlight trigger |
+| 006 | heat_score + resolution_score on platform_metrics; opening_resolution_score + opening_heat_score on markets; updated spotlight trigger |
 | 007 | token_purchases table for Stripe integration |
 | 008 | Bug fixes and schema corrections |
 | 009 | Market resolution: resolved_at, resolution_result, resolved_outcome on markets; 'refund' added to token_transactions type; 'bet_refunded'/'market_resolved' added to notifications type |
 | 010 | duration_label on markets |
 | 011 | Re-applies token_transactions type constraint with 'refund' (applied directly in SQL Editor) |
+| 012 | market_series, market_event, market_identifier, category_1, category_2 on markets; category_1, category_2 on profiles |
+| 013 | Rename score columns: heat_score→display_score (raw composite), display_score→heat_score (UI composite), opening_display_score→opening_heat_score |
 
 ### Key RLS rules
 - token_balances — service role only for writes
@@ -95,18 +97,19 @@ All tables have RLS enabled. Migrations run in order:
 
 ### Two-Score System (Phase 3.5 — critical architecture)
 platform_metrics has THREE score columns:
-- heat_score — computed composite (live viewers + followers + live bonus), 0–100
-- display_score — currently mirrors heat_score; WILL receive promotion/power-up
-  modifiers in future phases. This is what all UI and spotlight reads.
+- display_score — raw computed composite (live viewers + followers + live bonus), 0–100.
+  NEVER modified by promotions, power-ups, or any user action.
+- heat_score — the 0–100 composite shown in all UI and spotlight. CAN be modified by
+  promotions/power-ups. This is what all UI and spotlight reads.
 - resolution_score — raw follower/subscriber count from API only. NEVER modified
   by promotions, power-ups, or any user action. Used exclusively for market resolution.
 
 markets table snapshots at open:
+- opening_heat_score — heat_score at time of market creation (locked forever)
 - opening_resolution_score — resolution_score at time of market creation (locked forever)
-- opening_display_score — display_score at time of market creation (reference only)
 
 Market resolution (Phase 5) compares opening_resolution_score vs resolution_score
-at close. Never uses display_score for resolution.
+at close. Never uses heat_score for resolution.
 
 ---
 
@@ -119,7 +122,7 @@ Supabase project uses ES256 (asymmetric) JWTs — HS256 runtime verification alw
 |----------|---------|
 | oauth-initiate | Generates YouTube/Twitch OAuth URLs with HMAC-signed CSRF state |
 | oauth-callback | Verifies state, exchanges code for tokens, stores connection, triggers sync |
-| sync-platform-metrics | Fetches live data, computes heat_score, populates display_score + resolution_score |
+| sync-platform-metrics | Fetches live data, computes display_score (raw composite), populates heat_score + resolution_score |
 | disconnect-platform | Revokes OAuth tokens, deletes connection (cascades to metrics) |
 | resolve-markets | Resolves expired markets: compares opening_resolution_score vs current, distributes payouts (10% rake: 5% platform + 5% MM), handles voids/refunds, sends notifications |
 
@@ -195,8 +198,8 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
 - Markets: Open Markets + My Bets tabs, pool ratio bars, timeago countdowns
 - Betting: 4-step bottom sheet, join or create markets
 - Heat Score: live viewers + follower reach + live bonus (0–100)
-- Two-score system: display_score + resolution_score separated at DB level
-- Market snapshots: opening_resolution_score + opening_display_score on market create
+- Two-score system: heat_score + display_score + resolution_score at DB level (migration 013 renamed columns)
+- Market snapshots: opening_resolution_score + opening_heat_score on market create
 - pg_cron: syncs platform metrics every 5 minutes
 
 ### Completed (Phase 5 — Market Resolution)
@@ -248,11 +251,11 @@ Architecture:
 ### Phase 5 — Market Resolution ✓ COMPLETE (see above)
 
 ### Post Phase 5 — Promotions & Power-Ups
-These modify display_score ONLY — never resolution_score:
+These modify heat_score ONLY — never resolution_score:
 
 Promotions:
-- Quick Boost: 80 tokens → +8 display_score for 1 hour
-- Major Boost: 250 tokens → +20 display_score for 1 hour
+- Quick Boost: 80 tokens → +8 heat_score for 1 hour
+- Major Boost: 250 tokens → +20 heat_score for 1 hour
 - Spotlight Entry: 500 tokens → guaranteed Spotlight slot for 4 hours
 - Active market bonus: 1.5× multiplier on boosts if ≥200 tokens in open bets
 - Market Maker discount: 20% off promotions while market is open
@@ -260,8 +263,8 @@ Promotions:
 Power-Ups (used on any Market Maker):
 - Universe: 800 tokens — global animation with name visible to everyone (24h cooldown)
 - Galaxy: 300 tokens — name highlight for all followers (24h cooldown)
-- Instant +Popularity: 400 tokens — +12 display_score for 1 hour
-- Instant -Popularity: 350 tokens — -12 display_score for 1 hour (rival sabotage)
+- Instant +Popularity: 400 tokens — +12 heat_score for 1 hour
+- Instant -Popularity: 350 tokens — -12 heat_score for 1 hour (rival sabotage)
 - Black Hole: 250 tokens — cancels any active Universe on target
 
 ### Post Phase 5 — Challenges & Badges
@@ -289,7 +292,8 @@ Kick — no public API yet. Requires scraping solution or third-party provider.
 ## Token Economy Principles (read before touching any token logic)
 - Tokens are purely internal promotion fuel — no real-world cash value ever
 - Popularity score capped 0–100 always
-- display_score = what users see (can be modified by promotions/power-ups)
+- heat_score = what users see (can be modified by promotions/power-ups)
+- display_score = raw computed composite (never modified by promotions/power-ups)
 - resolution_score = objective truth (raw API data only, never modified)
 - 10% betting rake: 5% to platform, 5% to Market Maker pool
 - Integer balances only — no decimals in token_balances

@@ -31,7 +31,7 @@ final liveMetricsFeedProvider =
       .from('platform_metrics')
       .select('*, platform_connections(platform_username)')
       .eq('is_live', true)
-      .order('heat_score', ascending: false)
+      .order('display_score', ascending: false)
       .limit(50);
   return (res as List)
       .map((e) => PlatformMetric.fromJson(e as Map<String, dynamic>))
