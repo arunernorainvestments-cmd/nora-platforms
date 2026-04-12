@@ -25,6 +25,7 @@ class _MarketDetailScreenState extends ConsumerState<MarketDetailScreen> {
   String _selectedPosition = 'above'; // 'above' | 'below'
 
   void _openDrawer(String position) {
+    debugPrint('drawer opened: position=$position drawerOpen=true');
     setState(() {
       _selectedPosition = position;
       _drawerOpen = true;
@@ -67,17 +68,38 @@ class _MarketDetailScreenState extends ConsumerState<MarketDetailScreen> {
     );
   }
 
+  AppBar _buildAppBar(String title) => AppBar(
+        backgroundColor: AppTheme.background,
+        surfaceTintColor: Colors.transparent,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+          onPressed: () => context.pop(),
+        ),
+        title: Text(
+          title,
+          style: const TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final detailAsync = ref.watch(marketDetailProvider(widget.marketId));
     final screenWidth = MediaQuery.of(context).size.width;
 
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      body: detailAsync.when(
-        loading: () =>
-            const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
+    return detailAsync.when(
+      loading: () => Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: _buildAppBar(''),
+        body: const Center(child: CircularProgressIndicator()),
+      ),
+      error: (e, _) => Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: _buildAppBar('Market'),
+        body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -96,51 +118,31 @@ class _MarketDetailScreenState extends ConsumerState<MarketDetailScreen> {
             ],
           ),
         ),
-        data: (market) => Stack(
+      ),
+      data: (market) => Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: _buildAppBar(market.title),
+        body: Stack(
+          fit: StackFit.expand,
           children: [
-            // ── Main content + bottom bar ────────────���─────────────────────
+            // ── Main content + bottom bar ─────────────────────────────────
             Column(
               children: [
                 Expanded(
-                  child: CustomScrollView(
-                    slivers: [
-                      SliverAppBar(
-                        backgroundColor: AppTheme.background,
-                        surfaceTintColor: Colors.transparent,
-                        pinned: true,
-                        leading: IconButton(
-                          icon: const Icon(Icons.arrow_back,
-                              color: AppTheme.textPrimary),
-                          onPressed: () => context.pop(),
-                        ),
-                        title: Text(
-                          '@${market.creatorUsername}',
-                          style: const TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      SliverToBoxAdapter(
-                        child: Padding(
-                          padding:
-                              const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              _CreatorHeader(market: market),
-                              const SizedBox(height: 16),
-                              _ScoreSection(market: market),
-                              const SizedBox(height: 12),
-                              _CountdownTimer(endAt: market.endAt),
-                              const SizedBox(height: 12),
-                              _PoolSection(market: market),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _CreatorHeader(market: market),
+                        const SizedBox(height: 16),
+                        _ScoreSection(market: market),
+                        const SizedBox(height: 12),
+                        _CountdownTimer(endAt: market.endAt),
+                        const SizedBox(height: 12),
+                        _PoolSection(market: market),
+                      ],
+                    ),
                   ),
                 ),
                 _BottomBar(
@@ -150,7 +152,7 @@ class _MarketDetailScreenState extends ConsumerState<MarketDetailScreen> {
               ],
             ),
 
-            // ── Dim overlay when drawer is open ──────────────────���─────────
+            // ── Dim overlay when drawer is open ───────────────────────────
             if (_drawerOpen)
               GestureDetector(
                 onTap: _closeDrawer,
@@ -159,7 +161,7 @@ class _MarketDetailScreenState extends ConsumerState<MarketDetailScreen> {
                 ),
               ),
 
-            // ── Betting drawer — slides in from right ──────────────────���───
+            // ── Betting drawer — slides in from right ─────────────────────
             AnimatedPositioned(
               duration: const Duration(milliseconds: 260),
               curve: Curves.easeInOut,

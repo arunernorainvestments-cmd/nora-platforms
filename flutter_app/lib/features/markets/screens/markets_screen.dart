@@ -128,10 +128,7 @@ class _OpenMarketsTab extends ConsumerWidget {
                 itemBuilder: (context, i) => _MarketCard(
                   market: markets[i],
                   isLoggedIn: currentUser != null,
-                  onTap: () {
-                    debugPrint('navigating to /markets/${markets[i].id}');
-                    context.push('/markets/${markets[i].id}');
-                  },
+                  onTap: () => context.push('/markets/${markets[i].id}'),
                 ),
               ),
       ),
