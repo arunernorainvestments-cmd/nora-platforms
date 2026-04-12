@@ -136,11 +136,12 @@ class _ProfileBody extends StatelessWidget {
           ),
 
         // ── D) Platform Stats ────────────────────────────────────────────────
-        if (statsMetrics.isNotEmpty)
+        if (profile.connections.isNotEmpty)
           SliverToBoxAdapter(
             child: _PlatformStatsSection(
               metrics: statsMetrics,
               connections: profile.connections,
+              isMarketMaker: profile.isMarketMaker,
             ),
           ),
 
@@ -234,9 +235,15 @@ class _HeaderSection extends StatelessWidget {
             ),
           ],
 
-          // Heat Score
-          const SizedBox(height: 20),
-          _HeatScoreDisplay(score: heatScore),
+          // Heat Score — show whenever platforms are connected
+          if (profile.connections.isNotEmpty) ...[
+            const SizedBox(height: 20),
+            _HeatScoreDisplay(
+              value: profile.isMarketMaker
+                  ? heatScore.toStringAsFixed(1)
+                  : '---',
+            ),
+          ],
         ],
       ),
     );
@@ -244,8 +251,8 @@ class _HeaderSection extends StatelessWidget {
 }
 
 class _HeatScoreDisplay extends StatelessWidget {
-  final double score;
-  const _HeatScoreDisplay({required this.score});
+  final String value;
+  const _HeatScoreDisplay({required this.value});
 
   @override
   Widget build(BuildContext context) {
@@ -265,7 +272,7 @@ class _HeatScoreDisplay extends StatelessWidget {
               const Text('🔥', style: TextStyle(fontSize: 22)),
               const SizedBox(width: 8),
               Text(
-                score.toStringAsFixed(1),
+                value,
                 style: const TextStyle(
                   color: AppTheme.textPrimary,
                   fontSize: 30,
@@ -563,10 +570,12 @@ class _LiveCard extends StatelessWidget {
 class _PlatformStatsSection extends StatelessWidget {
   final List<PlatformMetric> metrics;
   final List<PlatformConnection> connections;
+  final bool isMarketMaker;
 
   const _PlatformStatsSection({
     required this.metrics,
     required this.connections,
+    required this.isMarketMaker,
   });
 
   @override
@@ -578,15 +587,18 @@ class _PlatformStatsSection extends StatelessWidget {
         children: [
           const _SectionHeader('Platform Stats'),
           const SizedBox(height: 12),
-          ...metrics.map((m) {
-            final matches =
-                connections.where((c) => c.platform == m.platform);
-            final conn = matches.isNotEmpty ? matches.first : null;
-            return _PlatformStatCard(
-              metric: m,
-              platformUsername: conn?.platformUsername,
-            );
-          }),
+          if (isMarketMaker)
+            ...metrics.map((m) {
+              final matches =
+                  connections.where((c) => c.platform == m.platform);
+              final conn = matches.isNotEmpty ? matches.first : null;
+              return _PlatformStatCard(
+                metric: m,
+                platformUsername: conn?.platformUsername,
+              );
+            })
+          else
+            ...connections.map((c) => _RedactedStatCard(connection: c)),
         ],
       ),
     );
@@ -711,6 +723,90 @@ class _PlatformStatCard extends StatelessWidget {
               _StatItem(
                   label: 'Heat Score',
                   value: metric.heatScore.toStringAsFixed(1)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RedactedStatCard extends StatelessWidget {
+  final PlatformConnection connection;
+  const _RedactedStatCard({required this.connection});
+
+  static const _brandColors = {
+    'twitch': Color(0xFF9146FF),
+    'youtube': Color(0xFFFF0000),
+  };
+  static const _platformLabels = {
+    'twitch': 'Twitch',
+    'youtube': 'YouTube',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        _brandColors[connection.platform] ?? AppTheme.textSecondary;
+    final label =
+        _platformLabels[connection.platform] ?? connection.platform;
+    final followerLabel =
+        connection.platform == 'youtube' ? 'Subscribers' : 'Followers';
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.cardBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(8),
+                  border:
+                      Border.all(color: color.withValues(alpha: 0.4)),
+                ),
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: color,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              if (connection.platformUsername != null) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '@${connection.platformUsername}',
+                    style: const TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 13,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 20,
+            runSpacing: 10,
+            children: [
+              _StatItem(label: followerLabel, value: '---'),
+              const _StatItem(label: 'Raw Score', value: '---'),
+              const _StatItem(label: 'Heat Score', value: '---'),
             ],
           ),
         ],
