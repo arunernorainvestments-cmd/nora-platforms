@@ -20,14 +20,14 @@ final publicProfileProvider =
 
   final profileId = profileData['id'] as String;
 
-  // 2. Fetch platform connections (may be restricted by RLS for other users)
+  // 2. Fetch platform connections via public view (no tokens exposed, is_active
+  //    filtered at DB level, publicly readable for all users)
   List<PlatformConnection> connections = [];
   try {
     final connData = await client
-        .from('platform_connections')
+        .from('public_platform_connections')
         .select('platform, platform_username, connected_at, is_active')
-        .eq('user_id', profileId)
-        .eq('is_active', true);
+        .eq('user_id', profileId);
     connections = (connData as List)
         .map((e) => PlatformConnection.fromJson(e as Map<String, dynamic>))
         .toList();
