@@ -293,6 +293,17 @@ final marketDetailProvider =
 
 // ─────────────────────────────────────────────────────────────────────────────
 
+/// Set of creator_ids whose platform_metrics row has is_live = true.
+/// Used client-side to power the "Live Now" filter on Open Markets.
+final liveCreatorIdsProvider =
+    FutureProvider.autoDispose<Set<String>>((ref) async {
+  final res = await Supabase.instance.client
+      .from('platform_metrics')
+      .select('user_id')
+      .eq('is_live', true);
+  return (res as List).map((e) => e['user_id'] as String).toSet();
+});
+
 final myBetsProvider =
     FutureProvider.autoDispose<List<MyBet>>((ref) async {
   final userId = Supabase.instance.client.auth.currentUser?.id;

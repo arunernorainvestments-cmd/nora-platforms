@@ -6,7 +6,7 @@ import '../../features/auth/screens/referral_screen.dart';
 import '../../features/auth/screens/signup_screen.dart';
 import '../../features/auth/providers/auth_provider.dart';
 import '../../features/home/screens/home_screen.dart';
-import '../../features/discover/screens/discover_screen.dart';
+import '../../features/search/screens/search_screen.dart';
 import '../../features/markets/screens/markets_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/profile/screens/public_profile_screen.dart';
@@ -89,8 +89,8 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const HomeScreen(),
           ),
           GoRoute(
-            path: '/discover',
-            builder: (context, state) => const DiscoverScreen(),
+            path: '/search',
+            builder: (context, state) => const SearchScreen(),
           ),
           GoRoute(
             path: '/markets',

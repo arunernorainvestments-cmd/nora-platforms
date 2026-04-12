@@ -68,7 +68,8 @@ class _OpenMarketsTab extends ConsumerStatefulWidget {
 }
 
 class _OpenMarketsTabState extends ConsumerState<_OpenMarketsTab> {
-  String? _selectedCategory; // null = All
+  String? _selectedCategory; // null = All, 'live' = Live Now
+  static const _liveKey = '__live__';
 
   static const _allCategories = [
     'Athlete', 'Influencer', 'Musician', 'Healthcare', 'Doctor', 'Comedian',
@@ -89,7 +90,11 @@ class _OpenMarketsTabState extends ConsumerState<_OpenMarketsTab> {
     return counts;
   }
 
-  List<MarketListing> _filtered(List<MarketListing> markets) {
+  List<MarketListing> _filtered(
+      List<MarketListing> markets, Set<String> liveIds) {
+    if (_selectedCategory == _liveKey) {
+      return markets.where((m) => liveIds.contains(m.creatorId)).toList();
+    }
     if (_selectedCategory == null) return markets;
     return markets
         .where((m) =>
@@ -98,10 +103,24 @@ class _OpenMarketsTabState extends ConsumerState<_OpenMarketsTab> {
         .toList();
   }
 
+  String _emptyMessage() {
+    if (_selectedCategory == _liveKey) return 'No live markets right now';
+    if (_selectedCategory == null) return 'No open markets yet';
+    return 'No $_selectedCategory markets';
+  }
+
+  String _emptySubtitle() {
+    if (_selectedCategory == _liveKey) return 'Check back when a creator goes live';
+    if (_selectedCategory == null) return 'Visit a Market Maker\'s profile to open one';
+    return 'Try another category';
+  }
+
   @override
   Widget build(BuildContext context) {
     final marketsAsync = ref.watch(openMarketsProvider);
+    final liveIdsAsync = ref.watch(liveCreatorIdsProvider);
     final currentUser = ref.watch(currentUserProvider);
+    final liveIds = liveIdsAsync.valueOrNull ?? {};
 
     return marketsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
@@ -125,15 +144,20 @@ class _OpenMarketsTabState extends ConsumerState<_OpenMarketsTab> {
       ),
       data: (markets) {
         final counts = _categoryCounts(markets);
-        final filtered = _filtered(markets);
+        final liveCount =
+            markets.where((m) => liveIds.contains(m.creatorId)).length;
+        final filtered = _filtered(markets, liveIds);
 
         return RefreshIndicator(
           color: AppTheme.primary,
           backgroundColor: AppTheme.surface,
-          onRefresh: () async => ref.invalidate(openMarketsProvider),
+          onRefresh: () async {
+            ref.invalidate(openMarketsProvider);
+            ref.invalidate(liveCreatorIdsProvider);
+          },
           child: Column(
             children: [
-              // ── Category filter chips ─────────────────────────────────
+              // ── Filter chips row ──────────────────────────────────────
               SizedBox(
                 height: 48,
                 child: ListView(
@@ -141,7 +165,17 @@ class _OpenMarketsTabState extends ConsumerState<_OpenMarketsTab> {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 12, vertical: 8),
                   children: [
-                    // "All" chip
+                    // Live Now chip — always first
+                    _FilterChip(
+                      label: '🔴 Live Now',
+                      count: liveCount,
+                      selected: _selectedCategory == _liveKey,
+                      dimmed: liveCount == 0,
+                      onTap: () =>
+                          setState(() => _selectedCategory = _liveKey),
+                    ),
+                    const SizedBox(width: 6),
+                    // All chip
                     _FilterChip(
                       label: 'All',
                       count: markets.length,
@@ -151,6 +185,7 @@ class _OpenMarketsTabState extends ConsumerState<_OpenMarketsTab> {
                           setState(() => _selectedCategory = null),
                     ),
                     const SizedBox(width: 6),
+                    // Category chips
                     ..._allCategories.map((cat) {
                       final count = counts[cat] ?? 0;
                       return Padding(
@@ -184,9 +219,7 @@ class _OpenMarketsTabState extends ConsumerState<_OpenMarketsTab> {
                                       color: AppTheme.textSecondary),
                                   const SizedBox(height: 16),
                                   Text(
-                                    _selectedCategory == null
-                                        ? 'No open markets yet'
-                                        : 'No $_selectedCategory markets',
+                                    _emptyMessage(),
                                     style: const TextStyle(
                                       color: AppTheme.textPrimary,
                                       fontSize: 18,
@@ -195,9 +228,7 @@ class _OpenMarketsTabState extends ConsumerState<_OpenMarketsTab> {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    _selectedCategory == null
-                                        ? 'Visit a Market Maker\'s profile to open one'
-                                        : 'Try another category',
+                                    _emptySubtitle(),
                                     style: const TextStyle(
                                         color: AppTheme.textSecondary),
                                   ),

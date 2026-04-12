@@ -5,6 +5,9 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../notifications/providers/notification_providers.dart';
+import '../../discover/providers/discover_providers.dart';
+import '../../profile/providers/platform_connection_providers.dart';
+import '../../profile/models/platform_metric.dart';
 import '../providers/home_providers.dart';
 
 class HomeScreen extends ConsumerWidget {
@@ -65,15 +68,47 @@ class HomeScreen extends ConsumerWidget {
           ref.invalidate(homeTokenBalanceProvider);
           ref.invalidate(spotlightCreatorsProvider);
           ref.invalidate(homeFamousCreatorsProvider);
+          ref.invalidate(famousCreatorsProvider);
+          ref.invalidate(risingCreatorsProvider);
+          ref.invalidate(liveUserIdsProvider);
+          ref.invalidate(liveMetricsFeedProvider);
         },
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 40),
-          children: const [
-            _WelcomeCard(),
-            SizedBox(height: 28),
-            _SpotlightSection(),
-            SizedBox(height: 28),
-            _FamousCarouselSection(),
+        child: const CustomScrollView(
+          slivers: [
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
+                child: Column(
+                  children: [
+                    _WelcomeCard(),
+                    SizedBox(height: 28),
+                    _SpotlightSection(),
+                    SizedBox(height: 28),
+                    _FamousCarouselSection(),
+                    SizedBox(height: 28),
+                  ],
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: _RisingCarouselSection(),
+              ),
+            ),
+            SliverToBoxAdapter(child: SizedBox(height: 28)),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: _HomeSectionLabel(
+                  title: "Who's Live",
+                  subtitle: 'Creators streaming right now',
+                ),
+              ),
+            ),
+            SliverToBoxAdapter(child: SizedBox(height: 12)),
+            _WhoIsLiveSliver(),
+            SliverToBoxAdapter(child: SizedBox(height: 40)),
           ],
         ),
       ),
@@ -452,7 +487,6 @@ class _FamousCreatorTile extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // Avatar
           Container(
             width: 44,
             height: 44,
@@ -473,7 +507,6 @@ class _FamousCreatorTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          // Name
           Text(
             creator.name,
             style: const TextStyle(
@@ -486,7 +519,6 @@ class _FamousCreatorTile extends StatelessWidget {
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 3),
-          // Followers
           Text(
             _formatFollowers(creator.totalFollowers),
             style: const TextStyle(
@@ -495,7 +527,6 @@ class _FamousCreatorTile extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 3),
-          // Platform count
           Text(
             '${creator.platformCount} platform${creator.platformCount == 1 ? '' : 's'}',
             style: const TextStyle(
@@ -508,6 +539,431 @@ class _FamousCreatorTile extends StatelessWidget {
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RISING CREATORS CAROUSEL
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _RisingCarouselSection extends ConsumerWidget {
+  const _RisingCarouselSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final creatorsAsync = ref.watch(risingCreatorsProvider);
+    final liveIds = ref.watch(liveUserIdsProvider).valueOrNull ?? {};
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionHeader(
+          title: '⚡ Rising',
+          subtitle: 'Market Makers gaining traction',
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 120,
+          child: creatorsAsync.when(
+            loading: () => const _CarouselShimmer(),
+            error: (_, __) => const _CarouselError(),
+            data: (creators) {
+              if (creators.isEmpty) {
+                return const Center(
+                  child: Text(
+                    'No rising creators yet',
+                    style: TextStyle(color: AppTheme.textSecondary),
+                  ),
+                );
+              }
+              return ListView.builder(
+                scrollDirection: Axis.horizontal,
+                itemCount: creators.length,
+                itemBuilder: (context, i) => _RisingCreatorTile(
+                  creator: creators[i],
+                  isLive: liveIds.contains(creators[i].id),
+                ),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _RisingCreatorTile extends StatelessWidget {
+  final RisingCreator creator;
+  final bool isLive;
+  const _RisingCreatorTile({
+    required this.creator,
+    this.isLive = false,
+  });
+
+  Color _avatarColor() {
+    const palette = [
+      Color(0xFF6C63FF), Color(0xFF00C896), Color(0xFFFF6B35),
+      Color(0xFFEE1D52), Color(0xFF9146FF), Color(0xFFFFD700),
+      Color(0xFF00BCD4),
+    ];
+    final label = creator.displayLabel;
+    final index = label.codeUnits.fold(0, (sum, c) => sum + c) % palette.length;
+    return palette[index];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _avatarColor();
+    final label = creator.displayLabel;
+    return Container(
+      width: 110,
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: isLive
+              ? AppTheme.danger.withValues(alpha: 0.5)
+              : AppTheme.cardBorder,
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
+                ),
+                child: Center(
+                  child: Text(
+                    label.isNotEmpty ? label[0].toUpperCase() : '?',
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+                ),
+              ),
+              if (isLive)
+                Positioned(
+                  right: -2,
+                  top: -2,
+                  child: Container(
+                    width: 10,
+                    height: 10,
+                    decoration: BoxDecoration(
+                      color: AppTheme.danger,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppTheme.background, width: 1.5),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.w600,
+              fontSize: 12,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 3),
+          Text(
+            '${creator.availableTokens} tokens',
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 10,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WHO'S LIVE — sliver list
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _WhoIsLiveSliver extends ConsumerWidget {
+  const _WhoIsLiveSliver();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final feedAsync = ref.watch(liveMetricsFeedProvider);
+
+    return feedAsync.when(
+      loading: () => const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: _LiveShimmer(),
+        ),
+      ),
+      error: (_, __) => const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16),
+          child: Center(
+            child: Text(
+              'Could not load live creators',
+              style: TextStyle(color: AppTheme.textSecondary),
+            ),
+          ),
+        ),
+      ),
+      data: (metrics) {
+        if (metrics.isEmpty) {
+          return const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 0),
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.live_tv_outlined,
+                          size: 40, color: AppTheme.textSecondary),
+                      SizedBox(height: 12),
+                      Text(
+                        'No creators are live right now',
+                        style: TextStyle(color: AppTheme.textSecondary),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        }
+        return SliverList(
+          delegate: SliverChildBuilderDelegate(
+            (context, i) => Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: _LiveFeedCard(metric: metrics[i]),
+            ),
+            childCount: metrics.length,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _LiveFeedCard extends StatelessWidget {
+  final PlatformMetric metric;
+  const _LiveFeedCard({required this.metric});
+
+  String _formatViewers(int count) {
+    if (count >= 1000000) return '${(count / 1000000).toStringAsFixed(1)}M';
+    if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}K';
+    return count.toString();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final platformLabel = metric.platform == 'youtube' ? 'YT' : 'Twitch';
+    const platformColors = {
+      'YT': Color(0xFFFF4444),
+      'Twitch': Color(0xFF9146FF),
+    };
+    final platformColor = platformColors[platformLabel] ?? AppTheme.textSecondary;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.cardBorder),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                // Platform chip
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: platformColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                    border:
+                        Border.all(color: platformColor.withValues(alpha: 0.35)),
+                  ),
+                  child: Text(
+                    platformLabel,
+                    style: TextStyle(
+                      color: platformColor,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    metric.platformUsername != null
+                        ? '@${metric.platformUsername}'
+                        : 'Unknown',
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 15,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Heat score
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: AppTheme.primary.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.local_fire_department,
+                          size: 12, color: AppTheme.primary),
+                      const SizedBox(width: 3),
+                      Text(
+                        metric.heatScore.toStringAsFixed(1),
+                        style: const TextStyle(
+                          color: AppTheme.primary,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            if (metric.streamTitle != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                metric.streamTitle!,
+                style: const TextStyle(
+                    color: AppTheme.textPrimary, fontSize: 14),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+            if (metric.streamCategory != null) ...[
+              const SizedBox(height: 4),
+              Text(
+                metric.streamCategory!,
+                style: const TextStyle(
+                    color: AppTheme.textSecondary, fontSize: 12),
+              ),
+            ],
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                const Icon(Icons.remove_red_eye_outlined,
+                    size: 14, color: AppTheme.danger),
+                const SizedBox(width: 4),
+                Text(
+                  _formatViewers(metric.liveViewerCount),
+                  style: const TextStyle(
+                    color: AppTheme.danger,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Text(
+                  'watching',
+                  style:
+                      TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LiveShimmer extends StatelessWidget {
+  const _LiveShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer.fromColors(
+      baseColor: AppTheme.surface,
+      highlightColor: AppTheme.cardBorder,
+      child: Column(
+        children: List.generate(
+          3,
+          (_) => Container(
+            margin: const EdgeInsets.only(bottom: 12),
+            height: 100,
+            decoration: BoxDecoration(
+              color: AppTheme.surface,
+              borderRadius: BorderRadius.circular(16),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SECTION LABEL (for mid-screen sections with no subtitle)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _HomeSectionLabel extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  const _HomeSectionLabel({required this.title, required this.subtitle});
+
+  @override
+  Widget build(BuildContext context) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 17,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SHARED WIDGETS
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _CarouselShimmer extends StatelessWidget {
   const _CarouselShimmer();
@@ -546,10 +1002,6 @@ class _CarouselError extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SHARED WIDGETS
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _SectionHeader extends StatelessWidget {
   final String title;
@@ -693,7 +1145,6 @@ class _NotificationSheet extends ConsumerWidget {
           ),
           child: Column(
             children: [
-              // Drag handle + header
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
                 child: Column(
@@ -774,7 +1225,6 @@ class _NotificationSheet extends ConsumerWidget {
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Type icon
                                 Container(
                                   width: 36,
                                   height: 36,
@@ -786,7 +1236,6 @@ class _NotificationSheet extends ConsumerWidget {
                                       color: color, size: 18),
                                 ),
                                 const SizedBox(width: 12),
-                                // Title + body + time
                                 Expanded(
                                   child: Column(
                                     crossAxisAlignment:
