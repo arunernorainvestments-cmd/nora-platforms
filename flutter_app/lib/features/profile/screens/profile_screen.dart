@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/utils/open_url.dart';
 import '../../../core/theme/app_theme.dart';
@@ -301,6 +302,26 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     ],
                   ),
                 ),
+                const SizedBox(height: 12),
+
+                // ── Preview Profile button ─────────────────────────────────
+                if (user != null)
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () =>
+                          context.push('/u/$displayUsername'),
+                      icon: const Icon(Icons.visibility_outlined, size: 18),
+                      label: const Text('Preview Profile'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.primary,
+                        side: const BorderSide(color: AppTheme.primary),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: 28),
 
                 // ── Market Maker section ──────────────────────────────────

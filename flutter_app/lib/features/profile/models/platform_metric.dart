@@ -6,6 +6,7 @@ class PlatformMetric {
   final String? streamTitle;
   final String? streamCategory;
   final double displayScore;
+  final double heatScore;
   final String? platformUsername;
 
   const PlatformMetric({
@@ -16,6 +17,7 @@ class PlatformMetric {
     this.streamTitle,
     this.streamCategory,
     required this.displayScore,
+    this.heatScore = 0.0,
     this.platformUsername,
   });
 
@@ -29,6 +31,7 @@ class PlatformMetric {
       streamTitle: json['stream_title'] as String?,
       streamCategory: json['stream_category'] as String?,
       displayScore: (json['display_score'] as num?)?.toDouble() ?? 0.0,
+      heatScore: (json['heat_score'] as num?)?.toDouble() ?? 0.0,
       platformUsername: conn?['platform_username'] as String?,
     );
   }
