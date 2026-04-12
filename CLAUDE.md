@@ -79,6 +79,11 @@ All tables have RLS enabled. Migrations run in order:
 | 004 | bet_placed/referral_bonus constraints; triggers: pool update, token deduct, notify |
 | 005 | platform_connections, platform_metrics; RLS; heat score → spotlight trigger |
 | 006 | display_score + resolution_score on platform_metrics; opening_resolution_score + opening_display_score on markets; updated spotlight trigger |
+| 007 | token_purchases table for Stripe integration |
+| 008 | Bug fixes and schema corrections |
+| 009 | Market resolution: resolved_at, resolution_result, resolved_outcome on markets; 'refund' added to token_transactions type; 'bet_refunded'/'market_resolved' added to notifications type |
+| 010 | duration_label on markets |
+| 011 | Re-applies token_transactions type constraint with 'refund' (applied directly in SQL Editor) |
 
 ### Key RLS rules
 - token_balances — service role only for writes
@@ -116,6 +121,7 @@ Supabase project uses ES256 (asymmetric) JWTs — HS256 runtime verification alw
 | oauth-callback | Verifies state, exchanges code for tokens, stores connection, triggers sync |
 | sync-platform-metrics | Fetches live data, computes heat_score, populates display_score + resolution_score |
 | disconnect-platform | Revokes OAuth tokens, deletes connection (cascades to metrics) |
+| resolve-markets | Resolves expired markets: compares opening_resolution_score vs current, distributes payouts (10% rake: 5% platform + 5% MM), handles voids/refunds, sends notifications |
 
 ### Deploying edge functions
 Edge functions do NOT auto-deploy from GitHub. Must deploy manually:
@@ -193,6 +199,22 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
 - Market snapshots: opening_resolution_score + opening_display_score on market create
 - pg_cron: syncs platform metrics every 5 minutes
 
+### Completed (Phase 5 — Market Resolution)
+- resolve-markets edge function: resolves expired markets, distributes payouts, handles voids
+- Resolution logic: opening_resolution_score vs current resolution_score (above/below/tie→refund)
+- Void conditions: missing metrics, tied score, or no bets on the winning side → full refund
+- Payout: 90% of pool to winners proportional to stake; 5% to platform, 5% to Market Maker
+- token_transactions type constraint updated to include 'refund' (migration 011)
+- Market detail screen: countdown timer now shows correct state per market.status:
+  - open + time remaining → "Closes in HH:MM:SS"
+  - open + time expired → "Resolving..." (waiting for cron)
+  - resolved → "Resolved at HH:MM"
+  - voided → "Market voided / Refunded"
+- Bet blocking: Above/Below buttons and drawer confirm button disabled when:
+  - market.status != 'open'
+  - market.endAt ≤ 15 seconds away (live countdown enforced by StatefulWidget timer)
+- MarketDetail model now includes resolvedAt (DateTime?) and resolutionResult (String?)
+
 ### Known Issues / Notes
 - YouTube OAuth is in Google Testing mode — only whitelisted emails can connect.
   Must submit for Google verification before public launch.
@@ -201,6 +223,7 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
 - Profile pictures deferred: avatar comes from connected social account (not yet built).
   Currently shows first letter of username. Do not add manual upload — avatar must
   always come from connected platform.
+- resolve-markets edge function must be deployed manually (not auto-deployed from GitHub).
 
 ---
 
@@ -222,15 +245,7 @@ Architecture:
 - Stripe webhook endpoint: https://cceisywxwhgljdpisjrl.supabase.co/functions/v1/stripe-webhook
 - Test with Stripe test card: 4242 4242 4242 4242
 
-### Phase 5 — Market Resolution
-- Scheduled job to detect expired markets
-- Compare opening_resolution_score vs current resolution_score
-- Determine winner, distribute pool minus platform fee (10% rake)
-- 5% to platform, 5% to Market Maker pool
-- Notify all participants
-- Key decisions needed before building: what metric determines winner,
-  what happens if creator disconnects platform before market closes,
-  what happens if no bets on one side
+### Phase 5 — Market Resolution ✓ COMPLETE (see above)
 
 ### Post Phase 5 — Promotions & Power-Ups
 These modify display_score ONLY — never resolution_score:
