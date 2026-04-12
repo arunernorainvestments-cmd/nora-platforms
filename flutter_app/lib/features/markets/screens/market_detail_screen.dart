@@ -89,6 +89,7 @@ class _MarketDetailScreenState extends ConsumerState<MarketDetailScreen> {
   Widget build(BuildContext context) {
     final detailAsync = ref.watch(marketDetailProvider(widget.marketId));
     final screenWidth = MediaQuery.of(context).size.width;
+    final drawerWidth = screenWidth * 0.88;
 
     return detailAsync.when(
       loading: () => Scaffold(
@@ -162,20 +163,24 @@ class _MarketDetailScreenState extends ConsumerState<MarketDetailScreen> {
               ),
 
             // ── Betting drawer — slides in from right ─────────────────────
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 260),
-              curve: Curves.easeInOut,
-              right: _drawerOpen ? 0 : -screenWidth,
-              top: 0,
-              bottom: 0,
-              width: screenWidth * 0.88,
-              child: _BettingDrawer(
-                market: market,
-                selectedPosition: _selectedPosition,
-                onPositionChange: (p) =>
-                    setState(() => _selectedPosition = p),
-                onClose: _closeDrawer,
-                onConfirm: (amount) => _confirmBet(market, amount),
+            Align(
+              alignment: Alignment.centerRight,
+              child: AnimatedSlide(
+                offset: _drawerOpen ? Offset.zero : const Offset(1, 0),
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeInOut,
+                child: SizedBox(
+                  width: drawerWidth,
+                  height: double.infinity,
+                  child: _BettingDrawer(
+                    market: market,
+                    selectedPosition: _selectedPosition,
+                    onPositionChange: (p) =>
+                        setState(() => _selectedPosition = p),
+                    onClose: _closeDrawer,
+                    onConfirm: (amount) => _confirmBet(market, amount),
+                  ),
+                ),
               ),
             ),
           ],
