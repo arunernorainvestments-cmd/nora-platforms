@@ -5,6 +5,8 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../markets/widgets/bet_bottom_sheet.dart';
+import '../../promotions/widgets/power_ups_sheet.dart';
+import '../../promotions/widgets/promotions_sheet.dart';
 import '../models/platform_connection.dart';
 import '../models/platform_metric.dart';
 import '../models/public_profile_data.dart';
@@ -335,24 +337,42 @@ class _ActionSection extends StatelessWidget {
     required this.onRefresh,
   });
 
-  void _showPromoteSnackbar(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Promotions coming soon!'),
-        backgroundColor: AppTheme.surface,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: const BorderSide(color: AppTheme.cardBorder),
-        ),
-      ),
-    );
+  void _onPromoteTap(BuildContext context) {
+    if (isOwnProfile) {
+      showPromotionsSheet(context, targetUserId: profile.id);
+    } else {
+      final currentUser = Supabase.instance.client.auth.currentUser;
+      if (currentUser == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Sign in to use power-ups'),
+            backgroundColor: AppTheme.surface,
+            behavior: SnackBarBehavior.floating,
+            action: SnackBarAction(
+              label: 'Sign In',
+              textColor: AppTheme.primary,
+              onPressed: () => context.go('/login'),
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: const BorderSide(color: AppTheme.cardBorder),
+            ),
+          ),
+        );
+        return;
+      }
+      showPowerUpsSheet(
+        context,
+        targetUserId: profile.id,
+        targetUsername: profile.username,
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final promoteButton = OutlinedButton(
-      onPressed: () => _showPromoteSnackbar(context),
+      onPressed: () => _onPromoteTap(context),
       style: OutlinedButton.styleFrom(
         foregroundColor: AppTheme.primary,
         side: const BorderSide(color: AppTheme.primary),

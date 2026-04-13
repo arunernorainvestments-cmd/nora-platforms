@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/utils/open_url.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../promotions/widgets/promotions_sheet.dart';
 import '../models/platform_connection.dart';
 import '../providers/platform_connection_providers.dart';
 import '../providers/profile_providers.dart';
@@ -347,17 +348,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     width: double.infinity,
                     child: OutlinedButton.icon(
                       onPressed: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: const Text('Promotions coming soon!'),
-                            backgroundColor: AppTheme.surface,
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              side: const BorderSide(color: AppTheme.cardBorder),
-                            ),
-                          ),
-                        );
+                        final userId =
+                            Supabase.instance.client.auth.currentUser?.id;
+                        if (userId == null) return;
+                        showPromotionsSheet(context, targetUserId: userId);
                       },
                       icon: const Icon(Icons.rocket_launch_outlined, size: 18),
                       label: const Text('Promote'),

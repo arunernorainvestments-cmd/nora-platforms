@@ -202,6 +202,15 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
 - Market snapshots: opening_resolution_score + opening_heat_score on market create
 - pg_cron: syncs platform metrics every 5 minutes
 
+### Completed (Phase 4 — Stripe Token Purchases)
+- create-checkout-session edge function: validates auth, creates Stripe hosted checkout, inserts pending token_purchases row
+- stripe-webhook edge function: verifies Stripe HMAC signature, idempotency check, credits tokens via increment_token_balance RPC, logs to token_transactions
+- token_purchases table (migration 007): tracks pending/completed purchases with stripe_session_id
+- Wallet screen: "Get More Tokens" bottom sheet with all 4 package cards (Starter/Popular/Pro/Elite)
+- Deep link handling: /wallet?purchase=success and /wallet?purchase=cancelled with snackbar feedback
+- Secrets required: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET (set in Supabase Dashboard)
+- Stripe webhook endpoint: https://cceisywxwhgljdpisjrl.supabase.co/functions/v1/stripe-webhook
+
 ### Completed (Phase 5 — Market Resolution)
 - resolve-markets edge function: resolves expired markets, distributes payouts, handles voids
 - Resolution logic: opening_resolution_score vs current resolution_score (above/below/tie→refund)
@@ -238,7 +247,33 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
   to avoid RLS block — view exposes only safe columns, filtered to is_active=true at DB level
 - "Preview Profile" button added to logged-in profile screen → pushes /u/:username
 - "Promote" button added below Market Maker dashboard on logged-in profile screen
-  (only visible when isMarketMaker == true); shows "Promotions coming soon!" snackbar
+  (only visible when isMarketMaker == true); now opens Promotions sheet (Phase 6)
+
+### Completed (Phase 6 — Promotions & Power-Ups)
+- Migration 014: active_boosts table — tracks all time-limited heat_score modifications and
+  cosmetic effects; RLS allows activator/target to read; all writes via service role
+- apply-promotion edge function: auth, validates boost type, enforces self-only constraint,
+  cooldown checks (universe/galaxy), black_hole cancellation logic, discount + multiplier
+  computation, token deduction via increment_token_balance RPC, active_boosts insert,
+  token_transactions log, triggers immediate sync-platform-metrics for target user
+- sync-platform-metrics updated: heat_score = clamp(display_score + sum(active boost deltas), 0, 100)
+  — expired/cancelled boosts automatically excluded; display_score + resolution_score unchanged
+- Promotions sheet (lib/features/promotions/widgets/promotions_sheet.dart):
+  - Self-boost only (own profile): Quick Boost, Major Boost, Spotlight Entry
+  - Shows 20% discount banner if user has an open market
+  - Shows 1.5× multiplier banner if ≥200 tokens in open bets on their market
+  - Strikethrough original price when discount active
+- Power-Ups sheet (lib/features/promotions/widgets/power_ups_sheet.dart):
+  - Used on any other Market Maker's public profile
+  - Universe (800T), Galaxy (300T), +Popularity (400T), -Popularity (350T), Black Hole (250T)
+  - Black Hole card disabled if target has no active Universe
+  - Cooldown displayed when Universe/Galaxy already active on target by current user
+- Promote button on public profile (own) → Promotions sheet
+- Promote button on public profile (other MM) → Power-Ups sheet
+- Promote button on logged-in profile screen → Promotions sheet
+- Boost types: quick_boost, major_boost, spotlight_entry (self); instant_plus, instant_minus,
+  universe, galaxy, black_hole (power-ups on any MM)
+- Must deploy: apply-promotion edge function + sync-platform-metrics (updated) + migration 014
 
 ### Known Issues / Notes
 - YouTube OAuth is in Google Testing mode — only whitelisted emails can connect.
@@ -254,40 +289,11 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
 
 ## Deferred Features — Do Not Build Until Instructed
 
-### Phase 4 — Stripe Token Purchases
-Token packages (exact values — do not change):
-- Starter: 120 tokens – $0.99
-- Popular: 650 tokens – $4.99
-- Pro: 1,650 tokens – $9.99
-- Elite: 3,500 tokens – $19.99
-
-Architecture:
-- Edge function: create-checkout-session (creates Stripe hosted checkout, returns URL)
-- Edge function: stripe-webhook (verifies signature, credits tokens, records transaction)
-- New table: token_purchases (migration 007)
-- Flutter: Buy Tokens UI in Wallet screen, deep link /wallet?purchase=success
-- New secrets needed: STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET
-- Stripe webhook endpoint: https://cceisywxwhgljdpisjrl.supabase.co/functions/v1/stripe-webhook
-- Test with Stripe test card: 4242 4242 4242 4242
+### Phase 4 — Stripe Token Purchases ✓ COMPLETE (see Completed section above)
 
 ### Phase 5 — Market Resolution ✓ COMPLETE (see above)
 
-### Post Phase 5 — Promotions & Power-Ups
-These modify heat_score ONLY — never resolution_score:
-
-Promotions:
-- Quick Boost: 80 tokens → +8 heat_score for 1 hour
-- Major Boost: 250 tokens → +20 heat_score for 1 hour
-- Spotlight Entry: 500 tokens → guaranteed Spotlight slot for 4 hours
-- Active market bonus: 1.5× multiplier on boosts if ≥200 tokens in open bets
-- Market Maker discount: 20% off promotions while market is open
-
-Power-Ups (used on any Market Maker):
-- Universe: 800 tokens — global animation with name visible to everyone (24h cooldown)
-- Galaxy: 300 tokens — name highlight for all followers (24h cooldown)
-- Instant +Popularity: 400 tokens — +12 heat_score for 1 hour
-- Instant -Popularity: 350 tokens — -12 heat_score for 1 hour (rival sabotage)
-- Black Hole: 250 tokens — cancels any active Universe on target
+### Post Phase 5 — Promotions & Power-Ups ✓ COMPLETE (Phase 6)
 
 ### Post Phase 5 — Challenges & Badges
 - Daily/weekly/monthly challenge tracks

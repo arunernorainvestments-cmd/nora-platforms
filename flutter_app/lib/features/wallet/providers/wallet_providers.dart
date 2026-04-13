@@ -90,6 +90,7 @@ class TokenTransaction {
         'promoted' => '📣',
         'purchased' => '🛒',
         'verification_bonus' => '✅',
+        'refund' => '↩️',
         _ => '🪙',
       };
 
@@ -97,9 +98,10 @@ class TokenTransaction {
         'signup_bonus' => 'Signup Bonus',
         'bet_won' => 'Bet Won',
         'bet_lost' => 'Bet Lost',
-        'promoted' => 'Promoted Creator',
+        'promoted' => 'Promotion',
         'purchased' => 'Tokens Purchased',
         'verification_bonus' => 'Platform Connected',
+        'refund' => 'Market Refund',
         _ => 'Token Activity',
       };
 

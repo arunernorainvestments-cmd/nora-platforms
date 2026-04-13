@@ -122,8 +122,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
           ? (metrics.subscriberCount ?? 0)
           : metrics.followers;
 
-      // heat_score: display_score for now; future phases add promotion modifiers
-      const heatScore = displayScore;
+      // heat_score: display_score + sum of all active (non-cancelled, non-expired) boost deltas
+      // Clamped 0–100. This is the number shown in all UI.
+      const now = new Date().toISOString();
+      const { data: activeBoosts } = await supabase
+        .from('active_boosts')
+        .select('heat_score_delta')
+        .eq('target_user_id', conn.user_id)
+        .eq('is_cancelled', false)
+        .or(`expires_at.is.null,expires_at.gt.${now}`);
+
+      // Only sum non-null, numeric deltas (excludes cosmetic-only boosts with delta=0)
+      const boostSum = (activeBoosts ?? []).reduce(
+        (acc: number, b: { heat_score_delta: number | null }) =>
+          acc + (typeof b.heat_score_delta === 'number' ? b.heat_score_delta : 0),
+        0,
+      );
+
+      const heatScore = Math.min(100, Math.max(0, displayScore + boostSum));
 
       const { error: upsertErr } = await supabase
         .from('platform_metrics')
