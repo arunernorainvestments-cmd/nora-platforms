@@ -9,6 +9,7 @@ import '../../discover/providers/discover_providers.dart';
 import '../../profile/providers/platform_connection_providers.dart';
 import '../../profile/models/platform_metric.dart';
 import '../providers/home_providers.dart';
+import '../widgets/home_ticker.dart';
 
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
@@ -75,6 +76,8 @@ class HomeScreen extends ConsumerWidget {
         },
         child: const CustomScrollView(
           slivers: [
+            // Persistent ticker — active promotions + Heat Score leaders
+            SliverToBoxAdapter(child: HomeTicker()),
             SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(16, 16, 16, 0),

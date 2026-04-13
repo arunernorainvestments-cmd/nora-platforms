@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/constants/creator_categories.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/active_boost.dart';
 import '../providers/promotion_providers.dart';
@@ -35,10 +36,7 @@ void showPowerUpsSheet(
 class _PowerUpsSheet extends ConsumerStatefulWidget {
   final String targetUserId;
   final String targetUsername;
-  const _PowerUpsSheet({
-    required this.targetUserId,
-    required this.targetUsername,
-  });
+  const _PowerUpsSheet({required this.targetUserId, required this.targetUsername});
 
   @override
   ConsumerState<_PowerUpsSheet> createState() => _PowerUpsSheetState();
@@ -47,32 +45,28 @@ class _PowerUpsSheet extends ConsumerStatefulWidget {
 class _PowerUpsSheetState extends ConsumerState<_PowerUpsSheet> {
   String? _loadingType;
 
-  Future<void> _apply(String boostType) async {
+  Future<void> _apply(String boostType, {String? category}) async {
     if (_loadingType != null) return;
     setState(() => _loadingType = boostType);
     final messenger = ScaffoldMessenger.of(context);
     try {
+      final body = boostType == 'super_massive_black_hole'
+          ? {'boost_type': boostType, 'category': category}
+          : {'boost_type': boostType, 'target_user_id': widget.targetUserId};
+
       final res = await Supabase.instance.client.functions.invoke(
         'apply-promotion',
-        body: {
-          'boost_type': boostType,
-          'target_user_id': widget.targetUserId,
-        },
+        body: body,
       );
-      if (res.data?['error'] != null) {
-        throw Exception(res.data['error'] as String);
-      }
+      if (res.data?['error'] != null) throw Exception(res.data['error'] as String);
       if (mounted) {
         Navigator.of(context).pop();
         messenger.showSnackBar(
           SnackBar(
-            content: Text(_successMessage(boostType, widget.targetUsername)),
-            backgroundColor: _isPositive(boostType)
-                ? AppTheme.success
-                : AppTheme.danger,
+            content: Text(_successMessage(boostType, category: category)),
+            backgroundColor: _isPositive(boostType) ? AppTheme.success : AppTheme.danger,
             behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
       }
@@ -83,8 +77,7 @@ class _PowerUpsSheetState extends ConsumerState<_PowerUpsSheet> {
             content: Text(e.toString().replaceFirst('Exception: ', '')),
             backgroundColor: AppTheme.danger,
             behavior: SnackBarBehavior.floating,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
           ),
         );
       }
@@ -93,22 +86,32 @@ class _PowerUpsSheetState extends ConsumerState<_PowerUpsSheet> {
     }
   }
 
+  Future<void> _pickCategoryAndApplySMBH() async {
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (ctx) => const _CategoryPickerDialog(),
+    );
+    if (selected != null && mounted) {
+      await _apply('super_massive_black_hole', category: selected);
+    }
+  }
+
   bool _isPositive(String type) =>
       type == 'universe' || type == 'galaxy' || type == 'instant_plus';
 
-  String _successMessage(String type, String username) => switch (type) {
-        'universe' => 'Universe launched on @$username!',
-        'galaxy' => 'Galaxy highlight sent to @$username!',
-        'instant_plus' => '+Popularity applied to @$username!',
-        'instant_minus' => '-Popularity applied to @$username.',
-        'black_hole' => 'Black Hole cancelled @$username\'s Universe.',
+  String _successMessage(String type, {String? category}) => switch (type) {
+        'universe' => 'Universe launched on @${widget.targetUsername}!',
+        'galaxy' => 'Galaxy sent for @${widget.targetUsername}!',
+        'instant_plus' => '+Popularity applied to @${widget.targetUsername}!',
+        'instant_minus' => '-Popularity applied to @${widget.targetUsername}.',
+        'black_hole' => 'Black Hole cancelled all effects on @${widget.targetUsername}.',
+        'super_massive_black_hole' => 'Super Massive Black Hole wiped all Galaxy effects in $category!',
         _ => 'Power-up applied!',
       };
 
   @override
   Widget build(BuildContext context) {
-    final boostsAsync =
-        ref.watch(activeBoostsProvider(widget.targetUserId));
+    final boostsAsync = ref.watch(activeBoostsProvider(widget.targetUserId));
 
     return SafeArea(
       child: Padding(
@@ -117,11 +120,9 @@ class _PowerUpsSheetState extends ConsumerState<_PowerUpsSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Handle
             Center(
               child: Container(
-                width: 40,
-                height: 4,
+                width: 40, height: 4,
                 decoration: BoxDecoration(
                   color: AppTheme.cardBorder,
                   borderRadius: BorderRadius.circular(2),
@@ -129,13 +130,10 @@ class _PowerUpsSheetState extends ConsumerState<_PowerUpsSheet> {
               ),
             ),
             const SizedBox(height: 20),
-
             Text(
               'Power-Ups for @${widget.targetUsername}',
               style: const TextStyle(
-                color: AppTheme.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+                color: AppTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 4),
@@ -144,7 +142,6 @@ class _PowerUpsSheetState extends ConsumerState<_PowerUpsSheet> {
               style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 20),
-
             boostsAsync.when(
               loading: () => const Center(
                 child: Padding(
@@ -164,89 +161,152 @@ class _PowerUpsSheetState extends ConsumerState<_PowerUpsSheet> {
   Widget _buildCards({required List<ActiveBoost> activeBoosts}) {
     final currentUserId = Supabase.instance.client.auth.currentUser?.id;
 
-    // Cooldown checks: does this user already have an active universe/galaxy on target?
     bool hasCooldown(String type) => activeBoosts.any(
-          (b) =>
-              b.boostType == type &&
-              b.activatedByUserId == currentUserId &&
-              b.isActive,
+          (b) => b.boostType == type && b.activatedByUserId == currentUserId && b.isActive,
         );
 
-    // Black Hole is only available if target has an active Universe (by anyone)
-    final targetHasUniverse = activeBoosts.any(
-      (b) => b.boostType == 'universe' && b.isActive,
+    final targetHasUniverseOrGalaxy = activeBoosts.any(
+      (b) => (b.boostType == 'universe' || b.boostType == 'galaxy') && b.isActive,
     );
 
-    return Column(
-      children: [
-        // ── Positive boosts ────────────────────────────────────────────────
-        const _SectionLabel(label: 'Positive'),
-        const SizedBox(height: 8),
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          // ── Positive ────────────────────────────────────────────────────
+          const _SectionLabel(label: 'POSITIVE'),
+          const SizedBox(height: 8),
 
-        _PowerUpCard(
-          emoji: '🌌',
-          title: 'Universe',
-          subtitle: 'Global animation — your name visible to everyone for 24h',
-          cost: 800,
-          isLoading: _loadingType == 'universe',
-          disabled: _loadingType != null && _loadingType != 'universe',
-          cooldownActive: hasCooldown('universe'),
-          onTap: () => _apply('universe'),
+          _PowerUpCard(
+            emoji: '🌌',
+            title: 'Universe',
+            subtitle: 'Animated banner visible to everyone for 4 hours',
+            cost: 800,
+            isLoading: _loadingType == 'universe',
+            disabled: (_loadingType != null && _loadingType != 'universe') || hasCooldown('universe'),
+            cooldownActive: hasCooldown('universe'),
+            cooldownLabel: 'Your Universe is already active on this creator',
+            onTap: () => _apply('universe'),
+          ),
+          const SizedBox(height: 10),
+
+          _PowerUpCard(
+            emoji: '🌠',
+            title: 'Galaxy',
+            subtitle: 'Banner for users with bets in same category for 4 hours',
+            cost: 300,
+            isLoading: _loadingType == 'galaxy',
+            disabled: (_loadingType != null && _loadingType != 'galaxy') || hasCooldown('galaxy'),
+            cooldownActive: hasCooldown('galaxy'),
+            cooldownLabel: 'Your Galaxy is already active on this creator',
+            onTap: () => _apply('galaxy'),
+          ),
+          const SizedBox(height: 10),
+
+          _PowerUpCard(
+            emoji: '📈',
+            title: '+Popularity',
+            subtitle: '+12 Heat Score for 1 hour',
+            cost: 400,
+            isLoading: _loadingType == 'instant_plus',
+            disabled: _loadingType != null && _loadingType != 'instant_plus',
+            onTap: () => _apply('instant_plus'),
+          ),
+          const SizedBox(height: 20),
+
+          // ── Sabotage ────────────────────────────────────────────────────
+          const _SectionLabel(label: 'SABOTAGE'),
+          const SizedBox(height: 8),
+
+          _PowerUpCard(
+            emoji: '📉',
+            title: '-Popularity',
+            subtitle: '-12 Heat Score for 1 hour',
+            cost: 350,
+            isNegative: true,
+            isLoading: _loadingType == 'instant_minus',
+            disabled: _loadingType != null && _loadingType != 'instant_minus',
+            onTap: () => _apply('instant_minus'),
+          ),
+          const SizedBox(height: 10),
+
+          _PowerUpCard(
+            emoji: '🕳️',
+            title: 'Black Hole',
+            subtitle: 'Cancels all active Universe & Galaxy effects on this creator',
+            cost: 250,
+            isNegative: true,
+            isLoading: _loadingType == 'black_hole',
+            disabled: (_loadingType != null && _loadingType != 'black_hole') || !targetHasUniverseOrGalaxy,
+            cooldownActive: !targetHasUniverseOrGalaxy,
+            cooldownLabel: 'No active Universe or Galaxy to cancel',
+            onTap: () => _apply('black_hole'),
+          ),
+          const SizedBox(height: 10),
+
+          _PowerUpCard(
+            emoji: '💀',
+            title: 'Super Massive Black Hole',
+            subtitle: 'Cancels every active Galaxy in a chosen category',
+            cost: 800,
+            isNegative: true,
+            isLoading: _loadingType == 'super_massive_black_hole',
+            disabled: _loadingType != null && _loadingType != 'super_massive_black_hole',
+            onTap: _pickCategoryAndApplySMBH,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Category picker dialog for Super Massive Black Hole
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _CategoryPickerDialog extends StatelessWidget {
+  const _CategoryPickerDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppTheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      title: const Text(
+        'Choose Category',
+        style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.bold),
+      ),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: ListView.separated(
+          shrinkWrap: true,
+          itemCount: kCreatorCategories.length,
+          separatorBuilder: (_, __) => const Divider(
+            height: 1,
+            color: AppTheme.cardBorder,
+          ),
+          itemBuilder: (context, i) {
+            final cat = kCreatorCategories[i];
+            return InkWell(
+              borderRadius: BorderRadius.circular(8),
+              onTap: () => Navigator.of(context).pop(cat),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 4),
+                child: Text(
+                  cat,
+                  style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 15,
+                  ),
+                ),
+              ),
+            );
+          },
         ),
-        const SizedBox(height: 10),
-
-        _PowerUpCard(
-          emoji: '🌠',
-          title: 'Galaxy',
-          subtitle: 'Name highlight for all followers for 24h',
-          cost: 300,
-          isLoading: _loadingType == 'galaxy',
-          disabled: _loadingType != null && _loadingType != 'galaxy',
-          cooldownActive: hasCooldown('galaxy'),
-          onTap: () => _apply('galaxy'),
-        ),
-        const SizedBox(height: 10),
-
-        _PowerUpCard(
-          emoji: '📈',
-          title: '+Popularity',
-          subtitle: '+12 Heat Score for 1 hour',
-          cost: 400,
-          isLoading: _loadingType == 'instant_plus',
-          disabled: _loadingType != null && _loadingType != 'instant_plus',
-          onTap: () => _apply('instant_plus'),
-        ),
-        const SizedBox(height: 20),
-
-        // ── Negative / sabotage ────────────────────────────────────────────
-        const _SectionLabel(label: 'Sabotage'),
-        const SizedBox(height: 8),
-
-        _PowerUpCard(
-          emoji: '📉',
-          title: '-Popularity',
-          subtitle: '-12 Heat Score for 1 hour (rival sabotage)',
-          cost: 350,
-          isNegative: true,
-          isLoading: _loadingType == 'instant_minus',
-          disabled: _loadingType != null && _loadingType != 'instant_minus',
-          onTap: () => _apply('instant_minus'),
-        ),
-        const SizedBox(height: 10),
-
-        _PowerUpCard(
-          emoji: '🕳️',
-          title: 'Black Hole',
-          subtitle: 'Cancels any active Universe on this creator',
-          cost: 250,
-          isNegative: true,
-          isLoading: _loadingType == 'black_hole',
-          disabled: _loadingType != null &&
-              _loadingType != 'black_hole' ||
-              !targetHasUniverse,
-          cooldownActive: !targetHasUniverse,
-          cooldownLabel: 'No active Universe to cancel',
-          onTap: () => _apply('black_hole'),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel', style: TextStyle(color: AppTheme.textSecondary)),
         ),
       ],
     );
@@ -285,7 +345,7 @@ class _PowerUpCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accentColor = isNegative ? AppTheme.danger : AppTheme.primary;
-    final isUnavailable = (disabled || cooldownActive);
+    final isUnavailable = disabled || cooldownActive;
 
     return Opacity(
       opacity: isUnavailable ? 0.45 : 1.0,
@@ -307,22 +367,17 @@ class _PowerUpCard extends StatelessWidget {
             ),
             child: Row(
               children: [
-                // Icon
                 Container(
-                  width: 44,
-                  height: 44,
+                  width: 44, height: 44,
                   decoration: BoxDecoration(
                     color: accentColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Center(
-                    child:
-                        Text(emoji, style: const TextStyle(fontSize: 20)),
+                    child: Text(emoji, style: const TextStyle(fontSize: 20)),
                   ),
                 ),
                 const SizedBox(width: 14),
-
-                // Text
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -337,37 +392,22 @@ class _PowerUpCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 3),
                       Text(
-                        cooldownActive && cooldownLabel != null
-                            ? cooldownLabel!
-                            : subtitle,
-                        style: TextStyle(
-                          color: cooldownActive
-                              ? AppTheme.textSecondary
-                              : AppTheme.textSecondary,
-                          fontSize: 12,
-                        ),
+                        cooldownActive && cooldownLabel != null ? cooldownLabel! : subtitle,
+                        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                       ),
                     ],
                   ),
                 ),
-
-                // Cost / spinner
                 if (isLoading)
                   const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: AppTheme.primary,
-                    ),
+                    width: 20, height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.primary),
                   )
                 else
                   Text(
                     '$cost 🪙',
                     style: TextStyle(
-                      color: isNegative
-                          ? AppTheme.danger
-                          : AppTheme.textPrimary,
+                      color: isNegative ? AppTheme.danger : AppTheme.textPrimary,
                       fontSize: 15,
                       fontWeight: FontWeight.bold,
                     ),
@@ -393,9 +433,9 @@ class _SectionLabel extends StatelessWidget {
         label,
         style: const TextStyle(
           color: AppTheme.textSecondary,
-          fontSize: 12,
+          fontSize: 11,
           fontWeight: FontWeight.w600,
-          letterSpacing: 0.8,
+          letterSpacing: 1.0,
         ),
       ),
     );

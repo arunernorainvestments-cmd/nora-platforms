@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../theme/app_theme.dart';
+import '../../features/promotions/widgets/promotion_flash_banner.dart';
 
 class MainShell extends StatelessWidget {
   final Widget child;
@@ -21,7 +22,9 @@ class MainShell extends StatelessWidget {
     final currentIndex = _locationToIndex(location);
 
     return Scaffold(
-      body: child,
+      body: PromotionFlashBanner(
+        child: child,
+      ),
       bottomNavigationBar: Container(
         decoration: const BoxDecoration(
           border: Border(

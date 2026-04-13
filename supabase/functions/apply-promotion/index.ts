@@ -1,10 +1,11 @@
 // supabase/functions/apply-promotion/index.ts
 // Applies a promotion (self-boost) or power-up (on another Market Maker).
-// Deducts tokens, inserts into active_boosts, and triggers an immediate
-// sync-platform-metrics call so heat_score updates without waiting 5 minutes.
+// Deducts tokens, inserts into active_boosts, writes promotion_banners for
+// universe/galaxy, and triggers an immediate sync-platform-metrics call.
 //
-// POST body: { boost_type: string, target_user_id: string }
-// Returns:   { success: true, tokens_spent: number, effective_delta: number, expires_at: string | null }
+// POST body (standard):    { boost_type, target_user_id }
+// POST body (SMBH):        { boost_type: 'super_massive_black_hole', category }
+// Returns: { success: true, tokens_spent, effective_delta, expires_at }
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
@@ -19,32 +20,28 @@ const CORS_HEADERS = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 type BoostType =
-  | 'quick_boost'
-  | 'major_boost'
-  | 'spotlight_entry'
-  | 'instant_plus'
-  | 'instant_minus'
-  | 'universe'
-  | 'galaxy'
-  | 'black_hole';
+  | 'quick_boost' | 'major_boost' | 'spotlight_entry'
+  | 'instant_plus' | 'instant_minus'
+  | 'universe' | 'galaxy' | 'black_hole' | 'super_massive_black_hole';
 
 interface BoostDef {
   baseCost: number;
-  baseDelta: number;       // signed heat_score change; 0 = cosmetic only
-  durationHours: number | null; // null = instant (no expiry row)
-  isSelfOnly: boolean;    // true = caller must be the target
-  requiresTargetMM: boolean; // target must be a Market Maker
+  baseDelta: number;
+  durationHours: number | null;
+  isSelfOnly: boolean;
+  requiresTargetMM: boolean;
 }
 
 const BOOST_CATALOGUE: Record<BoostType, BoostDef> = {
-  quick_boost:     { baseCost: 80,  baseDelta: 8,   durationHours: 1,    isSelfOnly: true,  requiresTargetMM: false },
-  major_boost:     { baseCost: 250, baseDelta: 20,  durationHours: 1,    isSelfOnly: true,  requiresTargetMM: false },
-  spotlight_entry: { baseCost: 500, baseDelta: 0,   durationHours: 4,    isSelfOnly: true,  requiresTargetMM: false },
-  instant_plus:    { baseCost: 400, baseDelta: 12,  durationHours: 1,    isSelfOnly: false, requiresTargetMM: true  },
-  instant_minus:   { baseCost: 350, baseDelta: -12, durationHours: 1,    isSelfOnly: false, requiresTargetMM: true  },
-  universe:        { baseCost: 800, baseDelta: 0,   durationHours: 24,   isSelfOnly: false, requiresTargetMM: true  },
-  galaxy:          { baseCost: 300, baseDelta: 0,   durationHours: 24,   isSelfOnly: false, requiresTargetMM: true  },
-  black_hole:      { baseCost: 250, baseDelta: 0,   durationHours: null, isSelfOnly: false, requiresTargetMM: true  },
+  quick_boost:               { baseCost: 80,  baseDelta: 8,   durationHours: 1,    isSelfOnly: true,  requiresTargetMM: false },
+  major_boost:               { baseCost: 250, baseDelta: 20,  durationHours: 1,    isSelfOnly: true,  requiresTargetMM: false },
+  spotlight_entry:           { baseCost: 500, baseDelta: 0,   durationHours: 4,    isSelfOnly: true,  requiresTargetMM: false },
+  instant_plus:              { baseCost: 400, baseDelta: 12,  durationHours: 1,    isSelfOnly: false, requiresTargetMM: true  },
+  instant_minus:             { baseCost: 350, baseDelta: -12, durationHours: 1,    isSelfOnly: false, requiresTargetMM: true  },
+  universe:                  { baseCost: 800, baseDelta: 0,   durationHours: 4,    isSelfOnly: false, requiresTargetMM: true  },
+  galaxy:                    { baseCost: 300, baseDelta: 0,   durationHours: 4,    isSelfOnly: false, requiresTargetMM: true  },
+  black_hole:                { baseCost: 250, baseDelta: 0,   durationHours: null, isSelfOnly: false, requiresTargetMM: true  },
+  super_massive_black_hole:  { baseCost: 800, baseDelta: 0,   durationHours: null, isSelfOnly: false, requiresTargetMM: false },
 };
 
 const SELF_BOOST_TYPES: BoostType[] = ['quick_boost', 'major_boost', 'spotlight_entry'];
@@ -54,12 +51,8 @@ const SELF_BOOST_TYPES: BoostType[] = ['quick_boost', 'major_boost', 'spotlight_
 // ─────────────────────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request): Promise<Response> => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: CORS_HEADERS });
-  }
-  if (req.method !== 'POST') {
-    return err('Method not allowed', 405);
-  }
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS });
+  if (req.method !== 'POST') return err('Method not allowed', 405);
 
   // ── Auth ──────────────────────────────────────────────────────────────────
   const authHeader = req.headers.get('Authorization');
@@ -70,7 +63,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
     Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: authHeader } } },
   );
-
   const { data: { user }, error: authErr } = await userClient.auth.getUser();
   if (authErr || !user) return err('Unauthorized', 401);
 
@@ -80,85 +72,132 @@ Deno.serve(async (req: Request): Promise<Response> => {
   );
 
   // ── Parse body ────────────────────────────────────────────────────────────
-  let body: { boost_type?: string; target_user_id?: string };
-  try {
-    body = await req.json();
-  } catch {
-    return err('Invalid JSON body', 400);
-  }
+  let body: { boost_type?: string; target_user_id?: string; category?: string };
+  try { body = await req.json(); } catch { return err('Invalid JSON body', 400); }
 
   const boostType = body.boost_type as BoostType | undefined;
-  const targetUserId = body.target_user_id;
-
-  if (!boostType || !BOOST_CATALOGUE[boostType]) {
-    return err(`Invalid boost_type: ${boostType}`, 400);
-  }
-  if (!targetUserId) {
-    return err('target_user_id is required', 400);
-  }
+  if (!boostType || !BOOST_CATALOGUE[boostType]) return err(`Invalid boost_type: ${boostType}`, 400);
 
   const def = BOOST_CATALOGUE[boostType];
 
-  // ── Validate self-only constraint ─────────────────────────────────────────
-  if (def.isSelfOnly && targetUserId !== user.id) {
-    return err(`${boostType} can only be applied to your own profile`, 403);
-  }
+  // ── Super Massive Black Hole ──────────────────────────────────────────────
+  if (boostType === 'super_massive_black_hole') {
+    const category = body.category?.trim();
+    if (!category) return err('category is required for super_massive_black_hole', 400);
 
-  // ── Load target profile ───────────────────────────────────────────────────
-  const { data: targetProfile, error: profileErr } = await serviceClient
-    .from('profiles')
-    .select('id, is_market_maker')
-    .eq('id', targetUserId)
-    .single();
-
-  if (profileErr || !targetProfile) {
-    return err('Target profile not found', 404);
-  }
-  if (def.requiresTargetMM && !targetProfile.is_market_maker) {
-    return err('Target must be a Market Maker for this boost type', 403);
-  }
-
-  // ── Black Hole: find and cancel target's active Universe ──────────────────
-  if (boostType === 'black_hole') {
     const now = new Date().toISOString();
-    const { data: activeUniverse } = await serviceClient
-      .from('active_boosts')
-      .select('id')
-      .eq('target_user_id', targetUserId)
-      .eq('boost_type', 'universe')
-      .eq('is_cancelled', false)
-      .gt('expires_at', now)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
 
-    if (!activeUniverse) {
-      return err('Target has no active Universe to cancel', 400);
+    // Find all active Galaxy boosts where target's category_1 matches
+    const { data: profiles } = await serviceClient
+      .from('profiles')
+      .select('id')
+      .eq('category_1', category);
+
+    const targetIds = (profiles ?? []).map((p: { id: string }) => p.id);
+    if (targetIds.length === 0) return err(`No Market Makers found in category: ${category}`, 400);
+
+    const { data: activeGalaxies } = await serviceClient
+      .from('active_boosts')
+      .select('id, target_user_id')
+      .in('target_user_id', targetIds)
+      .eq('boost_type', 'galaxy')
+      .eq('is_cancelled', false)
+      .gt('expires_at', now);
+
+    if (!activeGalaxies || activeGalaxies.length === 0) {
+      return err(`No active Galaxy effects found in category: ${category}`, 400);
     }
 
-    // Deduct tokens for black hole
+    // Check and deduct tokens
+    const { data: balRow } = await serviceClient
+      .from('token_balances').select('available_tokens').eq('user_id', user.id).single();
+    if ((balRow?.available_tokens ?? 0) < def.baseCost) {
+      return err(`Insufficient tokens. Need ${def.baseCost}, have ${balRow?.available_tokens ?? 0}.`, 402);
+    }
+
     const { error: deductErr } = await serviceClient.rpc('increment_token_balance', {
-      p_user_id: user.id,
-      p_amount: -def.baseCost,
+      p_user_id: user.id, p_amount: -def.baseCost,
     });
-    if (deductErr) return err('Insufficient token balance', 402);
+    if (deductErr) return err('Token deduction failed', 500);
 
-    // Cancel the Universe
+    // Cancel all matching active_boosts
+    const boostIds = activeGalaxies.map((b: { id: string }) => b.id);
+    await serviceClient.from('active_boosts').update({ is_cancelled: true }).in('id', boostIds);
+
+    // Cancel matching promotion_banners
     await serviceClient
-      .from('active_boosts')
+      .from('promotion_banners')
       .update({ is_cancelled: true })
-      .eq('id', activeUniverse.id);
+      .in('boost_id', boostIds);
 
-    // Log transaction
+    // Record SMBH in active_boosts for history
+    await serviceClient.from('active_boosts').insert({
+      target_user_id: user.id, // self — no single target for SMBH
+      activated_by_user_id: user.id,
+      boost_type: 'super_massive_black_hole',
+      heat_score_delta: 0,
+      tokens_spent: def.baseCost,
+      expires_at: null,
+      is_cancelled: false,
+    });
+
     await serviceClient.from('token_transactions').insert({
       user_id: user.id,
       amount: -def.baseCost,
       type: 'promoted',
-      description: 'Black Hole — cancelled Universe on @' + targetUserId,
-      reference_id: activeUniverse.id,
+      description: `Super Massive Black Hole — cancelled all Galaxy effects in ${category}`,
     });
 
-    // Insert black_hole record for history (no expiry)
+    return ok({ tokens_spent: def.baseCost, effective_delta: 0, expires_at: null });
+  }
+
+  // ── Standard power-ups: require target_user_id ────────────────────────────
+  const targetUserId = body.target_user_id;
+  if (!targetUserId) return err('target_user_id is required', 400);
+  if (def.isSelfOnly && targetUserId !== user.id) {
+    return err(`${boostType} can only be applied to your own profile`, 403);
+  }
+
+  const { data: targetProfile, error: profileErr } = await serviceClient
+    .from('profiles')
+    .select('id, username, is_market_maker, category_1')
+    .eq('id', targetUserId)
+    .single();
+  if (profileErr || !targetProfile) return err('Target profile not found', 404);
+  if (def.requiresTargetMM && !targetProfile.is_market_maker) {
+    return err('Target must be a Market Maker for this boost type', 403);
+  }
+
+  // ── Black Hole: cancel ALL universe + galaxy on target ────────────────────
+  if (boostType === 'black_hole') {
+    const now = new Date().toISOString();
+    const { data: activeBoosts } = await serviceClient
+      .from('active_boosts')
+      .select('id, boost_type')
+      .eq('target_user_id', targetUserId)
+      .in('boost_type', ['universe', 'galaxy'])
+      .eq('is_cancelled', false)
+      .gt('expires_at', now);
+
+    if (!activeBoosts || activeBoosts.length === 0) {
+      return err('Target has no active Universe or Galaxy to cancel', 400);
+    }
+
+    const { data: balRow } = await serviceClient
+      .from('token_balances').select('available_tokens').eq('user_id', user.id).single();
+    if ((balRow?.available_tokens ?? 0) < def.baseCost) {
+      return err(`Insufficient tokens. Need ${def.baseCost}, have ${balRow?.available_tokens ?? 0}.`, 402);
+    }
+
+    const { error: deductErr } = await serviceClient.rpc('increment_token_balance', {
+      p_user_id: user.id, p_amount: -def.baseCost,
+    });
+    if (deductErr) return err('Token deduction failed', 500);
+
+    const boostIds = activeBoosts.map((b: { id: string }) => b.id);
+    await serviceClient.from('active_boosts').update({ is_cancelled: true }).in('id', boostIds);
+    await serviceClient.from('promotion_banners').update({ is_cancelled: true }).in('boost_id', boostIds);
+
     await serviceClient.from('active_boosts').insert({
       target_user_id: targetUserId,
       activated_by_user_id: user.id,
@@ -169,13 +208,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
       is_cancelled: false,
     });
 
-    // Trigger immediate sync for target so heat_score reflects cancellation
-    await triggerSync(targetUserId);
+    await serviceClient.from('token_transactions').insert({
+      user_id: user.id,
+      amount: -def.baseCost,
+      type: 'promoted',
+      description: `Black Hole — cancelled Universe/Galaxy on @${targetProfile.username}`,
+    });
 
+    triggerSync(targetUserId).catch(console.error);
     return ok({ tokens_spent: def.baseCost, effective_delta: 0, expires_at: null });
   }
 
-  // ── Cooldown check (Universe / Galaxy: one active per user per target) ────
+  // ── Galaxy: require target to have a category_1 ───────────────────────────
+  if (boostType === 'galaxy' && !targetProfile.category_1) {
+    return err('Target has no primary category set — Galaxy cannot be applied', 400);
+  }
+
+  // ── Cooldown check (Universe / Galaxy) ────────────────────────────────────
   if (boostType === 'universe' || boostType === 'galaxy') {
     const now = new Date().toISOString();
     const { data: existing } = await serviceClient
@@ -188,10 +237,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .gt('expires_at', now)
       .limit(1)
       .maybeSingle();
-
-    if (existing) {
-      return err(`You already have an active ${boostType} on this creator. Wait for it to expire.`, 409);
-    }
+    if (existing) return err(`You already have an active ${boostType} on this creator.`, 409);
   }
 
   // ── Compute effective cost and delta for self-boosts ──────────────────────
@@ -199,63 +245,35 @@ Deno.serve(async (req: Request): Promise<Response> => {
   let effectiveDelta = def.baseDelta;
 
   if (SELF_BOOST_TYPES.includes(boostType)) {
-    // Market Maker discount: 20% off if caller has an open market
     const { data: openMarket } = await serviceClient
-      .from('markets')
-      .select('id')
-      .eq('creator_id', user.id)
-      .eq('status', 'open')
-      .limit(1)
-      .maybeSingle();
-
+      .from('markets').select('id, above_pool, below_pool')
+      .eq('creator_id', user.id).eq('status', 'open').limit(1).maybeSingle();
     if (openMarket) {
       effectiveCost = Math.floor(effectiveCost * 0.8);
-    }
-
-    // Active market bonus: 1.5× delta if ≥200 tokens in open bets on user's market
-    if (effectiveDelta > 0 && openMarket) {
-      const { data: poolData } = await serviceClient
-        .from('markets')
-        .select('above_pool, below_pool')
-        .eq('creator_id', user.id)
-        .eq('status', 'open')
-        .limit(1)
-        .maybeSingle();
-
-      const totalPool = (poolData?.above_pool ?? 0) + (poolData?.below_pool ?? 0);
-      if (totalPool >= 200) {
+      const totalPool = (openMarket.above_pool ?? 0) + (openMarket.below_pool ?? 0);
+      if (effectiveDelta > 0 && totalPool >= 200) {
         effectiveDelta = Math.round(effectiveDelta * 1.5);
       }
     }
   }
 
-  // ── Check token balance ───────────────────────────────────────────────────
-  const { data: balanceRow } = await serviceClient
-    .from('token_balances')
-    .select('available_tokens')
-    .eq('user_id', user.id)
-    .single();
-
-  const available = (balanceRow?.available_tokens ?? 0) as number;
-  if (available < effectiveCost) {
-    return err(`Insufficient tokens. Need ${effectiveCost}, have ${available}.`, 402);
+  // ── Check balance ─────────────────────────────────────────────────────────
+  const { data: balRow } = await serviceClient
+    .from('token_balances').select('available_tokens').eq('user_id', user.id).single();
+  if ((balRow?.available_tokens ?? 0) < effectiveCost) {
+    return err(`Insufficient tokens. Need ${effectiveCost}, have ${balRow?.available_tokens ?? 0}.`, 402);
   }
 
   // ── Deduct tokens ─────────────────────────────────────────────────────────
   const { error: deductErr } = await serviceClient.rpc('increment_token_balance', {
-    p_user_id: user.id,
-    p_amount: -effectiveCost,
+    p_user_id: user.id, p_amount: -effectiveCost,
   });
-  if (deductErr) {
-    console.error('[apply-promotion] Token deduction failed:', deductErr);
-    return err('Token deduction failed', 500);
-  }
+  if (deductErr) return err('Token deduction failed', 500);
 
   // ── Compute expiry ────────────────────────────────────────────────────────
   let expiresAt: string | null = null;
   if (def.durationHours !== null) {
-    const exp = new Date(Date.now() + def.durationHours * 60 * 60 * 1000);
-    expiresAt = exp.toISOString();
+    expiresAt = new Date(Date.now() + def.durationHours * 60 * 60 * 1000).toISOString();
   }
 
   // ── Insert active_boost ───────────────────────────────────────────────────
@@ -270,45 +288,48 @@ Deno.serve(async (req: Request): Promise<Response> => {
       expires_at: expiresAt,
       is_cancelled: false,
     })
-    .select('id')
-    .single();
+    .select('id').single();
 
   if (insertErr) {
-    console.error('[apply-promotion] Insert boost failed:', insertErr);
-    // Refund tokens since insert failed
-    await serviceClient.rpc('increment_token_balance', {
-      p_user_id: user.id,
-      p_amount: effectiveCost,
-    });
-    return err('Failed to apply boost. Tokens have been refunded.', 500);
+    await serviceClient.rpc('increment_token_balance', { p_user_id: user.id, p_amount: effectiveCost });
+    return err('Failed to apply boost. Tokens refunded.', 500);
   }
 
-  // ── Log token transaction ─────────────────────────────────────────────────
-  const descriptionMap: Record<BoostType, string> = {
-    quick_boost:     `Quick Boost — +${effectiveDelta} heat for 1h`,
-    major_boost:     `Major Boost — +${effectiveDelta} heat for 1h`,
-    spotlight_entry: 'Spotlight Entry — guaranteed slot for 4h',
-    instant_plus:    `+Popularity — +${effectiveDelta} heat for 1h`,
-    instant_minus:   `-Popularity — ${effectiveDelta} heat for 1h`,
-    universe:        'Universe — global animation for 24h',
-    galaxy:          'Galaxy — name highlight for 24h',
-    black_hole:      'Black Hole — cancelled Universe',
+  // ── Insert promotion_banner for universe / galaxy ─────────────────────────
+  if (boostType === 'universe' || boostType === 'galaxy') {
+    await serviceClient.from('promotion_banners').insert({
+      boost_id: boostRow.id,
+      type: boostType,
+      target_user_id: targetUserId,
+      target_username: targetProfile.username,
+      category: boostType === 'galaxy' ? targetProfile.category_1 : null,
+      expires_at: expiresAt,
+      is_cancelled: false,
+    });
+  }
+
+  // ── Log transaction ───────────────────────────────────────────────────────
+  const descMap: Record<BoostType, string> = {
+    quick_boost:              `Quick Boost — +${effectiveDelta} heat for 1h`,
+    major_boost:              `Major Boost — +${effectiveDelta} heat for 1h`,
+    spotlight_entry:          'Spotlight Entry — guaranteed slot for 4h',
+    instant_plus:             `+Popularity — +${effectiveDelta} heat for 1h`,
+    instant_minus:            `-Popularity — ${effectiveDelta} heat for 1h`,
+    universe:                 `Universe — global banner for 4h on @${targetProfile.username}`,
+    galaxy:                   `Galaxy — category banner for 4h on @${targetProfile.username}`,
+    black_hole:               `Black Hole — cancelled Universe/Galaxy on @${targetProfile.username}`,
+    super_massive_black_hole: 'Super Massive Black Hole — cancelled category Galaxy',
   };
 
   await serviceClient.from('token_transactions').insert({
     user_id: user.id,
     amount: -effectiveCost,
     type: 'promoted',
-    description: descriptionMap[boostType],
+    description: descMap[boostType],
     reference_id: boostRow.id,
   });
 
-  // ── Trigger immediate sync for target ─────────────────────────────────────
-  // Fire-and-forget — don't await so response is fast
-  triggerSync(targetUserId).catch((e) =>
-    console.error('[apply-promotion] Sync trigger failed:', e),
-  );
-
+  triggerSync(targetUserId).catch(console.error);
   return ok({ tokens_spent: effectiveCost, effective_delta: effectiveDelta, expires_at: expiresAt });
 });
 
