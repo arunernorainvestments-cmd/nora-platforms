@@ -126,7 +126,8 @@ final openMarketsProvider =
           'id, creator_id, title, timeframe, yes_pool, no_pool, end_at, '
           'category_1, category_2, '
           'creator:profiles!creator_id(username, spotlight_scores(tier))')
-      .eq('status', 'open');
+      .eq('status', 'open')
+      .gt('end_at', DateTime.now().toUtc().toIso8601String());
 
   final markets = (data as List)
       .map((e) => MarketListing.fromJson(e as Map<String, dynamic>))

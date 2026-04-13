@@ -265,15 +265,24 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
   - Strikethrough original price when discount active
 - Power-Ups sheet (lib/features/promotions/widgets/power_ups_sheet.dart):
   - Used on any other Market Maker's public profile
-  - Universe (800T), Galaxy (300T), +Popularity (400T), -Popularity (350T), Black Hole (250T)
-  - Black Hole card disabled if target has no active Universe
-  - Cooldown displayed when Universe/Galaxy already active on target by current user
+  - Universe (800T, 4h), Galaxy (300T, 4h), +Popularity (400T), -Popularity (350T),
+    Black Hole (250T — cancels ALL universe+galaxy on target),
+    Super Massive Black Hole (800T — cancels every active Galaxy in a chosen category)
+  - Black Hole disabled if target has no active Universe or Galaxy
+  - SMBH opens category picker dialog (all 14 categories)
+  - Cooldown shown when Universe/Galaxy already active on target by current user
 - Promote button on public profile (own) → Promotions sheet
 - Promote button on public profile (other MM) → Power-Ups sheet
 - Promote button on logged-in profile screen → Promotions sheet
-- Boost types: quick_boost, major_boost, spotlight_entry (self); instant_plus, instant_minus,
-  universe, galaxy, black_hole (power-ups on any MM)
-- Must deploy: apply-promotion edge function + sync-platform-metrics (updated) + migration 014
+- Migration 015: promotion_banners table (Realtime-enabled); active_boosts CHECK
+  updated to include super_massive_black_hole
+- promotion_banners: source of truth for banners; INSERT triggers Realtime events
+- PromotionFlashBanner overlay in MainShell: slides in 4s flash on all screens;
+  Universe = all users; Galaxy = only users with open bets in matching category_1
+- HomeTicker: persistent scrolling strip at top of home screen; combines active
+  Universe/Galaxy banners + Heat Score leaders; live via Realtime subscription
+- kCreatorCategories shared constant (lib/core/constants/creator_categories.dart)
+- Realtime on promotion_banners verified working via SQL Editor test insert
 
 ### Known Issues / Notes
 - YouTube OAuth is in Google Testing mode — only whitelisted emails can connect.

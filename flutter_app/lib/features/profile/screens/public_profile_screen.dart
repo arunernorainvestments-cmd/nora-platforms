@@ -5,7 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../markets/widgets/bet_bottom_sheet.dart';
-import '../../promotions/widgets/power_ups_sheet.dart';
+import '../../promotions/widgets/power_ups_sheet.dart' show showBoostSheet, showSabotageSheet;
 import '../../promotions/widgets/promotions_sheet.dart';
 import '../models/platform_connection.dart';
 import '../models/platform_metric.dart';
@@ -337,98 +337,115 @@ class _ActionSection extends StatelessWidget {
     required this.onRefresh,
   });
 
-  void _onPromoteTap(BuildContext context) {
-    if (isOwnProfile) {
-      showPromotionsSheet(context, targetUserId: profile.id);
-    } else {
-      final currentUser = Supabase.instance.client.auth.currentUser;
-      if (currentUser == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Sign in to use power-ups'),
-            backgroundColor: AppTheme.surface,
-            behavior: SnackBarBehavior.floating,
-            action: SnackBarAction(
-              label: 'Sign In',
-              textColor: AppTheme.primary,
-              onPressed: () => context.go('/login'),
-            ),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-              side: const BorderSide(color: AppTheme.cardBorder),
-            ),
+  void _requireAuth(BuildContext context, VoidCallback onAuthed) {
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Sign in to continue'),
+          backgroundColor: AppTheme.surface,
+          behavior: SnackBarBehavior.floating,
+          action: SnackBarAction(
+            label: 'Sign In',
+            textColor: AppTheme.primary,
+            onPressed: () => context.go('/login'),
           ),
-        );
-        return;
-      }
-      showPowerUpsSheet(
-        context,
-        targetUserId: profile.id,
-        targetUsername: profile.username,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: const BorderSide(color: AppTheme.cardBorder),
+          ),
+        ),
       );
+      return;
     }
+    onAuthed();
   }
 
   @override
   Widget build(BuildContext context) {
-    final promoteButton = OutlinedButton(
-      onPressed: () => _onPromoteTap(context),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: AppTheme.primary,
-        side: const BorderSide(color: AppTheme.primary),
-        minimumSize: const Size(double.infinity, 48),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      child: const Text('Promote'),
-    );
-
+    // Own profile — single Promote button (self-boosts only)
     if (isOwnProfile) {
-      return promoteButton;
+      return SizedBox(
+        width: double.infinity,
+        child: OutlinedButton(
+          onPressed: () => showPromotionsSheet(context, targetUserId: profile.id),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppTheme.primary,
+            side: const BorderSide(color: AppTheme.primary),
+            minimumSize: const Size(double.infinity, 48),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          child: const Text('Promote'),
+        ),
+      );
     }
 
-    return Row(
+    // Other MM profile — Bet + Boost + Sabotage
+    return Column(
       children: [
-        Expanded(
+        // Bet — full width
+        SizedBox(
+          width: double.infinity,
           child: ElevatedButton(
-            onPressed: () {
-              final currentUser = Supabase.instance.client.auth.currentUser;
-              if (currentUser == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: const Text('Sign in to place a bet'),
-                    backgroundColor: AppTheme.surface,
-                    behavior: SnackBarBehavior.floating,
-                    action: SnackBarAction(
-                      label: 'Sign In',
-                      textColor: AppTheme.primary,
-                      onPressed: () => context.go('/login'),
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: const BorderSide(color: AppTheme.cardBorder),
-                    ),
-                  ),
-                );
-                return;
-              }
+            onPressed: () => _requireAuth(context, () {
               showBetBottomSheet(
                 context,
                 creatorId: profile.id,
                 creatorUsername: profile.username,
                 onBetPlaced: onRefresh,
               );
-            },
+            }),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primary,
               minimumSize: const Size(double.infinity, 48),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
             child: const Text('Bet'),
           ),
         ),
-        const SizedBox(width: 12),
-        Expanded(child: promoteButton),
+        const SizedBox(height: 10),
+        // Boost + Sabotage side by side
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => _requireAuth(context, () {
+                  showBoostSheet(
+                    context,
+                    targetUserId: profile.id,
+                    targetUsername: profile.username,
+                  );
+                }),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.primary,
+                  side: const BorderSide(color: AppTheme.primary),
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Boost'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => _requireAuth(context, () {
+                  showSabotageSheet(
+                    context,
+                    targetUserId: profile.id,
+                    targetUsername: profile.username,
+                  );
+                }),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.danger,
+                  side: const BorderSide(color: AppTheme.danger),
+                  minimumSize: const Size(double.infinity, 48),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+                child: const Text('Sabotage'),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }

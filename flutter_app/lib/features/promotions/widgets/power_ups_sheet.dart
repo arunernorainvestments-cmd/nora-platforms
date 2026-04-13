@@ -7,13 +7,36 @@ import '../models/active_boost.dart';
 import '../providers/promotion_providers.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Entry point
+// Entry points
 // ─────────────────────────────────────────────────────────────────────────────
 
-void showPowerUpsSheet(
+enum PowerUpMode { boost, sabotage }
+
+void showBoostSheet(
   BuildContext context, {
   required String targetUserId,
   required String targetUsername,
+}) =>
+    _openSheet(context,
+        targetUserId: targetUserId,
+        targetUsername: targetUsername,
+        mode: PowerUpMode.boost);
+
+void showSabotageSheet(
+  BuildContext context, {
+  required String targetUserId,
+  required String targetUsername,
+}) =>
+    _openSheet(context,
+        targetUserId: targetUserId,
+        targetUsername: targetUsername,
+        mode: PowerUpMode.sabotage);
+
+void _openSheet(
+  BuildContext context, {
+  required String targetUserId,
+  required String targetUsername,
+  required PowerUpMode mode,
 }) {
   showModalBottomSheet(
     context: context,
@@ -25,6 +48,7 @@ void showPowerUpsSheet(
     builder: (_) => _PowerUpsSheet(
       targetUserId: targetUserId,
       targetUsername: targetUsername,
+      mode: mode,
     ),
   );
 }
@@ -36,7 +60,12 @@ void showPowerUpsSheet(
 class _PowerUpsSheet extends ConsumerStatefulWidget {
   final String targetUserId;
   final String targetUsername;
-  const _PowerUpsSheet({required this.targetUserId, required this.targetUsername});
+  final PowerUpMode mode;
+  const _PowerUpsSheet({
+    required this.targetUserId,
+    required this.targetUsername,
+    required this.mode,
+  });
 
   @override
   ConsumerState<_PowerUpsSheet> createState() => _PowerUpsSheetState();
@@ -131,15 +160,19 @@ class _PowerUpsSheetState extends ConsumerState<_PowerUpsSheet> {
             ),
             const SizedBox(height: 20),
             Text(
-              'Power-Ups for @${widget.targetUsername}',
+              widget.mode == PowerUpMode.boost
+                  ? '🚀 Boost @${widget.targetUsername}'
+                  : '💀 Sabotage @${widget.targetUsername}',
               style: const TextStyle(
                 color: AppTheme.textPrimary, fontSize: 20, fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'Boost or sabotage any Market Maker.',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            Text(
+              widget.mode == PowerUpMode.boost
+                  ? 'Increase visibility and heat for this creator.'
+                  : 'Reduce visibility or cancel active effects.',
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
             ),
             const SizedBox(height: 20),
             boostsAsync.when(
@@ -169,54 +202,52 @@ class _PowerUpsSheetState extends ConsumerState<_PowerUpsSheet> {
       (b) => (b.boostType == 'universe' || b.boostType == 'galaxy') && b.isActive,
     );
 
+    if (widget.mode == PowerUpMode.boost) {
+      return SingleChildScrollView(
+        child: Column(
+          children: [
+            _PowerUpCard(
+              emoji: '🌌',
+              title: 'Universe',
+              subtitle: 'Animated banner visible to everyone for 4 hours',
+              cost: 800,
+              isLoading: _loadingType == 'universe',
+              disabled: (_loadingType != null && _loadingType != 'universe') || hasCooldown('universe'),
+              cooldownActive: hasCooldown('universe'),
+              cooldownLabel: 'Your Universe is already active on this creator',
+              onTap: () => _apply('universe'),
+            ),
+            const SizedBox(height: 10),
+            _PowerUpCard(
+              emoji: '🌠',
+              title: 'Galaxy',
+              subtitle: 'Banner to users with bets in same category for 4 hours',
+              cost: 300,
+              isLoading: _loadingType == 'galaxy',
+              disabled: (_loadingType != null && _loadingType != 'galaxy') || hasCooldown('galaxy'),
+              cooldownActive: hasCooldown('galaxy'),
+              cooldownLabel: 'Your Galaxy is already active on this creator',
+              onTap: () => _apply('galaxy'),
+            ),
+            const SizedBox(height: 10),
+            _PowerUpCard(
+              emoji: '📈',
+              title: '+Popularity',
+              subtitle: '+12 Heat Score for 1 hour',
+              cost: 400,
+              isLoading: _loadingType == 'instant_plus',
+              disabled: _loadingType != null && _loadingType != 'instant_plus',
+              onTap: () => _apply('instant_plus'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Sabotage mode
     return SingleChildScrollView(
       child: Column(
         children: [
-          // ── Positive ────────────────────────────────────────────────────
-          const _SectionLabel(label: 'POSITIVE'),
-          const SizedBox(height: 8),
-
-          _PowerUpCard(
-            emoji: '🌌',
-            title: 'Universe',
-            subtitle: 'Animated banner visible to everyone for 4 hours',
-            cost: 800,
-            isLoading: _loadingType == 'universe',
-            disabled: (_loadingType != null && _loadingType != 'universe') || hasCooldown('universe'),
-            cooldownActive: hasCooldown('universe'),
-            cooldownLabel: 'Your Universe is already active on this creator',
-            onTap: () => _apply('universe'),
-          ),
-          const SizedBox(height: 10),
-
-          _PowerUpCard(
-            emoji: '🌠',
-            title: 'Galaxy',
-            subtitle: 'Banner for users with bets in same category for 4 hours',
-            cost: 300,
-            isLoading: _loadingType == 'galaxy',
-            disabled: (_loadingType != null && _loadingType != 'galaxy') || hasCooldown('galaxy'),
-            cooldownActive: hasCooldown('galaxy'),
-            cooldownLabel: 'Your Galaxy is already active on this creator',
-            onTap: () => _apply('galaxy'),
-          ),
-          const SizedBox(height: 10),
-
-          _PowerUpCard(
-            emoji: '📈',
-            title: '+Popularity',
-            subtitle: '+12 Heat Score for 1 hour',
-            cost: 400,
-            isLoading: _loadingType == 'instant_plus',
-            disabled: _loadingType != null && _loadingType != 'instant_plus',
-            onTap: () => _apply('instant_plus'),
-          ),
-          const SizedBox(height: 20),
-
-          // ── Sabotage ────────────────────────────────────────────────────
-          const _SectionLabel(label: 'SABOTAGE'),
-          const SizedBox(height: 8),
-
           _PowerUpCard(
             emoji: '📉',
             title: '-Popularity',
@@ -228,11 +259,10 @@ class _PowerUpsSheetState extends ConsumerState<_PowerUpsSheet> {
             onTap: () => _apply('instant_minus'),
           ),
           const SizedBox(height: 10),
-
           _PowerUpCard(
             emoji: '🕳️',
             title: 'Black Hole',
-            subtitle: 'Cancels all active Universe & Galaxy effects on this creator',
+            subtitle: 'Cancels all active Universe & Galaxy on this creator',
             cost: 250,
             isNegative: true,
             isLoading: _loadingType == 'black_hole',
@@ -242,7 +272,6 @@ class _PowerUpsSheetState extends ConsumerState<_PowerUpsSheet> {
             onTap: () => _apply('black_hole'),
           ),
           const SizedBox(height: 10),
-
           _PowerUpCard(
             emoji: '💀',
             title: 'Super Massive Black Hole',
@@ -421,23 +450,3 @@ class _PowerUpCard extends StatelessWidget {
   }
 }
 
-class _SectionLabel extends StatelessWidget {
-  final String label;
-  const _SectionLabel({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: AppTheme.textSecondary,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 1.0,
-        ),
-      ),
-    );
-  }
-}
