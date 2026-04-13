@@ -271,9 +271,14 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
   - Black Hole disabled if target has no active Universe or Galaxy
   - SMBH opens category picker dialog (all 14 categories)
   - Cooldown shown when Universe/Galaxy already active on target by current user
-- Promote button on public profile (own) → Promotions sheet
-- Promote button on public profile (other MM) → Power-Ups sheet
+- Promote button on public profile (own) → Promotions sheet (self-boosts)
+- Other MM public profile → Bet (full width) + Boost / Sabotage row:
+  - Boost sheet: Universe, Galaxy, +Popularity
+  - Sabotage sheet: -Popularity, Black Hole, Super Massive Black Hole
+  - PowerUpMode enum drives which cards are shown
 - Promote button on logged-in profile screen → Promotions sheet
+- Open Markets tab filters end_at > now() so expired-but-unresolved markets
+  are hidden while waiting for the resolve-markets cron to process them
 - Migration 015: promotion_banners table (Realtime-enabled); active_boosts CHECK
   updated to include super_massive_black_hole
 - promotion_banners: source of truth for banners; INSERT triggers Realtime events
