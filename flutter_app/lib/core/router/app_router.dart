@@ -5,6 +5,7 @@ import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/referral_screen.dart';
 import '../../features/auth/screens/signup_screen.dart';
 import '../../features/auth/providers/auth_provider.dart';
+import '../../features/challenges/screens/challenges_screen.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/search/screens/search_screen.dart';
 import '../../features/markets/screens/markets_screen.dart';
@@ -58,6 +59,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/forgot-password',
         builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+
+      // ── Challenges screen (authenticated, no bottom nav) ──────────────────
+      GoRoute(
+        path: '/challenges',
+        builder: (context, state) => const ChallengesScreen(),
       ),
 
       // ── Public routes (no bottom nav) ─────────────────────────────────────

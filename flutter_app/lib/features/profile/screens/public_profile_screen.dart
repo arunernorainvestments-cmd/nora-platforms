@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../challenges/widgets/badges_shelf.dart';
 import '../../markets/widgets/bet_bottom_sheet.dart';
 import '../../promotions/widgets/power_ups_sheet.dart' show showBoostSheet, showSabotageSheet;
 import '../../promotions/widgets/promotions_sheet.dart';
@@ -114,7 +115,15 @@ class _ProfileBody extends StatelessWidget {
           ),
         ),
 
-        // ── B) Action buttons ────────────────────────────────────────────────
+        // ── B) Badges shelf ──────────────────────────────────────────────────
+        SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 4),
+            child: BadgesShelf(userId: profile.id),
+          ),
+        ),
+
+        // ── C) Action buttons ────────────────────────────────────────────────
         if (profile.isMarketMaker && profile.connections.isNotEmpty)
           SliverToBoxAdapter(
             child: Padding(
@@ -128,7 +137,7 @@ class _ProfileBody extends StatelessWidget {
             ),
           ),
 
-        // ── C) Live Now ──────────────────────────────────────────────────────
+        // ── D) Live Now ──────────────────────────────────────────────────────
         if (liveMetrics.isNotEmpty)
           SliverToBoxAdapter(
             child: _LiveNowSection(
@@ -137,7 +146,7 @@ class _ProfileBody extends StatelessWidget {
             ),
           ),
 
-        // ── D) Platform Stats ────────────────────────────────────────────────
+        // ── E) Platform Stats ────────────────────────────────────────────────
         if (profile.connections.isNotEmpty)
           SliverToBoxAdapter(
             child: _PlatformStatsSection(
@@ -147,7 +156,7 @@ class _ProfileBody extends StatelessWidget {
             ),
           ),
 
-        // ── E) Recent Content ────────────────────────────────────────────────
+        // ── F) Recent Content ────────────────────────────────────────────────
         const SliverToBoxAdapter(child: _RecentContentSection()),
 
         const SliverToBoxAdapter(child: SizedBox(height: 48)),

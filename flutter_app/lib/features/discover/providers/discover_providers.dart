@@ -66,6 +66,7 @@ class RisingCreator {
   final double? spotlightScore;
   final String? spotlightTier; // 'on_fire' | 'rising' | 'watched' | 'listed'
   final int availableTokens;
+  final double heatScore; // from platform_metrics (max across all rows)
 
   const RisingCreator({
     required this.id,
@@ -76,6 +77,7 @@ class RisingCreator {
     this.spotlightScore,
     this.spotlightTier,
     required this.availableTokens,
+    this.heatScore = 0,
   });
 
   factory RisingCreator.fromJson(Map<String, dynamic> json) {
@@ -92,6 +94,20 @@ class RisingCreator {
     final spotlight = unwrap(json['spotlight_scores']);
     final balance = unwrap(json['token_balances']);
 
+    // platform_metrics is a reverse FK — comes back as a list (one per platform).
+    // Take the max heat_score across all rows.
+    double heatScore = 0;
+    final metricsRaw = json['platform_metrics'];
+    if (metricsRaw is List && metricsRaw.isNotEmpty) {
+      heatScore = metricsRaw
+          .map((m) =>
+              ((m as Map<String, dynamic>)['heat_score'] as num?)?.toDouble() ??
+              0.0)
+          .reduce((a, b) => a > b ? a : b);
+    } else if (metricsRaw is Map<String, dynamic>) {
+      heatScore = (metricsRaw['heat_score'] as num?)?.toDouble() ?? 0.0;
+    }
+
     return RisingCreator(
       id: json['id'] as String,
       displayName: json['display_name'] as String?,
@@ -101,6 +117,7 @@ class RisingCreator {
       spotlightScore: (spotlight?['score'] as num?)?.toDouble(),
       spotlightTier: spotlight?['tier'] as String?,
       availableTokens: (balance?['available_tokens'] as num?)?.toInt() ?? 0,
+      heatScore: heatScore,
     );
   }
 

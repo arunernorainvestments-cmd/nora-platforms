@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/utils/open_url.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../challenges/widgets/badges_shelf.dart';
 import '../../promotions/widgets/promotions_sheet.dart';
 import '../models/platform_connection.dart';
 import '../providers/platform_connection_providers.dart';
@@ -323,7 +324,29 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       ),
                     ),
                   ),
-                const SizedBox(height: 28),
+                const SizedBox(height: 16),
+
+                // ── Badges shelf ──────────────────────────────────────────
+                if (user != null) ...[
+                  BadgesShelf(userId: user.id),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () => context.push('/challenges'),
+                      icon: const Icon(Icons.emoji_events_outlined, size: 18),
+                      label: const Text('Challenges'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.secondary,
+                        side: const BorderSide(color: AppTheme.secondary),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
                 // ── Market Maker section ──────────────────────────────────
                 // Show Get Started card only if user has no connected platforms.

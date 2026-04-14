@@ -86,6 +86,10 @@ All tables have RLS enabled. Migrations run in order:
 | 011 | Re-applies token_transactions type constraint with 'refund' (applied directly in SQL Editor) |
 | 012 | market_series, market_event, market_identifier, category_1, category_2 on markets; category_1, category_2 on profiles |
 | 013 | Rename score columns: heat_score→display_score (raw composite), display_score→heat_score (UI composite), opening_display_score→opening_heat_score |
+| 014 | active_boosts table for Phase 6 promotions |
+| 015 | promotion_banners table (Realtime); active_boosts CHECK updated |
+| 016 | badge_definitions, challenge_definitions, user_badges, user_challenge_progress, user_streaks; seed data; 'challenge_reward' token type |
+| 017 | user_passive_effects view (aggregates badge passive effects per user) |
 
 ### Key RLS rules
 - token_balances — service role only for writes
@@ -289,6 +293,49 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
 - kCreatorCategories shared constant (lib/core/constants/creator_categories.dart)
 - Realtime on promotion_banners verified working via SQL Editor test insert
 
+### Completed (Phase 7 — Challenges & Badges)
+- Migration 016: badge_definitions, challenge_definitions, user_badges, user_challenge_progress,
+  user_streaks tables; RLS; indexes; 'challenge_reward' added to token_transactions type constraint;
+  full seed of 21 badge definitions + 19 challenge definitions (daily/weekly/monthly/once)
+- Migration 017: user_passive_effects view — aggregates visibility_multiplier (additive),
+  token_earn_rate (additive), promotion_discount (max), referral_bonus (max tier) per user
+- evaluate-challenges edge function: full condition engine (count_threshold, snapshot, streak,
+  composite types); accepts both user JWT and service role key for caller auth; idempotent via
+  completed_at IS NULL + UNIQUE(user_id, badge_id); awards tokens (challenge_reward type) +
+  badges; handles streak bidirectional reset (bet_won ↔ bet_lost)
+- resolve-markets hooked: fires bet_won/bet_lost per position holder, bet_won_minority for
+  minority-pool winners (<30% of total pool), market_resolution_top_stake for single largest
+  staker, tokens_earned for each payout
+- apply-promotion hooked: fires promotion_used for activator, power_up_received for target;
+  awards Power Tripped badge directly when any power-up is used on another user;
+  awards Untouchable badge when black_hole target has active spotlight_entry boost
+- ChallengeActions class: fireCheckIn(), fireBetPlaced(creatorId), fireReferralSignup()
+  using Supabase functions.invoke() with user JWT
+- Home screen fires daily check-in via _checkInProvider (autoDispose FutureProvider)
+- Bet bottom sheet fires bet_placed + bet_placed_unique_mm on successful bet insert
+- BadgesShelf widget: horizontal scroll of tier-colored badge chips, tap → detail sheet
+  with name, description, passive effect explanation; shown on own profile + public profiles
+- ChallengesScreen: Daily/Weekly/Monthly TabBar; challenge cards with progress bars,
+  token reward, badge reward indicator; MM-only challenges hidden from regular users;
+  reset timer in each tab header
+- /challenges route added to router (no bottom nav)
+- Challenges button added to own profile screen (teal, next to Preview Profile)
+- passiveEffectsProvider(userId): reads user_passive_effects view for UI/downstream use
+
+#### Phase 7 — Deferred / Not Yet Wired
+- Passive effects not yet applied to Discover/Spotlight ranking or apply-promotion cost
+  calculation — requires Discover provider update + apply-promotion discount lookup
+- referral_signup event: fires from Flutter after signup if referral code was used;
+  edge function looks up referred_by field and evaluates for the referrer — currently not
+  wired into the signup screen (TODO: call challengeActionsProvider.fireReferralSignup()
+  in signup_screen.dart after successful signup with a referral code)
+- Main Character badge (held #1 Heat Score 24h): requires a separate pg_cron hourly check
+  that compares platform_metrics heat_score over time — not yet implemented
+- tokens_spent event: currently only fires if explicitly called — not wired to bet placement
+  (bet_placed is wired; tokens_spent is for promotion spending from apply-promotion)
+- LAUNCH_DATE_PLACEHOLDER in migration 016 set to '2026-06-01' (OG badge cutoff) and
+  '2026-07-01' (Early Adopter +30 days) — update before public launch if needed
+
 ### Known Issues / Notes
 - YouTube OAuth is in Google Testing mode — only whitelisted emails can connect.
   Must submit for Google verification before public launch.
@@ -298,6 +345,7 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
   Currently shows first letter of username. Do not add manual upload — avatar must
   always come from connected platform.
 - resolve-markets edge function must be deployed manually (not auto-deployed from GitHub).
+- evaluate-challenges edge function must be deployed manually after this phase.
 
 ---
 

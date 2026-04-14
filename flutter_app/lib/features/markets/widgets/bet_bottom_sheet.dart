@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../challenges/providers/challenge_providers.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC ENTRY POINT
@@ -266,6 +267,8 @@ class _BetBottomSheetState extends ConsumerState<BetBottomSheet> {
       if (mounted) {
         setState(() { _success = true; _isSubmitting = false; });
         widget.onBetPlaced?.call();
+        // Phase 7: fire challenge evaluation for bet_placed events (fire-and-forget)
+        ref.read(challengeActionsProvider).fireBetPlaced(widget.creatorId);
       }
     } catch (e) {
       if (mounted) {

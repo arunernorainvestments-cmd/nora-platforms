@@ -4,6 +4,7 @@ import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/theme/app_theme.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../challenges/providers/challenge_providers.dart';
 import '../../notifications/providers/notification_providers.dart';
 import '../../discover/providers/discover_providers.dart';
 import '../../profile/providers/platform_connection_providers.dart';
@@ -11,11 +12,22 @@ import '../../profile/models/platform_metric.dart';
 import '../providers/home_providers.dart';
 import '../widgets/home_ticker.dart';
 
+// Fires daily check-in challenge evaluation when the home screen mounts.
+// autoDispose means it fires once per session mount, not on every rebuild.
+// The edge function is idempotent — duplicate calls within the same day are safe.
+final _checkInProvider = FutureProvider.autoDispose<void>((ref) async {
+  final actions = ref.read(challengeActionsProvider);
+  await actions.fireCheckIn();
+});
+
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Fire daily check-in (fire-and-forget; result intentionally ignored)
+    ref.watch(_checkInProvider);
+
     final unreadCount = ref.watch(unreadCountProvider);
 
     return Scaffold(

@@ -4,6 +4,30 @@
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 7: fire-and-forget challenge evaluation hook
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function fireChallenge(
+  userId: string,
+  event: string,
+  metadata: Record<string, unknown> = {},
+): Promise<void> {
+  const fnUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/evaluate-challenges`;
+  try {
+    await fetch(fnUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ user_id: userId, event, metadata }),
+    });
+  } catch (e) {
+    console.error(`fireChallenge(${event}) failed for ${userId}:`, e);
+  }
+}
+
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': 'https://nora-platforms.vercel.app',
   'Access-Control-Allow-Headers': 'content-type, authorization',
@@ -268,6 +292,11 @@ async function processPayout(
     `rake=${rake}, platformFee=${platformFee}, mmFee=${marketMakerFee}, winningPool=${winningPool}`,
   );
 
+  // --- Determine minority pool for contrarian badge checks ---
+  const winningPoolTotal = winningBets.reduce((s, b) => s + Math.floor(Number(b.amount)), 0);
+  const minorityThreshold = 0.3; // <30% of total pool = minority side
+  const winnerIsMinority  = totalPool > 0 && (winningPoolTotal / totalPool) < minorityThreshold;
+
   // --- Distribute winnings proportionally to winning bettors ---
   for (const bet of winningBets) {
     const betAmount = Math.floor(Number(bet.amount));
@@ -302,6 +331,39 @@ async function processPayout(
       body: `Your bet on ${creatorName} paid out — you won ${payout} tokens!`,
       reference_id: market.id,
     });
+
+    // Phase 7 deferred: apply token_earn_rate passive bonus (badge effect)
+    if (payout > 0) {
+      const { data: passiveRow } = await db
+        .from('user_passive_effects')
+        .select('token_earn_rate')
+        .eq('user_id', bet.user_id)
+        .maybeSingle();
+      const earnRate = (passiveRow?.token_earn_rate as number | null) ?? 0;
+      if (earnRate > 0) {
+        const bonus = Math.floor(payout * earnRate);
+        if (bonus > 0) {
+          await db.rpc('increment_token_balance', { p_user_id: bet.user_id, p_amount: bonus });
+          await db.from('token_transactions').insert({
+            user_id: bet.user_id,
+            type: 'passive_bonus',
+            amount: bonus,
+            reference_id: market.id,
+            description: `Badge earn rate bonus on ${creatorName}`,
+          });
+        }
+      }
+    }
+
+    // Phase 7: challenge hooks for winners
+    fireChallenge(bet.user_id, 'bet_won', { market_id: market.id }).catch(console.error);
+    fireChallenge(bet.user_id, 'bet_resolved_win', { market_id: market.id }).catch(console.error);
+    if (payout > 0) {
+      fireChallenge(bet.user_id, 'tokens_earned', { amount: payout }).catch(console.error);
+    }
+    if (winnerIsMinority) {
+      fireChallenge(bet.user_id, 'bet_won_minority', { market_id: market.id }).catch(console.error);
+    }
   }
 
   // --- Record bet_lost for losing bettors (amount = 0 per spec) ---
@@ -325,6 +387,20 @@ async function processPayout(
       body: `Your bet on ${creatorName} did not pay out.`,
       reference_id: market.id,
     });
+
+    // Phase 7: challenge hook for losers
+    fireChallenge(bet.user_id, 'bet_lost', { market_id: market.id }).catch(console.error);
+  }
+
+  // --- Phase 7: market_resolution_top_stake for the single largest winner ---
+  if (winningBets.length > 0) {
+    const topWinner = winningBets.reduce((top, b) =>
+      Math.floor(Number(b.amount)) > Math.floor(Number(top.amount)) ? b : top,
+    );
+    fireChallenge(topWinner.user_id, 'market_resolution_top_stake', {
+      market_id: market.id,
+      amount: Math.floor(Number(topWinner.amount)),
+    }).catch(console.error);
   }
 
   // --- Credit Market Maker fee ---

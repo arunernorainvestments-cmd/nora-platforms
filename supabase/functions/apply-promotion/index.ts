@@ -1,4 +1,9 @@
 // supabase/functions/apply-promotion/index.ts
+// Phase 7 additions:
+//   • Fires evaluate-challenges for promotion_used (activator) and power_up_received (target)
+//   • Awards Power Tripped badge directly to target when a power-up is used on them
+//   • Awards Untouchable badge to target when black_hole is used and target has
+//     an active spotlight_entry boost (they survived the black hole while spotlighted)
 // Applies a promotion (self-boost) or power-up (on another Market Maker).
 // Deducts tokens, inserts into active_boosts, writes promotion_banners for
 // universe/galaxy, and triggers an immediate sync-platform-metrics call.
@@ -80,6 +85,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const def = BOOST_CATALOGUE[boostType];
 
+    // ── Badge passive discount (applies to all boost types) ─────────────────────
+  // Query once here; used in SMBH, Black Hole, and standard paths below.
+  const { data: passiveRow } = await serviceClient
+    .from('user_passive_effects')
+    .select('promotion_discount')
+    .eq('user_id', user.id)
+    .maybeSingle();
+  const badgeDiscount = (passiveRow?.promotion_discount as number | null) ?? 0;
+  // Apply badge discount to base cost before any other adjustments.
+  const adjustedBaseCost = badgeDiscount > 0
+    ? Math.floor(def.baseCost * (1 - badgeDiscount))
+    : def.baseCost;
+
   // ── Super Massive Black Hole ──────────────────────────────────────────────
   if (boostType === 'super_massive_black_hole') {
     const category = body.category?.trim();
@@ -111,12 +129,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // Check and deduct tokens
     const { data: balRow } = await serviceClient
       .from('token_balances').select('available_tokens').eq('user_id', user.id).single();
-    if ((balRow?.available_tokens ?? 0) < def.baseCost) {
-      return err(`Insufficient tokens. Need ${def.baseCost}, have ${balRow?.available_tokens ?? 0}.`, 402);
+    if ((balRow?.available_tokens ?? 0) < adjustedBaseCost) {
+      return err(`Insufficient tokens. Need ${adjustedBaseCost}, have ${balRow?.available_tokens ?? 0}.`, 402);
     }
 
     const { error: deductErr } = await serviceClient.rpc('increment_token_balance', {
-      p_user_id: user.id, p_amount: -def.baseCost,
+      p_user_id: user.id, p_amount: -adjustedBaseCost,
     });
     if (deductErr) return err('Token deduction failed', 500);
 
@@ -136,19 +154,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
       activated_by_user_id: user.id,
       boost_type: 'super_massive_black_hole',
       heat_score_delta: 0,
-      tokens_spent: def.baseCost,
+      tokens_spent: adjustedBaseCost,
       expires_at: null,
       is_cancelled: false,
     });
 
     await serviceClient.from('token_transactions').insert({
       user_id: user.id,
-      amount: -def.baseCost,
+      amount: -adjustedBaseCost,
       type: 'promoted',
       description: `Super Massive Black Hole — cancelled all Galaxy effects in ${category}`,
     });
 
-    return ok({ tokens_spent: def.baseCost, effective_delta: 0, expires_at: null });
+    // Phase 7: challenge event for SMBH activator
+    fireChallenge(user.id, 'promotion_used', { promotion_type: 'super_massive_black_hole' }).catch(console.error);
+
+    return ok({ tokens_spent: adjustedBaseCost, effective_delta: 0, expires_at: null });
   }
 
   // ── Standard power-ups: require target_user_id ────────────────────────────
@@ -185,12 +206,12 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const { data: balRow } = await serviceClient
       .from('token_balances').select('available_tokens').eq('user_id', user.id).single();
-    if ((balRow?.available_tokens ?? 0) < def.baseCost) {
-      return err(`Insufficient tokens. Need ${def.baseCost}, have ${balRow?.available_tokens ?? 0}.`, 402);
+    if ((balRow?.available_tokens ?? 0) < adjustedBaseCost) {
+      return err(`Insufficient tokens. Need ${adjustedBaseCost}, have ${balRow?.available_tokens ?? 0}.`, 402);
     }
 
     const { error: deductErr } = await serviceClient.rpc('increment_token_balance', {
-      p_user_id: user.id, p_amount: -def.baseCost,
+      p_user_id: user.id, p_amount: -adjustedBaseCost,
     });
     if (deductErr) return err('Token deduction failed', 500);
 
@@ -203,20 +224,28 @@ Deno.serve(async (req: Request): Promise<Response> => {
       activated_by_user_id: user.id,
       boost_type: 'black_hole',
       heat_score_delta: 0,
-      tokens_spent: def.baseCost,
+      tokens_spent: adjustedBaseCost,
       expires_at: null,
       is_cancelled: false,
     });
 
     await serviceClient.from('token_transactions').insert({
       user_id: user.id,
-      amount: -def.baseCost,
+      amount: -adjustedBaseCost,
       type: 'promoted',
       description: `Black Hole — cancelled Universe/Galaxy on @${targetProfile.username}`,
     });
 
+    // Phase 7: Power Tripped badge for target, Untouchable badge if still in spotlight
+    await awardBadgeBySlug(serviceClient, targetUserId, 'power_tripped');
+    await checkAndAwardUntouchable(serviceClient, targetUserId);
+
+    // Phase 7: challenge events
+    fireChallenge(user.id, 'promotion_used', { promotion_type: 'black_hole' }).catch(console.error);
+    fireChallenge(targetUserId, 'power_up_received', { promotion_type: 'black_hole' }).catch(console.error);
+
     triggerSync(targetUserId).catch(console.error);
-    return ok({ tokens_spent: def.baseCost, effective_delta: 0, expires_at: null });
+    return ok({ tokens_spent: adjustedBaseCost, effective_delta: 0, expires_at: null });
   }
 
   // ── Galaxy: require target to have a category_1 ───────────────────────────
@@ -240,8 +269,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     if (existing) return err(`You already have an active ${boostType} on this creator.`, 409);
   }
 
-  // ── Compute effective cost and delta for self-boosts ──────────────────────
-  let effectiveCost = def.baseCost;
+  // ── Compute effective cost and delta ─────────────────────────────────────
+  // Start from badge-discounted base cost; MM open-market discount is applied on top.
+  let effectiveCost = adjustedBaseCost;
   let effectiveDelta = def.baseDelta;
 
   if (SELF_BOOST_TYPES.includes(boostType)) {
@@ -249,7 +279,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .from('markets').select('id, above_pool, below_pool')
       .eq('creator_id', user.id).eq('status', 'open').limit(1).maybeSingle();
     if (openMarket) {
-      effectiveCost = Math.floor(effectiveCost * 0.8);
+      effectiveCost = Math.floor(effectiveCost * 0.8); // 20% MM discount on top of badge discount
       const totalPool = (openMarket.above_pool ?? 0) + (openMarket.below_pool ?? 0);
       if (effectiveDelta > 0 && totalPool >= 200) {
         effectiveDelta = Math.round(effectiveDelta * 1.5);
@@ -329,6 +359,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
     reference_id: boostRow.id,
   });
 
+  // Phase 7: Power Tripped badge for target (only when used on another user)
+  if (!def.isSelfOnly && targetUserId !== user.id) {
+    awardBadgeBySlug(serviceClient, targetUserId, 'power_tripped').catch(console.error);
+    fireChallenge(targetUserId, 'power_up_received', { promotion_type: boostType }).catch(console.error);
+  }
+
+  // Phase 7: challenge event for activator
+  fireChallenge(user.id, 'promotion_used', { promotion_type: boostType }).catch(console.error);
+
   triggerSync(targetUserId).catch(console.error);
   return ok({ tokens_spent: effectiveCost, effective_delta: effectiveDelta, expires_at: expiresAt });
 });
@@ -347,6 +386,73 @@ async function triggerSync(userId: string): Promise<void> {
     },
     body: JSON.stringify({ user_id: userId }),
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 7 helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function fireChallenge(
+  userId: string,
+  event: string,
+  metadata: Record<string, unknown> = {},
+): Promise<void> {
+  const fnUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/evaluate-challenges`;
+  try {
+    await fetch(fnUrl, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ user_id: userId, event, metadata }),
+    });
+  } catch (e) {
+    console.error(`fireChallenge(${event}) failed for ${userId}:`, e);
+  }
+}
+
+async function awardBadgeBySlug(
+  serviceClient: ReturnType<typeof createClient>,
+  userId: string,
+  badgeSlug: string,
+): Promise<void> {
+  const { data: badge } = await serviceClient
+    .from('badge_definitions')
+    .select('id')
+    .eq('slug', badgeSlug)
+    .single();
+  if (!badge) return;
+
+  const { error } = await serviceClient.from('user_badges').insert({
+    user_id: userId,
+    badge_id: badge.id,
+    challenge_id: null,
+  });
+  if (error && error.code !== '23505') {
+    console.error(`awardBadgeBySlug(${badgeSlug}) error:`, error);
+  }
+}
+
+async function checkAndAwardUntouchable(
+  serviceClient: ReturnType<typeof createClient>,
+  targetUserId: string,
+): Promise<void> {
+  // Award Untouchable if target has an active spotlight_entry boost (still pinned)
+  const now = new Date().toISOString();
+  const { data: spotlightBoost } = await serviceClient
+    .from('active_boosts')
+    .select('id')
+    .eq('target_user_id', targetUserId)
+    .eq('boost_type', 'spotlight_entry')
+    .eq('is_cancelled', false)
+    .gt('expires_at', now)
+    .limit(1)
+    .maybeSingle();
+
+  if (spotlightBoost) {
+    await awardBadgeBySlug(serviceClient, targetUserId, 'untouchable');
+  }
 }
 
 function ok(data: Record<string, unknown>): Response {
