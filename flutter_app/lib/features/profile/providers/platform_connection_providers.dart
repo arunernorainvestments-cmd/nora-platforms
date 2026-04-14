@@ -31,9 +31,33 @@ final liveMetricsFeedProvider =
       .from('platform_metrics')
       .select('*, platform_connections(platform_username)')
       .eq('is_live', true)
-      .order('display_score', ascending: false)
+      .order('heat_score', ascending: false)
       .limit(50);
-  return (res as List)
+
+  final metrics = (res as List)
       .map((e) => PlatformMetric.fromJson(e as Map<String, dynamic>))
       .toList();
+
+  if (metrics.isEmpty) return metrics;
+
+  // Apply visibility_multiplier passive effect: effective_score = heat_score * (1 + multiplier)
+  final userIds = metrics.map((m) => m.userId).where((id) => id.isNotEmpty).toList();
+  final passiveRes = await Supabase.instance.client
+      .from('user_passive_effects')
+      .select('user_id, visibility_multiplier')
+      .inFilter('user_id', userIds);
+
+  final passiveMap = <String, double>{};
+  for (final row in passiveRes as List) {
+    passiveMap[row['user_id'] as String] =
+        (row['visibility_multiplier'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  metrics.sort((a, b) {
+    final aEff = a.heatScore * (1 + (passiveMap[a.userId] ?? 0));
+    final bEff = b.heatScore * (1 + (passiveMap[b.userId] ?? 0));
+    return bEff.compareTo(aEff);
+  });
+
+  return metrics;
 });

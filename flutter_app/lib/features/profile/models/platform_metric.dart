@@ -1,4 +1,5 @@
 class PlatformMetric {
+  final String userId;
   final String platform;
   final bool isLive;
   final int liveViewerCount;
@@ -10,6 +11,7 @@ class PlatformMetric {
   final String? platformUsername;
 
   const PlatformMetric({
+    required this.userId,
     required this.platform,
     required this.isLive,
     required this.liveViewerCount,
@@ -24,6 +26,7 @@ class PlatformMetric {
   factory PlatformMetric.fromJson(Map<String, dynamic> json) {
     final conn = json['platform_connections'] as Map<String, dynamic>?;
     return PlatformMetric(
+      userId: json['user_id'] as String? ?? '',
       platform: json['platform'] as String,
       isLive: json['is_live'] as bool? ?? false,
       liveViewerCount: (json['live_viewer_count'] as num?)?.toInt() ?? 0,

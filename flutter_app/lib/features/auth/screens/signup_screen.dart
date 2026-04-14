@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../challenges/providers/challenge_providers.dart';
 import '../providers/auth_provider.dart';
 import '../providers/referral_provider.dart';
 
@@ -101,6 +102,13 @@ class _SignupScreenState extends ConsumerState<SignupScreen> {
             username: effectiveUsername.isNotEmpty ? effectiveUsername : null,
             referredByCode: referral?.code,
           );
+
+      // Fire challenge evaluation for the referrer (fire-and-forget).
+      // The edge function reads the new user's referred_by field and credits
+      // the referrer with progress on referral challenges + any passive bonus.
+      if (referral != null) {
+        ref.read(challengeActionsProvider).fireReferralSignup();
+      }
 
       // Clear referral now that it's been consumed
       ref.read(referralInfoProvider.notifier).state = null;

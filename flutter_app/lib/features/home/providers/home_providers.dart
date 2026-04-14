@@ -107,18 +107,64 @@ final homeTokenBalanceProvider =
 });
 
 /// Top 3 on-fire creators for the Spotlight section.
+/// Ordering: pinned entries (active spotlight_entry boost) first, then by
+/// effective_score = score * (1 + visibility_multiplier) descending.
 final spotlightCreatorsProvider =
     FutureProvider.autoDispose<List<SpotlightCreator>>((ref) async {
+  // Fetch a larger pool so Dart-side re-sort can surface pinned entries correctly.
   final data = await Supabase.instance.client
       .from('spotlight_scores')
       .select('user_id, score, tier, profiles(display_name, username, avatar_url)')
       .eq('tier', 'on_fire')
       .order('score', ascending: false)
-      .limit(3);
+      .limit(15);
 
-  return (data as List)
+  final creators = (data as List)
       .map((e) => SpotlightCreator.fromJson(e as Map<String, dynamic>))
       .toList();
+
+  if (creators.isEmpty) return creators;
+
+  final userIds = creators.map((c) => c.userId).toList();
+  final now = DateTime.now().toUtc().toIso8601String();
+
+  // Fetch passive effects and active spotlight pins in parallel.
+  final results = await Future.wait([
+    Supabase.instance.client
+        .from('user_passive_effects')
+        .select('user_id, visibility_multiplier')
+        .inFilter('user_id', userIds),
+    Supabase.instance.client
+        .from('active_boosts')
+        .select('target_user_id')
+        .eq('boost_type', 'spotlight_entry')
+        .eq('is_cancelled', false)
+        .gt('expires_at', now)
+        .inFilter('target_user_id', userIds),
+  ]);
+
+  final passiveMap = <String, double>{};
+  for (final row in results[0] as List) {
+    passiveMap[row['user_id'] as String] =
+        (row['visibility_multiplier'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  final pinnedIds = (results[1] as List)
+      .map((row) => row['target_user_id'] as String)
+      .toSet();
+
+  creators.sort((a, b) {
+    // Pinned entries sort above organic regardless of score.
+    final aPinned = pinnedIds.contains(a.userId) ? 1 : 0;
+    final bPinned = pinnedIds.contains(b.userId) ? 1 : 0;
+    if (aPinned != bPinned) return bPinned.compareTo(aPinned);
+    // Within same group, sort by effective_score descending.
+    final aEff = a.score * (1 + (passiveMap[a.userId] ?? 0));
+    final bEff = b.score * (1 + (passiveMap[b.userId] ?? 0));
+    return bEff.compareTo(aEff);
+  });
+
+  return creators.take(3).toList();
 });
 
 /// 5 random famous creators for the carousel.

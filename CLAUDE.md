@@ -90,6 +90,7 @@ All tables have RLS enabled. Migrations run in order:
 | 015 | promotion_banners table (Realtime); active_boosts CHECK updated |
 | 016 | badge_definitions, challenge_definitions, user_badges, user_challenge_progress, user_streaks; seed data; 'challenge_reward' token type |
 | 017 | user_passive_effects view (aggregates badge passive effects per user) |
+| 018 | 'passive_bonus' token type; heat_score_leader_since on platform_metrics; evaluate_main_character_badge() DB function + hourly pg_cron job |
 
 ### Key RLS rules
 - token_balances — service role only for writes
@@ -128,7 +129,11 @@ Supabase project uses ES256 (asymmetric) JWTs — HS256 runtime verification alw
 | oauth-callback | Verifies state, exchanges code for tokens, stores connection, triggers sync |
 | sync-platform-metrics | Fetches live data, computes display_score (raw composite), populates heat_score + resolution_score |
 | disconnect-platform | Revokes OAuth tokens, deletes connection (cascades to metrics) |
-| resolve-markets | Resolves expired markets: compares opening_resolution_score vs current, distributes payouts (10% rake: 5% platform + 5% MM), handles voids/refunds, sends notifications |
+| resolve-markets | Resolves expired markets: compares opening_resolution_score vs current, distributes payouts (10% rake: 5% platform + 5% MM), handles voids/refunds, sends notifications; fires bet_won/bet_lost/tokens_earned events to evaluate-challenges; applies token_earn_rate passive bonus (passive_bonus token type) |
+| apply-promotion | Validates and applies self-boosts and power-ups; enforces cooldowns; stacks badge promotion_discount + MM discount multiplicatively; fires promotion_used/power_up_received events; awards Power Tripped + Untouchable badges directly |
+| evaluate-challenges | Full challenge condition engine (count_threshold, snapshot, streak, composite); handles referral_signup redirect to referrer; idempotent; awards tokens + badges; fires from Flutter (check_in, bet_placed) and edge functions (bet_won, bet_lost, promotion events) |
+| create-checkout-session | Validates auth, creates Stripe hosted checkout, inserts pending token_purchases row |
+| stripe-webhook | Verifies Stripe HMAC signature, idempotency check, credits tokens via increment_token_balance RPC |
 
 ### Deploying edge functions
 Edge functions do NOT auto-deploy from GitHub. Must deploy manually:
@@ -322,17 +327,28 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
 - Challenges button added to own profile screen (teal, next to Preview Profile)
 - passiveEffectsProvider(userId): reads user_passive_effects view for UI/downstream use
 
-#### Phase 7 — Deferred / Not Yet Wired
-- Passive effects not yet applied to Discover/Spotlight ranking or apply-promotion cost
-  calculation — requires Discover provider update + apply-promotion discount lookup
-- referral_signup event: fires from Flutter after signup if referral code was used;
-  edge function looks up referred_by field and evaluates for the referrer — currently not
-  wired into the signup screen (TODO: call challengeActionsProvider.fireReferralSignup()
-  in signup_screen.dart after successful signup with a referral code)
-- Main Character badge (held #1 Heat Score 24h): requires a separate pg_cron hourly check
-  that compares platform_metrics heat_score over time — not yet implemented
-- tokens_spent event: currently only fires if explicitly called — not wired to bet placement
-  (bet_placed is wired; tokens_spent is for promotion spending from apply-promotion)
+- Migration 018: 'passive_bonus' token type added to token_transactions constraint;
+  heat_score_leader_since column on platform_metrics; evaluate_main_character_badge()
+  DB function awards 150T + badge after 24h consecutive #1 Heat Score; hourly pg_cron
+  job 'main-character-check' registered
+
+- Passive effects applied to feed ranking (post Phase 7):
+  - Rising tab (risingCreatorsProvider): adds platform_metrics(heat_score) to select,
+    fetches user_passive_effects, sorts by effective_score = heat_score * (1 + visibility_multiplier)
+  - Who's Live tab (liveMetricsFeedProvider): sorts by heat_score (was display_score),
+    then re-sorts in Dart by effective_score using user_passive_effects
+  - Spotlight (spotlightCreatorsProvider): fetches 15, re-sorts with pinned entries
+    (active spotlight_entry boost) first, then by effective_score; returns top 3
+  - apply-promotion: promotion_discount from user_passive_effects stacked multiplicatively
+    with MM discount before final cost
+  - resolve-markets: token_earn_rate bonus minted as separate passive_bonus token_transactions row
+- Referral signup hook wired: signup_screen.dart calls fireReferralSignup() after
+  successful signup when a referral code was present (fire-and-forget; evaluate-challenges
+  edge function redirects evaluation to the referrer via their referred_by field)
+
+#### Phase 7 — Remaining Deferred
+- tokens_spent event: currently only fires if explicitly called — not wired to promotion
+  spending in apply-promotion (bet_placed is wired; tokens_spent requires explicit call)
 - LAUNCH_DATE_PLACEHOLDER in migration 016 set to '2026-06-01' (OG badge cutoff) and
   '2026-07-01' (Early Adopter +30 days) — update before public launch if needed
 
@@ -357,12 +373,7 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
 
 ### Post Phase 5 — Promotions & Power-Ups ✓ COMPLETE (Phase 6)
 
-### Post Phase 5 — Challenges & Badges
-- Daily/weekly/monthly challenge tracks
-- Separate pools for users vs Market Makers
-- Each completed challenge = 50–150 tokens + cosmetic badge
-- Badges give +2% visibility multiplier in feeds while equipped
-- Examples: hot streak wins, early adopter, big spender, Spotlight entry, etc.
+### Post Phase 5 — Challenges & Badges ✓ COMPLETE (Phase 7)
 
 ### Post Phase 5 — Games (separate project)
 - Flappy Bird–style endless flyer

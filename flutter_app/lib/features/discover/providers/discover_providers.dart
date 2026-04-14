@@ -157,10 +157,35 @@ final risingCreatorsProvider = FutureProvider<List<RisingCreator>>((ref) async {
   final data = await Supabase.instance.client
       .from('profiles')
       .select('id, display_name, username, avatar_url, popularity_score, '
-          'spotlight_scores(score, tier), token_balances(available_tokens)')
+          'spotlight_scores(score, tier), token_balances(available_tokens), '
+          'platform_metrics(heat_score)')
       .eq('is_creator', true)
       .order('created_at', ascending: false);
-  return (data as List)
+
+  final creators = (data as List)
       .map((e) => RisingCreator.fromJson(e as Map<String, dynamic>))
       .toList();
+
+  if (creators.isEmpty) return creators;
+
+  // Apply visibility_multiplier passive effect: effective_score = heat_score * (1 + multiplier)
+  final userIds = creators.map((c) => c.id).toList();
+  final passiveRes = await Supabase.instance.client
+      .from('user_passive_effects')
+      .select('user_id, visibility_multiplier')
+      .inFilter('user_id', userIds);
+
+  final passiveMap = <String, double>{};
+  for (final row in passiveRes as List) {
+    passiveMap[row['user_id'] as String] =
+        (row['visibility_multiplier'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  creators.sort((a, b) {
+    final aEff = a.heatScore * (1 + (passiveMap[a.id] ?? 0));
+    final bEff = b.heatScore * (1 + (passiveMap[b.id] ?? 0));
+    return bEff.compareTo(aEff);
+  });
+
+  return creators;
 });
