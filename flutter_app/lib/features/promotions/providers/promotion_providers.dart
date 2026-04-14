@@ -52,28 +52,35 @@ final promotionContextProvider =
     );
   }
 
-  final data = await Supabase.instance.client
-      .from('markets')
-      .select('id, above_pool, below_pool')
-      .eq('creator_id', userId)
-      .eq('status', 'open')
-      .limit(1)
-      .maybeSingle();
+  try {
+    final data = await Supabase.instance.client
+        .from('markets')
+        .select('id, above_pool, below_pool')
+        .eq('creator_id', userId)
+        .eq('status', 'open')
+        .limit(1)
+        .maybeSingle();
 
-  if (data == null) {
+    if (data == null) {
+      return const PromotionContext(
+        hasMarketMakerDiscount: false,
+        hasActiveBetMultiplier: false,
+      );
+    }
+
+    final pool =
+        (data['above_pool'] as num? ?? 0) + (data['below_pool'] as num? ?? 0);
+
+    return PromotionContext(
+      hasMarketMakerDiscount: true,
+      hasActiveBetMultiplier: pool >= 200,
+    );
+  } catch (_) {
     return const PromotionContext(
       hasMarketMakerDiscount: false,
       hasActiveBetMultiplier: false,
     );
   }
-
-  final pool =
-      (data['above_pool'] as num? ?? 0) + (data['below_pool'] as num? ?? 0);
-
-  return PromotionContext(
-    hasMarketMakerDiscount: true,
-    hasActiveBetMultiplier: pool >= 200,
-  );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

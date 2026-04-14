@@ -166,8 +166,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
       description: `Super Massive Black Hole — cancelled all Galaxy effects in ${category}`,
     });
 
-    // Phase 7: challenge event for SMBH activator
+    // Phase 7: challenge events for SMBH activator
     fireChallenge(user.id, 'promotion_used', { promotion_type: 'super_massive_black_hole' }).catch(console.error);
+    fireChallenge(user.id, 'tokens_spent', { amount: adjustedBaseCost, promotion_type: 'super_massive_black_hole' }).catch(console.error);
 
     return ok({ tokens_spent: adjustedBaseCost, effective_delta: 0, expires_at: null });
   }
@@ -243,6 +244,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // Phase 7: challenge events
     fireChallenge(user.id, 'promotion_used', { promotion_type: 'black_hole' }).catch(console.error);
     fireChallenge(targetUserId, 'power_up_received', { promotion_type: 'black_hole' }).catch(console.error);
+    fireChallenge(user.id, 'tokens_spent', { amount: adjustedBaseCost, promotion_type: 'black_hole' }).catch(console.error);
 
     triggerSync(targetUserId).catch(console.error);
     return ok({ tokens_spent: adjustedBaseCost, effective_delta: 0, expires_at: null });
@@ -365,8 +367,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     fireChallenge(targetUserId, 'power_up_received', { promotion_type: boostType }).catch(console.error);
   }
 
-  // Phase 7: challenge event for activator
+  // Phase 7: challenge events for activator
   fireChallenge(user.id, 'promotion_used', { promotion_type: boostType }).catch(console.error);
+  fireChallenge(user.id, 'tokens_spent', { amount: effectiveCost, promotion_type: boostType }).catch(console.error);
 
   triggerSync(targetUserId).catch(console.error);
   return ok({ tokens_spent: effectiveCost, effective_delta: effectiveDelta, expires_at: expiresAt });
