@@ -14,6 +14,7 @@ import '../../features/profile/screens/public_profile_screen.dart';
 import '../../features/profile/providers/platform_connection_providers.dart';
 import '../../features/markets/screens/market_detail_screen.dart';
 import '../../features/wallet/screens/wallet_screen.dart';
+import '../../features/legal/screens/privacy_policy_screen.dart';
 import '../shell/main_shell.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -65,6 +66,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/challenges',
         builder: (context, state) => const ChallengesScreen(),
+      ),
+
+      // ── Legal routes (public, no auth) ───────────────────────────────────
+      GoRoute(
+        path: '/privacy',
+        builder: (context, state) => const PrivacyPolicyScreen(),
       ),
 
       // ── Public routes (no bottom nav) ─────────────────────────────────────

@@ -9,6 +9,7 @@ import '../../auth/providers/auth_provider.dart';
 import '../../challenges/widgets/badges_shelf.dart';
 import '../../promotions/widgets/promotions_sheet.dart';
 import '../models/platform_connection.dart';
+import '../../../core/widgets/settings_menu_button.dart';
 import '../providers/platform_connection_providers.dart';
 import '../providers/profile_providers.dart';
 
@@ -245,6 +246,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             loading: () => const SizedBox.shrink(),
             error: (_, __) => const SizedBox.shrink(),
           ),
+          const SettingsMenuButton(),
         ],
       ),
       body: profileAsync.when(
@@ -1284,12 +1286,60 @@ class _PlatformConnectionTileState
 
     if (widget.isStub) {
       return OutlinedButton.icon(
-        onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Coming in a future update'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        ),
+        onPressed: () {
+          if (widget.platform == 'kick') {
+            showDialog<void>(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                backgroundColor: AppTheme.surface,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16)),
+                title: const Row(
+                  children: [
+                    Icon(Icons.videogame_asset_outlined,
+                        color: AppTheme.primary, size: 22),
+                    SizedBox(width: 10),
+                    Text('Kick Integration',
+                        style: TextStyle(
+                            color: AppTheme.textPrimary, fontSize: 17)),
+                  ],
+                ),
+                content: const Text(
+                  'We\'re waiting on the official Kick API release before we '
+                  'can build this integration. Thank you for your patience!\n\n'
+                  'If you\'d like to help speed things up, you can reach out '
+                  'to Kick directly and let them know you want a public API.',
+                  style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 14,
+                      height: 1.5),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('Dismiss',
+                        style: TextStyle(color: AppTheme.textSecondary)),
+                  ),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(ctx).pop();
+                      openUrlInBrowser('https://kick.com/help');
+                    },
+                    child: const Text('Contact Kick',
+                        style: TextStyle(color: AppTheme.primary)),
+                  ),
+                ],
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Coming in a future update'),
+                behavior: SnackBarBehavior.floating,
+              ),
+            );
+          }
+        },
         icon: Icon(icon, size: 16),
         label: Text(label, style: const TextStyle(fontSize: 13)),
         style: OutlinedButton.styleFrom(

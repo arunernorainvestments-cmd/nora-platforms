@@ -6,6 +6,7 @@ import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/open_url.dart';
 import '../providers/wallet_providers.dart';
+import '../../../core/widgets/settings_menu_button.dart';
 
 class WalletScreen extends ConsumerStatefulWidget {
   final String? purchaseResult;
@@ -66,7 +67,10 @@ class _WalletScreenState extends ConsumerState<WalletScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Wallet')),
+      appBar: AppBar(
+        title: const Text('Wallet'),
+        actions: const [SettingsMenuButton()],
+      ),
       body: RefreshIndicator(
         color: AppTheme.primary,
         backgroundColor: AppTheme.surface,

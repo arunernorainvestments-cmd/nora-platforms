@@ -8,6 +8,7 @@ import '../../challenges/providers/challenge_providers.dart';
 import '../../notifications/providers/notification_providers.dart';
 import '../../discover/providers/discover_providers.dart';
 import '../../profile/providers/platform_connection_providers.dart';
+import '../../../core/widgets/settings_menu_button.dart';
 import '../../profile/models/platform_metric.dart';
 import '../providers/home_providers.dart';
 import '../widgets/home_ticker.dart';
@@ -72,6 +73,7 @@ class HomeScreen extends ConsumerWidget {
               builder: (_) => const _NotificationSheet(),
             ),
           ),
+          const SettingsMenuButton(),
         ],
       ),
       body: RefreshIndicator(

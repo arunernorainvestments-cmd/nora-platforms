@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/settings_menu_button.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/markets_providers.dart';
 
@@ -34,6 +35,7 @@ class _MarketsScreenState extends ConsumerState<MarketsScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text('Markets'),
+        actions: const [SettingsMenuButton()],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: AppTheme.primary,

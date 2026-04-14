@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../providers/search_providers.dart';
 import '../models/profile_search_result.dart';
+import '../../../core/widgets/settings_menu_button.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -25,7 +26,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Search')),
+      appBar: AppBar(
+        title: const Text('Search'),
+        actions: const [SettingsMenuButton()],
+      ),
       body: Column(
         children: [
           // ── Search bar ────────────────────────────────────────────────
