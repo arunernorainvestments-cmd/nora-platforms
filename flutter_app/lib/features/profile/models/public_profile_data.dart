@@ -21,4 +21,7 @@ class PublicProfileData {
     required this.connections,
     required this.metrics,
   });
+
+  int get compositeDisplayScore =>
+      metrics.fold(0, (sum, m) => sum + m.displayScore);
 }

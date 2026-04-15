@@ -1,6 +1,6 @@
 // supabase/functions/sync-platform-metrics/index.ts
 // Fetches live metrics from YouTube and Twitch for all active connections
-// (or a single user). Computes Heat Score and upserts into platform_metrics.
+// (or a single user). Computes Display Score (bigint) and Heat Score (boost-only).
 // Triggered by pg_cron every 5 minutes and on-demand after OAuth callback.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -78,6 +78,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const results: Array<{ user_id: string; platform: string; success: boolean; error?: string }> = [];
+  // Track which user_ids were processed so we can write composite score_history entries
+  const processedUserIds = new Set<string>();
 
   for (const conn of connections as PlatformConnection[]) {
     try {
@@ -112,18 +114,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
           ? await fetchYouTubeMetrics(conn.platform_user_id, accessToken)
           : await fetchTwitchMetrics(conn.platform_user_id, accessToken);
 
-      // ── Upsert platform_metrics ─────────────────────────────────────────
-      const displayScore = computeHeatScore(metrics);
+      // ── Fetch previous_follower_count for 24h growth delta ──────────────
+      const { data: existing } = await supabase
+        .from('platform_metrics')
+        .select('previous_follower_count')
+        .eq('platform_connection_id', conn.id)
+        .maybeSingle();
+      const prevCount = (existing?.previous_follower_count as number | null) ?? 0;
+      const currentFollowers = metrics.followers;
+      const followerGrowth = prevCount > 0 ? Math.max(0, currentFollowers - prevCount) : 0;
 
-      // resolution_score: raw API number only — never modified by promotions
-      // YouTube: raw subscriberCount; Twitch: raw follower total
-      const resolutionScore =
-        conn.platform === 'youtube'
-          ? (metrics.subscriberCount ?? 0)
-          : metrics.followers;
+      // ── Compute Display Score (bigint: additive real-world points) ──────
+      const displayScore = computeDisplayScore(currentFollowers, metrics.liveViewers, followerGrowth);
 
-      // heat_score: display_score + sum of all active (non-cancelled, non-expired) boost deltas
-      // Clamped 0–100. This is the number shown in all UI.
+      // ── Compute Heat Score (baseline 0 — only active boost deltas) ──────
       const now = new Date().toISOString();
       const { data: activeBoosts } = await supabase
         .from('active_boosts')
@@ -132,14 +136,14 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .eq('is_cancelled', false)
         .or(`expires_at.is.null,expires_at.gt.${now}`);
 
-      // Only sum non-null, numeric deltas (excludes cosmetic-only boosts with delta=0)
       const boostSum = (activeBoosts ?? []).reduce(
         (acc: number, b: { heat_score_delta: number | null }) =>
           acc + (typeof b.heat_score_delta === 'number' ? b.heat_score_delta : 0),
         0,
       );
 
-      const heatScore = Math.min(100, Math.max(0, displayScore + boostSum));
+      // heat_score baseline is 0 — only boosts move it
+      const heatScore = Math.min(100, Math.max(0, boostSum));
 
       const { error: upsertErr } = await supabase
         .from('platform_metrics')
@@ -156,7 +160,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
             stream_category: metrics.streamCategory ?? null,
             display_score: displayScore,
             heat_score: heatScore,
-            resolution_score: resolutionScore,
+            previous_follower_count: currentFollowers,
             raw_metrics: metrics.raw,
             fetched_at: new Date().toISOString(),
           },
@@ -171,6 +175,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .update({ last_synced_at: new Date().toISOString() })
         .eq('id', conn.id);
 
+      processedUserIds.add(conn.user_id);
       results.push({ user_id: conn.user_id, platform: conn.platform, success: true });
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -179,29 +184,33 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
   }
 
+  // ── Write composite score_history entry per unique user ─────────────────
+  for (const userId of processedUserIds) {
+    try {
+      const { data: allMetrics } = await supabase
+        .from('platform_metrics')
+        .select('display_score')
+        .eq('user_id', userId);
+      const composite = (allMetrics ?? []).reduce(
+        (s: number, m: { display_score: number | null }) => s + Number(m.display_score ?? 0),
+        0,
+      );
+      await supabase.from('score_history').insert({ user_id: userId, composite_score: composite });
+    } catch (e) {
+      console.error(`[sync-platform-metrics] score_history insert failed for ${userId}:`, e);
+    }
+  }
+
   const synced = results.filter((r) => r.success).length;
   return json({ synced, total: results.length, results }, 200, corsHeaders);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Heat Score Formula
+// Display Score Formula (bigint — real-world points, never modified by promotions)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function computeHeatScore(metrics: PlatformMetrics): number {
-  const PLATFORM_AVG_LIVE = 500;
-
-  const liveComponent = metrics.isLive
-    ? Math.min((metrics.liveViewers / PLATFORM_AVG_LIVE) * 60, 60)
-    : 0;
-
-  const reachComponent = Math.min((metrics.followers / 1_000_000) * 25, 25);
-
-  const liveBonusComponent = metrics.isLive ? 15 : 0;
-
-  return Math.min(
-    Math.round((liveComponent + reachComponent + liveBonusComponent) * 100) / 100,
-    100,
-  );
+function computeDisplayScore(followers: number, liveViewers: number, followerGrowth: number): number {
+  return Math.floor(followers * 1 + liveViewers * 10 + followerGrowth * 5);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

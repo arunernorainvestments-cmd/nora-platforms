@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../challenges/widgets/badges_shelf.dart';
@@ -12,6 +13,7 @@ import '../models/platform_connection.dart';
 import '../models/platform_metric.dart';
 import '../models/public_profile_data.dart';
 import '../providers/public_profile_providers.dart';
+import '../widgets/score_history_chart.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SCREEN
@@ -112,6 +114,7 @@ class _ProfileBody extends StatelessWidget {
           child: _HeaderSection(
             profile: profile,
             heatScore: maxHeatScore,
+            compositeDisplayScore: profile.compositeDisplayScore,
           ),
         ),
 
@@ -156,7 +159,13 @@ class _ProfileBody extends StatelessWidget {
             ),
           ),
 
-        // ── F) Recent Content ────────────────────────────────────────────────
+        // ── F) Score History ─────────────────────────────────────────────────
+        if (profile.connections.isNotEmpty)
+          SliverToBoxAdapter(
+            child: _ScoreHistorySection(userId: profile.id),
+          ),
+
+        // ── G) Recent Content ────────────────────────────────────────────────
         const SliverToBoxAdapter(child: _RecentContentSection()),
 
         const SliverToBoxAdapter(child: SizedBox(height: 48)),
@@ -172,8 +181,13 @@ class _ProfileBody extends StatelessWidget {
 class _HeaderSection extends StatelessWidget {
   final PublicProfileData profile;
   final double heatScore;
+  final int compositeDisplayScore;
 
-  const _HeaderSection({required this.profile, required this.heatScore});
+  const _HeaderSection({
+    required this.profile,
+    required this.heatScore,
+    required this.compositeDisplayScore,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -254,6 +268,12 @@ class _HeaderSection extends StatelessWidget {
                   ? heatScore.toStringAsFixed(1)
                   : '---',
             ),
+            const SizedBox(height: 10),
+            _DisplayScoreChip(
+              value: profile.isMarketMaker && compositeDisplayScore > 0
+                  ? '${NumberFormat('#,###').format(compositeDisplayScore)} pts'
+                  : '---',
+            ),
           ],
         ],
       ),
@@ -295,6 +315,46 @@ class _HeatScoreDisplay extends StatelessWidget {
           const SizedBox(height: 2),
           const Text(
             'Heat Score',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 12,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DisplayScoreChip extends StatelessWidget {
+  final String value;
+  const _DisplayScoreChip({required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceLight,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.cardBorder),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.bar_chart, size: 16, color: AppTheme.secondary),
+          const SizedBox(width: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              color: AppTheme.secondary,
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 6),
+          const Text(
+            'Display Score',
             style: TextStyle(
               color: AppTheme.textSecondary,
               fontSize: 12,
@@ -764,8 +824,8 @@ class _PlatformStatCard extends StatelessWidget {
                     label: 'Viewers',
                     value: _formatCount(metric.liveViewerCount)),
               _StatItem(
-                  label: 'Raw Score',
-                  value: metric.displayScore.toStringAsFixed(1)),
+                  label: 'Display Score',
+                  value: NumberFormat('#,###').format(metric.displayScore)),
               _StatItem(
                   label: 'Heat Score',
                   value: metric.heatScore.toStringAsFixed(1)),
@@ -851,7 +911,7 @@ class _RedactedStatCard extends StatelessWidget {
             runSpacing: 10,
             children: [
               _StatItem(label: followerLabel, value: '---'),
-              const _StatItem(label: 'Raw Score', value: '---'),
+              const _StatItem(label: 'Display Score', value: '---'),
               const _StatItem(label: 'Heat Score', value: '---'),
             ],
           ),
@@ -954,6 +1014,30 @@ class _SectionHeader extends StatelessWidget {
           fontWeight: FontWeight.bold,
         ),
       );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// F) SCORE HISTORY
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ScoreHistorySection extends StatelessWidget {
+  final String userId;
+  const _ScoreHistorySection({required this.userId});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionHeader('Score History'),
+          const SizedBox(height: 12),
+          ScoreHistoryChart(userId: userId),
+        ],
+      ),
+    );
+  }
 }
 
 class _NotFoundState extends StatelessWidget {

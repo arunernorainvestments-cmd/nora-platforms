@@ -6,7 +6,7 @@ class PlatformMetric {
   final int followerCount;
   final String? streamTitle;
   final String? streamCategory;
-  final double displayScore;
+  final int displayScore;
   final double heatScore;
   final String? platformUsername;
 
@@ -33,7 +33,7 @@ class PlatformMetric {
       followerCount: (json['follower_count'] as num?)?.toInt() ?? 0,
       streamTitle: json['stream_title'] as String?,
       streamCategory: json['stream_category'] as String?,
-      displayScore: (json['display_score'] as num?)?.toDouble() ?? 0.0,
+      displayScore: (json['display_score'] as num?)?.toInt() ?? 0,
       heatScore: (json['heat_score'] as num?)?.toDouble() ?? 0.0,
       platformUsername: conn?['platform_username'] as String?,
     );

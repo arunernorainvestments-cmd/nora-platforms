@@ -67,6 +67,7 @@ class RisingCreator {
   final String? spotlightTier; // 'on_fire' | 'rising' | 'watched' | 'listed'
   final int availableTokens;
   final double heatScore; // from platform_metrics (max across all rows)
+  final int compositeDisplayScore; // sum of display_score across all platform rows
 
   const RisingCreator({
     required this.id,
@@ -78,6 +79,7 @@ class RisingCreator {
     this.spotlightTier,
     required this.availableTokens,
     this.heatScore = 0,
+    this.compositeDisplayScore = 0,
   });
 
   factory RisingCreator.fromJson(Map<String, dynamic> json) {
@@ -95,8 +97,9 @@ class RisingCreator {
     final balance = unwrap(json['token_balances']);
 
     // platform_metrics is a reverse FK — comes back as a list (one per platform).
-    // Take the max heat_score across all rows.
+    // Take the max heat_score and sum display_score across all rows.
     double heatScore = 0;
+    int compositeDisplayScore = 0;
     final metricsRaw = json['platform_metrics'];
     if (metricsRaw is List && metricsRaw.isNotEmpty) {
       heatScore = metricsRaw
@@ -104,8 +107,14 @@ class RisingCreator {
               ((m as Map<String, dynamic>)['heat_score'] as num?)?.toDouble() ??
               0.0)
           .reduce((a, b) => a > b ? a : b);
+      compositeDisplayScore = metricsRaw.fold<int>(
+        0,
+        (sum, m) =>
+            sum + (((m as Map<String, dynamic>)['display_score'] as num?)?.toInt() ?? 0),
+      );
     } else if (metricsRaw is Map<String, dynamic>) {
       heatScore = (metricsRaw['heat_score'] as num?)?.toDouble() ?? 0.0;
+      compositeDisplayScore = (metricsRaw['display_score'] as num?)?.toInt() ?? 0;
     }
 
     return RisingCreator(
@@ -118,6 +127,7 @@ class RisingCreator {
       spotlightTier: spotlight?['tier'] as String?,
       availableTokens: (balance?['available_tokens'] as num?)?.toInt() ?? 0,
       heatScore: heatScore,
+      compositeDisplayScore: compositeDisplayScore,
     );
   }
 
@@ -158,7 +168,7 @@ final risingCreatorsProvider = FutureProvider<List<RisingCreator>>((ref) async {
       .from('profiles')
       .select('id, display_name, username, avatar_url, popularity_score, '
           'spotlight_scores(score, tier), token_balances(available_tokens), '
-          'platform_metrics(heat_score)')
+          'platform_metrics(heat_score, display_score)')
       .eq('is_creator', true)
       .order('created_at', ascending: false);
 
@@ -168,7 +178,8 @@ final risingCreatorsProvider = FutureProvider<List<RisingCreator>>((ref) async {
 
   if (creators.isEmpty) return creators;
 
-  // Apply visibility_multiplier passive effect: effective_score = heat_score * (1 + multiplier)
+  // Apply visibility_multiplier passive effect:
+  // effective_score = compositeDisplayScore * (1 + multiplier)
   final userIds = creators.map((c) => c.id).toList();
   final passiveRes = await Supabase.instance.client
       .from('user_passive_effects')
@@ -182,8 +193,8 @@ final risingCreatorsProvider = FutureProvider<List<RisingCreator>>((ref) async {
   }
 
   creators.sort((a, b) {
-    final aEff = a.heatScore * (1 + (passiveMap[a.id] ?? 0));
-    final bEff = b.heatScore * (1 + (passiveMap[b.id] ?? 0));
+    final aEff = a.compositeDisplayScore * (1 + (passiveMap[a.id] ?? 0));
+    final bEff = b.compositeDisplayScore * (1 + (passiveMap[b.id] ?? 0));
     return bEff.compareTo(aEff);
   });
 

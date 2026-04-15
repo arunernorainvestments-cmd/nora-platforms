@@ -132,32 +132,28 @@ async function resolveMarket(
 ): Promise<void> {
   console.log(`Resolving market ${market.id} (creator: ${market.creator_id})`);
 
-  // 1. Fetch creator's current resolution_score.
-  //    LIMIT 1 matches the snapshot behavior in trg_snapshot_market_scores (migration 006).
-  const { data: metrics } = await db
+  // 1. Fetch creator's current composite display_score (sum across all platforms).
+  const { data: allMetrics } = await db
     .from('platform_metrics')
-    .select('resolution_score')
-    .eq('user_id', market.creator_id)
-    .limit(1)
-    .maybeSingle();
+    .select('display_score')
+    .eq('user_id', market.creator_id);
+
+  const currentScore = (allMetrics && allMetrics.length > 0)
+    ? allMetrics.reduce((s: number, m: { display_score: number | null }) => s + Number(m.display_score ?? 0), 0)
+    : null;
 
   // 2. Determine result
   let result: 'above' | 'below' | 'refund';
 
-  if (
-    metrics === null ||
-    metrics.resolution_score === null ||
-    market.opening_resolution_score === null
-  ) {
+  if (currentScore === null || market.opening_resolution_score === null) {
     result = 'refund';
     console.log(`Market ${market.id}: missing metrics or snapshot → refund`);
   } else {
-    const current = Number(metrics.resolution_score);
     const opening = Number(market.opening_resolution_score);
-    if (current > opening) result = 'above';
-    else if (current < opening) result = 'below';
+    if (currentScore > opening) result = 'above';
+    else if (currentScore < opening) result = 'below';
     else result = 'refund';
-    console.log(`Market ${market.id}: current=${current}, opening=${opening} → ${result}`);
+    console.log(`Market ${market.id}: current=${currentScore}, opening=${opening} → ${result}`);
   }
 
   // 3. Fetch all active bets for this market

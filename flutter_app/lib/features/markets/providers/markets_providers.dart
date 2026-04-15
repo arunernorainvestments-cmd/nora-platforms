@@ -167,6 +167,7 @@ class MarketDetail {
   final String? identifier;
   final String? category1;
   final String? category2;
+  final int compositeDisplayScore;
 
   const MarketDetail({
     required this.id,
@@ -193,6 +194,7 @@ class MarketDetail {
     this.identifier,
     this.category1,
     this.category2,
+    this.compositeDisplayScore = 0,
   });
 
   double get totalPool => yesPool + noPool;
@@ -205,12 +207,20 @@ class MarketDetail {
     return NumberFormat('#,###').format(openingResolutionScore);
   }
 
+  String get formattedComposite =>
+      NumberFormat('#,###').format(compositeDisplayScore);
+
   static MarketDetail fromParts(
     Map<String, dynamic> market,
     Map<String, dynamic>? metrics,
+    List<Map<String, dynamic>> allMetrics,
   ) {
     final creator = market['creator'] as Map<String, dynamic>? ?? {};
     final conn = metrics?['platform_connections'] as Map<String, dynamic>?;
+    final composite = allMetrics.fold<int>(
+      0,
+      (sum, m) => sum + ((m['display_score'] as num?)?.toInt() ?? 0),
+    );
     return MarketDetail(
       id: market['id'] as String,
       creatorId: market['creator_id'] as String,
@@ -242,6 +252,7 @@ class MarketDetail {
       identifier: market['market_identifier'] as String?,
       category1: market['category_1'] as String?,
       category2: market['category_2'] as String?,
+      compositeDisplayScore: composite,
     );
   }
 }
@@ -276,6 +287,7 @@ final marketDetailProvider =
 
   final creatorId = marketData['creator_id'] as String;
 
+  // Fetch primary metrics row (for live status, heat score, platform badge)
   final metricsData = await client
       .from('platform_metrics')
       .select(
@@ -286,9 +298,16 @@ final marketDetailProvider =
       .limit(1)
       .maybeSingle();
 
+  // Fetch all platform_metrics rows to compute composite display_score
+  final allMetricsData = await client
+      .from('platform_metrics')
+      .select('display_score')
+      .eq('user_id', creatorId);
+
   return MarketDetail.fromParts(
     marketData,
     metricsData,
+    (allMetricsData as List).cast<Map<String, dynamic>>(),
   );
 });
 

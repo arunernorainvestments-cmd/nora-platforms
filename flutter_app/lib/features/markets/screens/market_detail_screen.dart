@@ -270,9 +270,8 @@ class _ScoreSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final score = market.heatScore;
-    final scoreText = score != null
-        ? score.toStringAsFixed(1)
+    final scoreText = market.compositeDisplayScore > 0
+        ? market.formattedComposite
         : '--';
 
     return Container(
@@ -311,7 +310,7 @@ class _ScoreSection extends StatelessWidget {
                       scoreText,
                       style: const TextStyle(
                         color: AppTheme.textPrimary,
-                        fontSize: 48,
+                        fontSize: 36,
                         fontWeight: FontWeight.bold,
                         height: 1.0,
                       ),
@@ -352,7 +351,7 @@ class _ScoreSection extends StatelessWidget {
                     ),
                   ),
                   const Text(
-                    'followers at open',
+                    'Score at open',
                     style: TextStyle(
                       color: AppTheme.textSecondary,
                       fontSize: 10,
