@@ -372,6 +372,22 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: OutlinedButton.icon(
+                      onPressed: () => context.push('/dashboard'),
+                      icon: const Icon(Icons.show_chart, size: 18),
+                      label: const Text('Score Dashboard'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppTheme.secondary,
+                        side: const BorderSide(color: AppTheme.secondary),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
                       onPressed: () {
                         final userId =
                             Supabase.instance.client.auth.currentUser?.id;
@@ -746,7 +762,7 @@ class _MarketMakerDashboard extends StatelessWidget {
               _PlatformConnectionTile(platform: 'youtube'),
               _PlatformConnectionTile(platform: 'twitch'),
               _PlatformConnectionTile(platform: 'tiktok', isStub: true),
-              _PlatformConnectionTile(platform: 'x', isStub: true),
+              _PlatformConnectionTile(platform: 'x'),
               _PlatformConnectionTile(platform: 'instagram', isStub: true),
               _PlatformConnectionTile(platform: 'kick', isStub: true),
             ],
@@ -800,7 +816,7 @@ class _MarketMakerOptInSheetState
   Future<void> _tapPlatform(BuildContext context, String platform) async {
     setState(() => _attemptedPlatforms.add(platform));
 
-    if (platform == 'youtube' || platform == 'twitch') {
+    if (platform == 'youtube' || platform == 'twitch' || platform == 'x') {
       final messenger = ScaffoldMessenger.of(context);
       try {
         final user = Supabase.instance.client.auth.currentUser;

@@ -29,8 +29,8 @@ class PrivacyPolicyScreen extends StatelessWidget {
           children: [
             const _Heading('Privacy Policy'),
             const _Meta('N.O.R.A. Platforms, Inc.'),
-            const _Meta('Effective Date: June 1, 2026'),
-            const _Meta('Last Updated: June 1, 2026'),
+            const _Meta('Effective Date: April 15, 2026'),
+            const _Meta('Last Updated: April 15, 2026'),
             const SizedBox(height: 24),
 
             const _Body(

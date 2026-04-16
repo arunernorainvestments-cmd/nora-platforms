@@ -1,5 +1,5 @@
 // supabase/functions/oauth-callback/index.ts
-// Handles the OAuth redirect from YouTube/Twitch. Exchanges the auth code for
+// Handles the OAuth redirect from YouTube, Twitch, and X. Exchanges the auth code for
 // tokens, stores them in platform_connections, triggers an initial metric sync,
 // then redirects the user back to the app.
 
@@ -40,7 +40,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return Response.redirect(`${appUrl}/profile?error=missing_params`, 302);
   }
 
-  // Guard against double-invocation (Twitch codes are single-use)
+  // Guard against double-invocation (codes are single-use)
   if (processedCodes.has(code)) {
     console.warn('[oauth-callback] Duplicate request for code, ignoring');
     return Response.redirect(`${appUrl}/profile?error=duplicate_request`, 302);
@@ -176,8 +176,7 @@ async function exchangeCode(
     });
     if (!res.ok) throw new Error(`YouTube token exchange ${res.status}: ${await res.text()}`);
     return res.json();
-  } else {
-    // twitch
+  } else if (platform === 'twitch') {
     const res = await fetch('https://id.twitch.tv/oauth2/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -190,6 +189,26 @@ async function exchangeCode(
       }),
     });
     if (!res.ok) throw new Error(`Twitch token exchange ${res.status}: ${await res.text()}`);
+    return res.json();
+  } else {
+    // x — confidential client uses HTTP Basic auth
+    const clientId = Deno.env.get('X_CLIENT_ID') ?? '';
+    const clientSecret = Deno.env.get('X_CLIENT_SECRET') ?? '';
+    const credentials = btoa(`${clientId}:${clientSecret}`);
+    const res = await fetch('https://api.twitter.com/2/oauth2/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${credentials}`,
+      },
+      body: new URLSearchParams({
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri,
+        client_id: clientId,
+      }),
+    });
+    if (!res.ok) throw new Error(`X token exchange ${res.status}: ${await res.text()}`);
     return res.json();
   }
 }
@@ -215,8 +234,7 @@ async function fetchPlatformUser(
       id: channel.id as string,
       username: (channel.snippet?.title ?? channel.id) as string,
     };
-  } else {
-    // twitch
+  } else if (platform === 'twitch') {
     const clientId = Deno.env.get('TWITCH_CLIENT_ID') ?? '';
     const res = await fetch('https://api.twitch.tv/helix/users', {
       headers: {
@@ -229,6 +247,16 @@ async function fetchPlatformUser(
     const user = data.data?.[0];
     if (!user) throw new Error('No Twitch user found');
     return { id: user.id as string, username: user.login as string };
+  } else {
+    // x
+    const res = await fetch('https://api.twitter.com/2/users/me', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) throw new Error(`X user fetch ${res.status}`);
+    const data = await res.json();
+    const user = data.data;
+    if (!user) throw new Error('No X user found');
+    return { id: user.id as string, username: user.username as string };
   }
 }
 

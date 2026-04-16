@@ -9,6 +9,10 @@ class PlatformMetric {
   final int displayScore;
   final double heatScore;
   final String? platformUsername;
+  // X-specific (null for YouTube / Twitch)
+  final int? recentPostViews;
+  final int? recentPostReposts;
+  final int? recentPostLikes;
 
   const PlatformMetric({
     required this.userId,
@@ -21,6 +25,9 @@ class PlatformMetric {
     required this.displayScore,
     this.heatScore = 0.0,
     this.platformUsername,
+    this.recentPostViews,
+    this.recentPostReposts,
+    this.recentPostLikes,
   });
 
   factory PlatformMetric.fromJson(Map<String, dynamic> json) {
@@ -36,6 +43,9 @@ class PlatformMetric {
       displayScore: (json['display_score'] as num?)?.toInt() ?? 0,
       heatScore: (json['heat_score'] as num?)?.toDouble() ?? 0.0,
       platformUsername: conn?['platform_username'] as String?,
+      recentPostViews: (json['recent_post_views'] as num?)?.toInt(),
+      recentPostReposts: (json['recent_post_reposts'] as num?)?.toInt(),
+      recentPostLikes: (json['recent_post_likes'] as num?)?.toInt(),
     );
   }
 }

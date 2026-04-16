@@ -21,6 +21,8 @@ class SettingsMenuButton extends StatelessWidget {
         switch (item) {
           case _SettingsItem.privacyPolicy:
             context.push('/privacy');
+          case _SettingsItem.termsOfService:
+            context.push('/terms');
         }
       },
       itemBuilder: (_) => [
@@ -36,9 +38,21 @@ class SettingsMenuButton extends StatelessWidget {
             ],
           ),
         ),
+        const PopupMenuItem(
+          value: _SettingsItem.termsOfService,
+          child: Row(
+            children: [
+              Icon(Icons.description_outlined,
+                  size: 18, color: AppTheme.textSecondary),
+              SizedBox(width: 12),
+              Text('Terms of Service',
+                  style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+            ],
+          ),
+        ),
       ],
     );
   }
 }
 
-enum _SettingsItem { privacyPolicy }
+enum _SettingsItem { privacyPolicy, termsOfService }

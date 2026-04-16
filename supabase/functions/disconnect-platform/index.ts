@@ -40,7 +40,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: 'Missing required field: platform' }, 400, corsHeaders);
   }
 
-  if (!['youtube', 'twitch'].includes(platform)) {
+  if (!['youtube', 'twitch', 'x'].includes(platform)) {
     return json({ error: `Disconnect not supported for platform: ${platform}` }, 400, corsHeaders);
   }
 
@@ -107,14 +107,30 @@ async function revokeToken(platform: string, accessToken: string): Promise<void>
       `https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(accessToken)}`,
       { method: 'POST' },
     );
-  } else {
-    // twitch
+  } else if (platform === 'twitch') {
     await fetch('https://id.twitch.tv/oauth2/revoke', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         client_id: Deno.env.get('TWITCH_CLIENT_ID') ?? '',
         token: accessToken,
+      }),
+    });
+  } else {
+    // x
+    const clientId = Deno.env.get('X_CLIENT_ID') ?? '';
+    const clientSecret = Deno.env.get('X_CLIENT_SECRET') ?? '';
+    const credentials = btoa(`${clientId}:${clientSecret}`);
+    await fetch('https://api.twitter.com/2/oauth2/revoke', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${credentials}`,
+      },
+      body: new URLSearchParams({
+        token: accessToken,
+        token_type_hint: 'access_token',
+        client_id: clientId,
       }),
     });
   }

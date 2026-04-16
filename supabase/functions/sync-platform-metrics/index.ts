@@ -1,6 +1,7 @@
 // supabase/functions/sync-platform-metrics/index.ts
-// Fetches live metrics from YouTube and Twitch for all active connections
-// (or a single user). Computes Display Score (bigint) and Heat Score (boost-only).
+// Fetches live metrics from YouTube, Twitch, and X for all active connections
+// (or a single user). Computes Display Score (bigint, additive raw points) and
+// Heat Score (boost-only, baseline 0).
 // Triggered by pg_cron every 5 minutes and on-demand after OAuth callback.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -29,6 +30,9 @@ interface PlatformMetrics {
   subscriberCount?: number;
   streamTitle?: string;
   streamCategory?: string;
+  recentPostViews?: number;   // X only
+  recentPostReposts?: number; // X only
+  recentPostLikes?: number;   // X only
   raw: Record<string, unknown>;
 }
 
@@ -62,7 +66,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .from('platform_connections')
     .select('id, user_id, platform, platform_user_id, platform_username, access_token, refresh_token, token_expires_at')
     .eq('is_active', true)
-    .in('platform', ['youtube', 'twitch']);
+    .in('platform', ['youtube', 'twitch', 'x']);
 
   if (targetUserId) {
     query = query.eq('user_id', targetUserId);
@@ -109,10 +113,15 @@ Deno.serve(async (req: Request): Promise<Response> => {
       }
 
       // ── Fetch platform metrics ──────────────────────────────────────────
-      const metrics =
-        conn.platform === 'youtube'
-          ? await fetchYouTubeMetrics(conn.platform_user_id, accessToken)
-          : await fetchTwitchMetrics(conn.platform_user_id, accessToken);
+      let metrics: PlatformMetrics;
+      if (conn.platform === 'youtube') {
+        metrics = await fetchYouTubeMetrics(conn.platform_user_id, accessToken);
+      } else if (conn.platform === 'twitch') {
+        metrics = await fetchTwitchMetrics(conn.platform_user_id, accessToken);
+      } else {
+        // x
+        metrics = await fetchXMetrics(conn.platform_user_id, accessToken);
+      }
 
       // ── Fetch previous_follower_count for 24h growth delta ──────────────
       const { data: existing } = await supabase
@@ -124,8 +133,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
       const currentFollowers = metrics.followers;
       const followerGrowth = prevCount > 0 ? Math.max(0, currentFollowers - prevCount) : 0;
 
-      // ── Compute Display Score (bigint: additive real-world points) ──────
-      const displayScore = computeDisplayScore(currentFollowers, metrics.liveViewers, followerGrowth);
+      // ── Compute Display Score (bigint: additive raw points) ──────────────
+      const displayScore = computeDisplayScore(
+        conn.platform,
+        currentFollowers,
+        metrics.liveViewers,
+        followerGrowth,
+        metrics.recentPostViews ?? 0,
+        metrics.recentPostReposts ?? 0,
+        metrics.recentPostLikes ?? 0,
+      );
 
       // ── Compute Heat Score (baseline 0 — only active boost deltas) ──────
       const now = new Date().toISOString();
@@ -161,6 +178,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
             display_score: displayScore,
             heat_score: heatScore,
             previous_follower_count: currentFollowers,
+            recent_post_views: metrics.recentPostViews ?? null,
+            recent_post_reposts: metrics.recentPostReposts ?? null,
+            recent_post_likes: metrics.recentPostLikes ?? null,
             raw_metrics: metrics.raw,
             fetched_at: new Date().toISOString(),
           },
@@ -206,10 +226,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Display Score Formula (bigint — real-world points, never modified by promotions)
+// Display Score Formula (bigint — raw points, platform-specific)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function computeDisplayScore(followers: number, liveViewers: number, followerGrowth: number): number {
+function computeDisplayScore(
+  platform: string,
+  followers: number,
+  liveViewers: number,
+  followerGrowth: number,
+  xPostViews: number = 0,
+  xPostReposts: number = 0,
+  xPostLikes: number = 0,
+): number {
+  if (platform === 'x') {
+    // X: followers×1 + live_viewers×10 + post_views×0.1 + post_reposts×3 + post_likes×1
+    return Math.floor(
+      followers * 1 +
+      liveViewers * 10 +
+      Math.round(xPostViews * 0.1) +
+      xPostReposts * 3 +
+      xPostLikes * 1,
+    );
+  }
+  // YouTube: subscribers×1 + live_viewers×10 + 24h_growth×5
+  // Twitch:  followers×1  + live_viewers×10 + 24h_growth×5
   return Math.floor(followers * 1 + liveViewers * 10 + followerGrowth * 5);
 }
 
@@ -328,6 +368,104 @@ async function fetchTwitchMetrics(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// X (Twitter) API
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function fetchXMetrics(
+  xUserId: string,
+  accessToken: string,
+): Promise<PlatformMetrics> {
+  const bearerToken = Deno.env.get('X_BEARER_TOKEN') ?? '';
+  // Use user's access token for endpoints requiring user context (non_public_metrics)
+  const userAuthHeaders = { Authorization: `Bearer ${accessToken}` };
+  // Use app bearer token for public endpoints
+  const appBearerHeaders = { Authorization: `Bearer ${bearerToken}` };
+
+  // 1. Get follower count from user public_metrics (app bearer token)
+  const profileRes = await fetch(
+    `https://api.twitter.com/2/users/${xUserId}?user.fields=public_metrics`,
+    { headers: appBearerHeaders },
+  );
+  if (!profileRes.ok) {
+    if (profileRes.status === 429) {
+      console.warn('[sync-platform-metrics] X rate limited on profile endpoint — skipping');
+      throw new Error('X API rate limited');
+    }
+    throw new Error(`X profile API ${profileRes.status}`);
+  }
+  const profileData = await profileRes.json();
+  const publicMetrics = profileData.data?.public_metrics;
+  const followers = (publicMetrics?.followers_count as number) ?? 0;
+
+  // 2. Get most recent tweet metrics (user auth for non_public_metrics / impression_count)
+  let recentPostViews = 0;
+  let recentPostReposts = 0;
+  let recentPostLikes = 0;
+  try {
+    const tweetsRes = await fetch(
+      `https://api.twitter.com/2/users/${xUserId}/tweets?max_results=5&tweet.fields=public_metrics,non_public_metrics&exclude=replies,retweets`,
+      { headers: userAuthHeaders },
+    );
+    if (tweetsRes.ok) {
+      const tweetsData = await tweetsRes.json();
+      const tweet = tweetsData.data?.[0];
+      if (tweet) {
+        recentPostReposts = (tweet.public_metrics?.retweet_count as number) ?? 0;
+        recentPostLikes = (tweet.public_metrics?.like_count as number) ?? 0;
+        // impression_count is in non_public_metrics (user auth, own tweets only)
+        // falls back to 0 if not available on current API access tier
+        recentPostViews =
+          (tweet.non_public_metrics?.impression_count as number) ??
+          (tweet.public_metrics?.impression_count as number) ??
+          0;
+      }
+    } else if (tweetsRes.status === 429) {
+      console.warn('[sync-platform-metrics] X rate limited on tweets endpoint — skipping post metrics');
+    } else {
+      console.warn(`[sync-platform-metrics] X tweets API ${tweetsRes.status} — skipping post metrics`);
+    }
+  } catch (e) {
+    console.warn('[sync-platform-metrics] X tweets fetch failed (non-fatal):', e);
+  }
+
+  // 3. Check for live Spaces (app bearer token, by creator user ID)
+  let isLive = false;
+  let liveViewers = 0;
+  try {
+    const spacesRes = await fetch(
+      `https://api.twitter.com/2/spaces/by/creator_ids?user_ids=${xUserId}&space.fields=participant_count,state`,
+      { headers: appBearerHeaders },
+    );
+    if (spacesRes.ok) {
+      const spacesData = await spacesRes.json();
+      const liveSpaces = ((spacesData.data ?? []) as Array<{ state: string; participant_count?: number }>)
+        .filter((s) => s.state === 'live');
+      if (liveSpaces.length > 0) {
+        isLive = true;
+        liveViewers = liveSpaces[0].participant_count ?? 0;
+      }
+    } else if (spacesRes.status === 429) {
+      console.warn('[sync-platform-metrics] X rate limited on spaces endpoint — skipping live check');
+    } else {
+      // Spaces API may require elevated access; treat as non-live gracefully
+      console.warn(`[sync-platform-metrics] X spaces API ${spacesRes.status} — treating as not live`);
+    }
+  } catch (e) {
+    console.warn('[sync-platform-metrics] X spaces fetch failed (non-fatal):', e);
+  }
+
+  return {
+    isLive,
+    liveViewers,
+    followers,
+    recentPostViews,
+    recentPostReposts,
+    recentPostLikes,
+    raw: { profile: profileData },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Token refresh
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -349,8 +487,7 @@ async function refreshAccessToken(
       });
       if (!res.ok) return null;
       return res.json();
-    } else {
-      // twitch
+    } else if (platform === 'twitch') {
       const res = await fetch('https://id.twitch.tv/oauth2/token', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -359,6 +496,25 @@ async function refreshAccessToken(
           client_secret: Deno.env.get('TWITCH_CLIENT_SECRET') ?? '',
           refresh_token: refreshToken,
           grant_type: 'refresh_token',
+        }),
+      });
+      if (!res.ok) return null;
+      return res.json();
+    } else {
+      // x — confidential client uses Basic auth
+      const clientId = Deno.env.get('X_CLIENT_ID') ?? '';
+      const clientSecret = Deno.env.get('X_CLIENT_SECRET') ?? '';
+      const credentials = btoa(`${clientId}:${clientSecret}`);
+      const res = await fetch('https://api.twitter.com/2/oauth2/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${credentials}`,
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
+          client_id: clientId,
         }),
       });
       if (!res.ok) return null;

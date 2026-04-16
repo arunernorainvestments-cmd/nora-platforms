@@ -4,6 +4,9 @@
 -- resolution_score: deprecated (display_score is now the resolution metric)
 -- score_history: new table for Robinhood-style time-series chart
 
+-- 0. Drop existing spotlight trigger (depends on display_score column — must go first)
+DROP TRIGGER IF EXISTS trg_update_spotlight ON platform_metrics;
+
 -- 1. Change display_score from numeric(5,2) to bigint (per-platform point contribution)
 ALTER TABLE platform_metrics ALTER COLUMN display_score TYPE bigint USING 0;
 
@@ -62,7 +65,6 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-DROP TRIGGER IF EXISTS trg_update_spotlight ON platform_metrics;
 CREATE TRIGGER trg_update_spotlight
   AFTER INSERT OR UPDATE OF heat_score ON platform_metrics
   FOR EACH ROW EXECUTE FUNCTION update_spotlight_from_heat();
