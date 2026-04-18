@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import '../theme/app_theme.dart';
+import '../utils/open_url.dart';
 
 /// Gear icon that lives in every authenticated screen's AppBar actions.
 /// Opens a popup menu with app-wide settings and legal links.
@@ -20,9 +20,9 @@ class SettingsMenuButton extends StatelessWidget {
       onSelected: (item) {
         switch (item) {
           case _SettingsItem.privacyPolicy:
-            context.push('/privacy');
+            openUrlInBrowser('https://noraplatforms.com/privacy');
           case _SettingsItem.termsOfService:
-            context.push('/terms');
+            openUrlInBrowser('https://noraplatforms.com/terms');
         }
       },
       itemBuilder: (_) => [
