@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/open_url.dart';
 import '../providers/auth_provider.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -139,7 +140,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   GestureDetector(
-                    onTap: () => context.push('/privacy'),
+                    onTap: () => openUrlInBrowser('https://noraplatforms.com/privacy'),
                     child: const Text(
                       'Privacy Policy',
                       style: TextStyle(
@@ -155,7 +156,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                   ),
                   GestureDetector(
-                    onTap: () => context.push('/terms'),
+                    onTap: () => openUrlInBrowser('https://noraplatforms.com/terms'),
                     child: const Text(
                       'Terms of Service',
                       style: TextStyle(

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/open_url.dart';
 
 // Update this date before public launch.
 final _launchDate = DateTime.utc(2026, 6, 1);
@@ -477,7 +478,7 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
         GestureDetector(
-          onTap: () => context.push('/privacy'),
+          onTap: () => openUrlInBrowser('https://noraplatforms.com/privacy'),
           child: Text(
             'Privacy Policy',
             style: TextStyle(
@@ -494,7 +495,7 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
               TextStyle(color: Colors.white.withValues(alpha: 0.4), fontSize: 12),
         ),
         GestureDetector(
-          onTap: () => context.push('/terms'),
+          onTap: () => openUrlInBrowser('https://noraplatforms.com/terms'),
           child: Text(
             'Terms of Service',
             style: TextStyle(
@@ -542,14 +543,14 @@ class _ConsentText extends StatelessWidget {
             text: 'Terms of Service',
             style: linkStyle,
             recognizer: TapGestureRecognizer()
-              ..onTap = () => context.push('/terms'),
+              ..onTap = () => openUrlInBrowser('https://noraplatforms.com/terms'),
           ),
           const TextSpan(text: ' and '),
           TextSpan(
             text: 'Privacy Policy',
             style: linkStyle,
             recognizer: TapGestureRecognizer()
-              ..onTap = () => context.push('/privacy'),
+              ..onTap = () => openUrlInBrowser('https://noraplatforms.com/privacy'),
           ),
           const TextSpan(text: '.'),
         ],
