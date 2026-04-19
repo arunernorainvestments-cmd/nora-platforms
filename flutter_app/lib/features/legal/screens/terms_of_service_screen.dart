@@ -410,9 +410,9 @@ class _ContactEmail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => openUrlInBrowser('mailto:aruner.norainvestments@gmail.com'),
+      onTap: () => openUrlInBrowser('mailto:legal@noraplatforms.com'),
       child: const Text(
-        'aruner.norainvestments@gmail.com',
+        'legal@noraplatforms.com',
         style: TextStyle(
           color: AppTheme.primary,
           fontSize: 14,

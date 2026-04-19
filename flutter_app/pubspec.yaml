@@ -19,6 +19,8 @@ dependencies:
   
   # Navigation
   go_router: ^13.2.0
+  flutter_web_plugins:
+    sdk: flutter
   
   # UI
   fl_chart: ^0.68.0

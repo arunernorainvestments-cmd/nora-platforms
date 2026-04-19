@@ -24,14 +24,14 @@ final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
 
   return GoRouter(
-    initialLocation: '/launch',
+    initialLocation: '/',
     redirect: (context, state) {
       final isLoggedIn = authState.value?.session != null;
       final loc = state.matchedLocation;
 
       // Logged-in user on the launch/auth pages → go home (or ?next= destination)
       if (isLoggedIn &&
-          (loc == '/launch' ||
+          (loc == '/' ||
               loc == '/login' ||
               loc == '/signup' ||
               loc == '/forgot-password')) {
@@ -54,7 +54,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       // ── Launch / pre-release cover ────────────────────────────────────────
       GoRoute(
-        path: '/launch',
+        path: '/',
         builder: (context, state) => const LaunchScreen(),
       ),
 
