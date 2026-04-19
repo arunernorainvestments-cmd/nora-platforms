@@ -135,19 +135,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ),
               ]),
               const SizedBox(height: 16),
-              Center(
-                child: GestureDetector(
-                  onTap: () => context.push('/privacy'),
-                  child: const Text(
-                    'Privacy Policy',
-                    style: TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 12,
-                      decoration: TextDecoration.underline,
-                      decorationColor: AppTheme.textSecondary,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  GestureDetector(
+                    onTap: () => context.push('/privacy'),
+                    child: const Text(
+                      'Privacy Policy',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                        decoration: TextDecoration.underline,
+                        decorationColor: AppTheme.textSecondary,
+                      ),
                     ),
                   ),
-                ),
+                  const Text(
+                    '  ·  ',
+                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                  ),
+                  GestureDetector(
+                    onTap: () => context.push('/terms'),
+                    child: const Text(
+                      'Terms of Service',
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                        decoration: TextDecoration.underline,
+                        decorationColor: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

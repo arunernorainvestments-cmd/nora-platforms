@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/theme/app_theme.dart';
@@ -125,6 +126,7 @@ class HomeScreen extends ConsumerWidget {
             ),
             SliverToBoxAdapter(child: SizedBox(height: 12)),
             _WhoIsLiveSliver(),
+            SliverToBoxAdapter(child: _FooterLinks()),
             SliverToBoxAdapter(child: SizedBox(height: 40)),
           ],
         ),
@@ -1318,6 +1320,54 @@ class _NotificationSheet extends ConsumerWidget {
           ),
         );
       },
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// FOOTER LINKS
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _FooterLinks extends StatelessWidget {
+  const _FooterLinks();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          GestureDetector(
+            onTap: () => context.push('/privacy'),
+            child: const Text(
+              'Privacy Policy',
+              style: TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 12,
+                decoration: TextDecoration.underline,
+                decorationColor: AppTheme.textSecondary,
+              ),
+            ),
+          ),
+          const Text(
+            '  ·  ',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
+          GestureDetector(
+            onTap: () => context.push('/terms'),
+            child: const Text(
+              'Terms of Service',
+              style: TextStyle(
+                color: AppTheme.textSecondary,
+                fontSize: 12,
+                decoration: TextDecoration.underline,
+                decorationColor: AppTheme.textSecondary,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

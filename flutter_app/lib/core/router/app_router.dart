@@ -14,6 +14,7 @@ import '../../features/profile/screens/public_profile_screen.dart';
 import '../../features/profile/providers/platform_connection_providers.dart';
 import '../../features/markets/screens/market_detail_screen.dart';
 import '../../features/wallet/screens/wallet_screen.dart';
+import '../../features/launch/screens/launch_screen.dart';
 import '../../features/legal/screens/privacy_policy_screen.dart';
 import '../../features/legal/screens/terms_of_service_screen.dart';
 import '../../features/profile/screens/score_dashboard_screen.dart';
@@ -23,10 +24,21 @@ final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
 
   return GoRouter(
-    initialLocation: '/home',
+    initialLocation: '/launch',
     redirect: (context, state) {
       final isLoggedIn = authState.value?.session != null;
       final loc = state.matchedLocation;
+
+      // Logged-in user on the launch/auth pages → go home (or ?next= destination)
+      if (isLoggedIn &&
+          (loc == '/launch' ||
+              loc == '/login' ||
+              loc == '/signup' ||
+              loc == '/forgot-password')) {
+        final next = state.uri.queryParameters['next'];
+        if (next != null && next.isNotEmpty) return next;
+        return '/home';
+      }
 
       // Only these routes require authentication
       const protectedRoutes = ['/markets', '/profile', '/wallet'];
@@ -37,19 +49,15 @@ final routerProvider = Provider<GoRouter>((ref) {
         return '/login?next=${Uri.encodeComponent(loc)}';
       }
 
-      // Logged-in user hits an auth page → go home (or ?next= destination)
-      if (isLoggedIn &&
-          (loc == '/login' ||
-              loc == '/signup' ||
-              loc == '/forgot-password')) {
-        final next = state.uri.queryParameters['next'];
-        if (next != null && next.isNotEmpty) return next;
-        return '/home';
-      }
-
       return null;
     },
     routes: [
+      // ── Launch / pre-release cover ────────────────────────────────────────
+      GoRoute(
+        path: '/launch',
+        builder: (context, state) => const LaunchScreen(),
+      ),
+
       // ── Auth routes ───────────────────────────────────────────────────────
       GoRoute(
         path: '/login',
