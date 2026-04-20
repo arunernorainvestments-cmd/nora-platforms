@@ -15,7 +15,7 @@ ALTER TABLE public.token_transactions
   ADD CONSTRAINT token_transactions_type_check CHECK (
     type IN (
       'signup_bonus', 'bet_placed', 'bet_won', 'bet_lost',
-      'refund', 'promoted', 'referral_bonus', 'purchase',
+      'refund', 'promoted', 'referral_bonus', 'purchase', 'purchased',
       'challenge_reward', 'passive_bonus'
     )
   );

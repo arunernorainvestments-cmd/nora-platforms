@@ -350,7 +350,22 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
 - tokens_spent event: currently only fires if explicitly called — not wired to promotion
   spending in apply-promotion (bet_placed is wired; tokens_spent requires explicit call)
 - LAUNCH_DATE_PLACEHOLDER in migration 016 set to '2026-06-01' (OG badge cutoff) and
-  '2026-07-01' (Early Adopter +30 days) — update before public launch if needed
+  '2026-07-01' (Early Adopter +30 days) — must update before public launch to align with
+  July 4th 2026 launch date (OG cutoff = '2026-07-04', Early Adopter = '2026-08-03')
+
+### Completed (Pre-Launch — Marketing & Cover Screen)
+- Launch screen (`lib/features/launch/screens/launch_screen.dart`): full-page countdown
+  with waitlist email signup, consent checkbox, live waitlist count, legal footer links
+- Background: `flutter_app/assets/images/launch_bg.png` — NORA rocket launchpad art
+  with dark gradient overlay for text legibility; registered in pubspec.yaml
+- Countdown target: **July 4th, 2026 at 00:00:00 UTC** (`DateTime.utc(2026, 7, 4)`)
+  — timer hits zero at the exact second July 3rd transitions to July 4th
+- Marketing campaign (in progress): dinosaur egg that hatches into a dragon or phoenix
+  on launch day; creature lights the rocket engines on the countdown page. This is a
+  separate animation/asset build — do not stub or build until assets are provided.
+- waitlist_emails table in Supabase stores signups; unique constraint on email
+  (duplicate insert treated as success, not error)
+- `/` route shows LaunchScreen when app is in pre-launch mode
 
 ### Known Issues / Notes
 - YouTube OAuth is in Google Testing mode — only whitelisted emails can connect.
@@ -362,6 +377,8 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
   always come from connected platform.
 - resolve-markets edge function must be deployed manually (not auto-deployed from GitHub).
 - evaluate-challenges edge function must be deployed manually after this phase.
+- Migration 016 badge cutoff dates need updating to match July 4th launch:
+  OG badge cutoff should be '2026-07-04', Early Adopter cutoff '2026-08-03'.
 
 ---
 

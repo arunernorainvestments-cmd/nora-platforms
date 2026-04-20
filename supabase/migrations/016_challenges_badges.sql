@@ -3,8 +3,8 @@
 --         user_challenge_progress, user_streaks
 -- Also updates token_transactions type constraint to include 'challenge_reward'.
 --
--- LAUNCH_DATE_PLACEHOLDER: replace '2026-06-01' with the actual first-live date.
--- LAUNCH_DATE_PLACEHOLDER_PLUS_30: 30 days after launch ('2026-07-01').
+-- Launch date: 2026-07-04 (July 4th). OG badge cutoff = 2026-07-04, Early Adopter = 2026-08-03.
+-- Dates in challenge_definitions were updated via SQL Editor (migration already applied).
 --
 -- Main Character badge requires a separate pg_cron hourly check (not in this
 -- migration) — see evaluate-challenges/index.ts notes.
@@ -216,21 +216,21 @@ VALUES
    150, 'all');
 
 -- One-time challenges (token_reward: 0 — badge is the reward)
--- LAUNCH_DATE_PLACEHOLDER = '2026-06-01'
--- LAUNCH_DATE_PLACEHOLDER_PLUS_30 = '2026-07-01'
+-- OG badge cutoff: 2026-07-04 | Early Adopter cutoff: 2026-08-03
+-- (updated in DB via SQL Editor; values below are historical seed only)
 
 INSERT INTO public.challenge_definitions (slug, badge_id, track, condition, token_reward, pool)
 VALUES
   ('earn_og',
    (SELECT id FROM public.badge_definitions WHERE slug = 'og'),
    'once',
-   '{"type":"snapshot","field":"created_at","before":"2026-06-01"}',
+   '{"type":"snapshot","field":"created_at","before":"2026-07-04"}',
    0, 'all'),
 
   ('earn_early_adopter',
    (SELECT id FROM public.badge_definitions WHERE slug = 'early_adopter'),
    'once',
-   '{"type":"snapshot","field":"created_at","before":"2026-07-01"}',
+   '{"type":"snapshot","field":"created_at","before":"2026-08-03"}',
    0, 'all'),
 
   ('earn_first_bet',

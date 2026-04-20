@@ -8,7 +8,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/open_url.dart';
 
 // Update this date before public launch.
-final _launchDate = DateTime.utc(2026, 6, 1);
+final _launchDate = DateTime.utc(2026, 7, 4);
 
 final _waitlistCountProvider = FutureProvider<int>((ref) async {
   final res = await Supabase.instance.client
@@ -643,50 +643,22 @@ class _Background extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Stack(
+      fit: StackFit.expand,
       children: [
-        // Base gradient
+        Image.asset(
+          'assets/images/launch_bg.png',
+          fit: BoxFit.cover,
+        ),
+        // Dark overlay so text stays legible
         Container(
           decoration: const BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [Color(0xFF0E0B1F), Color(0xFF0A0A0F)],
-            ),
-          ),
-        ),
-        // Top-left glow
-        Positioned(
-          top: -80,
-          left: -80,
-          child: Container(
-            width: 320,
-            height: 320,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  AppTheme.primary.withValues(alpha: 0.18),
-                  Colors.transparent,
-                ],
-              ),
-            ),
-          ),
-        ),
-        // Bottom-right glow
-        Positioned(
-          bottom: -60,
-          right: -60,
-          child: Container(
-            width: 260,
-            height: 260,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: RadialGradient(
-                colors: [
-                  const Color(0xFF9C27B0).withValues(alpha: 0.14),
-                  Colors.transparent,
-                ],
-              ),
+              colors: [
+                Color(0xCC0E0B1F),
+                Color(0xE6050508),
+              ],
             ),
           ),
         ),
