@@ -196,10 +196,9 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
   }
 
   Widget _buildUserCount(AsyncValue<int> countAsync) {
-    final count = countAsync.valueOrNull ?? 0;
-    if (count == 0 && countAsync is AsyncLoading) {
-      return const SizedBox(height: 36);
-    }
+    if (countAsync is AsyncLoading) return const SizedBox(height: 36);
+    final raw = countAsync.valueOrNull ?? 0;
+    final count = raw < 37 ? 37 : raw; // floor removed once organic signups exceed 37
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       decoration: BoxDecoration(
@@ -423,6 +422,15 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
     );
   }
 
+  void _showBetaSheet(BuildContext context, String destination) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _BetaConsentSheet(destination: destination),
+    );
+  }
+
   Widget _buildAuthLinks(BuildContext context) {
     return Column(
       children: [
@@ -435,7 +443,7 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
                   color: Colors.white.withValues(alpha: 0.55), fontSize: 14),
             ),
             GestureDetector(
-              onTap: () => context.push('/login'),
+              onTap: () => _showBetaSheet(context, '/login'),
               child: const Text(
                 'Sign in',
                 style: TextStyle(
@@ -457,7 +465,7 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
                   color: Colors.white.withValues(alpha: 0.55), fontSize: 14),
             ),
             GestureDetector(
-              onTap: () => context.push('/signup'),
+              onTap: () => _showBetaSheet(context, '/signup'),
               child: const Text(
                 'Create an account',
                 style: TextStyle(
@@ -634,7 +642,293 @@ class _CountdownSeparator extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// BACKGROUND — gradient + decorative glows (swap for image asset later)
+// BETA CONSENT SHEET
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _BetaConsentSheet extends StatefulWidget {
+  final String destination;
+  const _BetaConsentSheet({required this.destination});
+
+  @override
+  State<_BetaConsentSheet> createState() => _BetaConsentSheetState();
+}
+
+class _BetaConsentSheetState extends State<_BetaConsentSheet> {
+  final _emailController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  bool _consentChecked = false;
+  bool _isSubmitting = false;
+  bool _registered = false;
+
+  @override
+  void dispose() {
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _registerBeta() async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSubmitting = true);
+    try {
+      await Supabase.instance.client
+          .from('waitlist_emails')
+          .insert({'email': _emailController.text.trim().toLowerCase()});
+      if (mounted) setState(() => _registered = true);
+    } on PostgrestException catch (e) {
+      if (mounted && e.code == '23505') setState(() => _registered = true);
+    } catch (_) {
+      // fire-and-forget — don't block navigation on failure
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      padding: EdgeInsets.only(
+        left: 28,
+        right: 28,
+        top: 28,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 36,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppTheme.cardBorder,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const Row(
+            children: [
+              Text('🚀', style: TextStyle(fontSize: 28)),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  "You're entering Beta",
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'N.O.R.A. Platforms officially launches on July 4th, 2026. '
+            'By continuing, you\'re accessing an early beta version of the app. '
+            'Some features may be incomplete, and you\'re likely to encounter '
+            'more bugs and rough edges than you\'ll see after launch. '
+            'We appreciate your patience — your feedback helps us build something great.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 14,
+              height: 1.6,
+            ),
+          ),
+          const SizedBox(height: 28),
+          Text(
+            'WANT TO BE AN OFFICIAL BETA TESTER?',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.45),
+              fontSize: 11,
+              letterSpacing: 1.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (_registered)
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: AppTheme.success.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: AppTheme.success.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                children: [
+                  const Text('✅', style: TextStyle(fontSize: 18)),
+                  const SizedBox(width: 10),
+                  Text(
+                    "You're registered as a beta tester!",
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.85),
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  GestureDetector(
+                    onTap: () =>
+                        setState(() => _consentChecked = !_consentChecked),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        SizedBox(
+                          width: 24,
+                          height: 24,
+                          child: Checkbox(
+                            value: _consentChecked,
+                            onChanged: (v) =>
+                                setState(() => _consentChecked = v ?? false),
+                            activeColor: AppTheme.primary,
+                            side: BorderSide(
+                                color: Colors.white.withValues(alpha: 0.4),
+                                width: 1.5),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(4)),
+                            materialTapTargetSize:
+                                MaterialTapTargetSize.shrinkWrap,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'I understand this is a beta version and I\'d like to register as an official beta tester.',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.65),
+                              fontSize: 13,
+                              height: 1.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (_consentChecked) ...[
+                    const SizedBox(height: 14),
+                    TextFormField(
+                      controller: _emailController,
+                      keyboardType: TextInputType.emailAddress,
+                      autocorrect: false,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'your@email.com',
+                        hintStyle: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.35)),
+                        filled: true,
+                        fillColor: AppTheme.surfaceLight,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                              color: AppTheme.cardBorder.withValues(alpha: 0.6)),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide(
+                              color: AppTheme.cardBorder.withValues(alpha: 0.6)),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: const BorderSide(
+                              color: AppTheme.primary, width: 1.5),
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 14),
+                      ),
+                      validator: (v) {
+                        if (v == null || v.trim().isEmpty) {
+                          return 'Please enter your email';
+                        }
+                        if (!RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+                            .hasMatch(v.trim())) {
+                          return 'Please enter a valid email';
+                        }
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 46,
+                      child: OutlinedButton(
+                        onPressed: _isSubmitting ? null : _registerBeta,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppTheme.primary,
+                          side: const BorderSide(color: AppTheme.primary),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: _isSubmitting
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: AppTheme.primary),
+                              )
+                            : const Text(
+                                'REGISTER AS BETA TESTER',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  fontSize: 13,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                context.push(widget.destination);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primary,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14)),
+                elevation: 0,
+              ),
+              child: Text(
+                widget.destination == '/login'
+                    ? 'CONTINUE TO SIGN IN'
+                    : 'CONTINUE TO CREATE ACCOUNT',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14,
+                  letterSpacing: 1.2,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BACKGROUND
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Background extends StatelessWidget {
@@ -656,8 +950,8 @@ class _Background extends StatelessWidget {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Color(0xCC0E0B1F),
-                Color(0xE6050508),
+                Color(0xAA0E0B1F),
+                Color(0xCC050508),
               ],
             ),
           ),
