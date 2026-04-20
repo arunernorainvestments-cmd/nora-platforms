@@ -120,7 +120,9 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
                   _buildUserCount(countAsync),
                   const SizedBox(height: 32),
                   _buildCountdown(days, hours, minutes, seconds),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 24),
+                  _buildExploreButton(context),
+                  const SizedBox(height: 28),
                   _submitted ? _buildSuccessState() : _buildForm(),
                   const SizedBox(height: 32),
                   _buildAuthLinks(context),
@@ -418,6 +420,27 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
             textAlign: TextAlign.center,
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildExploreButton(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: () => context.push('/explore'),
+      icon: const Text('🔥', style: TextStyle(fontSize: 14)),
+      label: const Text(
+        'SEE WHO\'S HOT RIGHT NOW',
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 1,
+        ),
+      ),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.white,
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.25), width: 1),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(40)),
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
       ),
     );
   }

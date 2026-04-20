@@ -15,6 +15,7 @@ import '../../features/profile/providers/platform_connection_providers.dart';
 import '../../features/markets/screens/market_detail_screen.dart';
 import '../../features/wallet/screens/wallet_screen.dart';
 import '../../features/launch/screens/launch_screen.dart';
+import '../../features/explore/screens/celebrity_heat_screen.dart';
 import '../../features/legal/screens/privacy_policy_screen.dart';
 import '../../features/legal/screens/terms_of_service_screen.dart';
 import '../../features/profile/screens/score_dashboard_screen.dart';
@@ -76,6 +77,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/challenges',
         builder: (context, state) => const ChallengesScreen(),
+      ),
+
+      // ── Public explore / celebrity heat (no auth) ────────────────────────
+      GoRoute(
+        path: '/explore',
+        builder: (context, state) => const CelebrityHeatScreen(),
       ),
 
       // ── Legal routes (public, no auth) ───────────────────────────────────
