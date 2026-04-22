@@ -5,6 +5,12 @@ flutter_app/.flutter-plugins
 flutter_app/.flutter-plugins-dependencies
 *.iml
 .DS_Store
-node_modules/
-package-lock.json
-package.json
+
+# Root-level node artifacts (Supabase CLI)
+/node_modules/
+/package-lock.json
+/package.json
+
+# Landing page — keep source, ignore build output and deps
+landing/node_modules/
+landing/dist/
