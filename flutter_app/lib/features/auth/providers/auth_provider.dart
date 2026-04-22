@@ -1,6 +1,23 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+// Lightweight approval check used by the router.
+// Re-evaluates whenever auth state changes.
+// Returns: true = approved, false = pending, null = not logged in / loading.
+final approvalStatusProvider = FutureProvider<bool?>((ref) async {
+  final authState = await ref.watch(authStateProvider.future);
+  final session = authState.session;
+  if (session == null) return null;
+
+  final data = await Supabase.instance.client
+      .from('profiles')
+      .select('is_approved')
+      .eq('id', session.user.id)
+      .maybeSingle();
+
+  return data?['is_approved'] as bool? ?? false;
+});
+
 final authStateProvider = StreamProvider<AuthState>((ref) {
   return Supabase.instance.client.auth.onAuthStateChange;
 });

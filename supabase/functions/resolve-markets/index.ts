@@ -29,7 +29,7 @@ async function fireChallenge(
 }
 
 const CORS_HEADERS = {
-  'Access-Control-Allow-Origin': 'https://nora-platforms.vercel.app',
+  'Access-Control-Allow-Origin': 'https://noraplatforms.com',
   'Access-Control-Allow-Headers': 'content-type, authorization',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };

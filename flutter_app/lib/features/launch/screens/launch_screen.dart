@@ -12,7 +12,7 @@ final _launchDate = DateTime.utc(2026, 7, 4);
 
 final _waitlistCountProvider = FutureProvider<int>((ref) async {
   final res = await Supabase.instance.client
-      .from('waitlist_emails')
+      .from('waitlist')
       .select()
       .count(CountOption.exact);
   return res.count;
@@ -70,8 +70,10 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
     });
 
     try {
-      await Supabase.instance.client.from('waitlist_emails').insert(
-          {'email': _emailController.text.trim().toLowerCase()});
+      await Supabase.instance.client.from('waitlist').insert({
+        'email': _emailController.text.trim().toLowerCase(),
+        'source': 'flutter_launch',
+      });
       if (mounted) {
         setState(() => _submitted = true);
         ref.invalidate(_waitlistCountProvider);
@@ -694,8 +696,11 @@ class _BetaConsentSheetState extends State<_BetaConsentSheet> {
     setState(() => _isSubmitting = true);
     try {
       await Supabase.instance.client
-          .from('waitlist_emails')
-          .insert({'email': _emailController.text.trim().toLowerCase()});
+          .from('waitlist')
+          .insert({
+            'email': _emailController.text.trim().toLowerCase(),
+            'source': 'flutter_launch',
+          });
       if (mounted) setState(() => _registered = true);
     } on PostgrestException catch (e) {
       if (mounted && e.code == '23505') setState(() => _registered = true);

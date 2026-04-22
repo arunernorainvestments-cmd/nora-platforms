@@ -7,7 +7,7 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': 'https://nora-platforms.vercel.app',
+  'Access-Control-Allow-Origin': 'https://noraplatforms.com',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
@@ -44,9 +44,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: 'Method not allowed' }, 405, corsHeaders);
   }
 
+  // ── Auth gate ─────────────────────────────────────────────────────────────
+  // Accept: service role Bearer (oauth-callback, pg_cron) OR SYNC_SECRET header.
+  // Rejects unauthenticated requests so the open URL cannot be abused.
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  const syncSecret     = Deno.env.get('SYNC_SECRET') ?? '';
+  const authHeader     = req.headers.get('authorization') ?? '';
+  const secretHeader   = req.headers.get('x-sync-secret') ?? '';
+
+  const isServiceRole  = authHeader === `Bearer ${serviceRoleKey}`;
+  const hasValidSecret = syncSecret.length > 0 && secretHeader === syncSecret;
+
+  if (!isServiceRole && !hasValidSecret) {
+    console.warn('[sync-platform-metrics] Rejected unauthorized request');
+    return json({ error: 'Unauthorized' }, 401, corsHeaders);
+  }
+
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL') ?? '',
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    serviceRoleKey,
     { auth: { persistSession: false } },
   );
 
@@ -61,12 +77,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
   }
 
-  // ── Fetch active connections ──────────────────────────────────────────────
+  // ── Fetch active connections (with 4-minute cooldown) ────────────────────
+  // Skip connections synced within the last 4 minutes to prevent API quota
+  // exhaustion. NULL last_synced_at (new connections) always pass through.
+  const cooldownCutoff = new Date(Date.now() - 4 * 60 * 1000).toISOString();
+
   let query = supabase
     .from('platform_connections')
     .select('id, user_id, platform, platform_user_id, platform_username, access_token, refresh_token, token_expires_at')
     .eq('is_active', true)
-    .in('platform', ['youtube', 'twitch', 'x']);
+    .in('platform', ['youtube', 'twitch', 'x'])
+    .or(`last_synced_at.is.null,last_synced_at.lt.${cooldownCutoff}`);
 
   if (targetUserId) {
     query = query.eq('user_id', targetUserId);

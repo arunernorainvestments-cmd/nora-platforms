@@ -17,6 +17,7 @@ class UserProfile {
   final String? referralCode;
   final String? category1;
   final String? category2;
+  final bool isApproved;
 
   const UserProfile({
     required this.id,
@@ -30,6 +31,7 @@ class UserProfile {
     this.referralCode,
     this.category1,
     this.category2,
+    required this.isApproved,
   });
 
   factory UserProfile.fromJson(Map<String, dynamic> json) => UserProfile(
@@ -44,6 +46,7 @@ class UserProfile {
         referralCode: json['referral_code'] as String?,
         category1: json['category_1'] as String?,
         category2: json['category_2'] as String?,
+        isApproved: json['is_approved'] as bool? ?? false,
       );
 }
 
@@ -60,7 +63,7 @@ final userProfileProvider = FutureProvider.autoDispose<UserProfile?>((ref) async
       .select(
           'id, username, display_name, bio, is_creator, is_market_maker, '
           'pending_opt_out, popularity_score_public, referral_code, '
-          'category_1, category_2')
+          'category_1, category_2, is_approved')
       .eq('id', userId)
       .single();
 

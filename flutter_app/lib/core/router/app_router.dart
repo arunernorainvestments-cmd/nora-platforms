@@ -2,6 +2,7 @@ import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/auth/screens/forgot_password_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
+import '../../features/auth/screens/pending_approval_screen.dart';
 import '../../features/auth/screens/referral_screen.dart';
 import '../../features/auth/screens/signup_screen.dart';
 import '../../features/auth/providers/auth_provider.dart';
@@ -23,15 +24,33 @@ import '../shell/main_shell.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   final authState = ref.watch(authStateProvider);
+  final approvalStatus = ref.watch(approvalStatusProvider);
 
   return GoRouter(
     initialLocation: '/',
     redirect: (context, state) {
       final isLoggedIn = authState.value?.session != null;
+      final isApproved = approvalStatus.value; // null = loading or not logged in
       final loc = state.matchedLocation;
+
+      // ── Beta gate: hard-block unapproved users ────────────────────────────
+      // isApproved == false (not null/loading) means the profile loaded and
+      // the flag is explicitly false. Redirect to pending screen regardless
+      // of what route they try to access.
+      if (isLoggedIn && isApproved == false && loc != '/pending-approval') {
+        return '/pending-approval';
+      }
+
+      // If somehow an approved user lands on the pending screen, send them home.
+      if (isLoggedIn && isApproved == true && loc == '/pending-approval') {
+        return '/home';
+      }
+
+      // ── Standard auth routing (approved users only reach here) ────────────
 
       // Logged-in user on the launch/auth pages → go home (or ?next= destination)
       if (isLoggedIn &&
+          isApproved == true &&
           (loc == '/' ||
               loc == '/login' ||
               loc == '/signup' ||
@@ -60,6 +79,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
 
       // ── Auth routes ───────────────────────────────────────────────────────
+      GoRoute(
+        path: '/pending-approval',
+        builder: (context, state) => const PendingApprovalScreen(),
+      ),
       GoRoute(
         path: '/login',
         builder: (context, state) => const LoginScreen(),
