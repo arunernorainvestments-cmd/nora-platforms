@@ -2,8 +2,89 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Menu, Search, TrendingUp, ChevronLeft, ChevronRight, X,
   LayoutDashboard, User, Receipt, Wallet, Trophy, Flame,
-  Settings, HelpCircle, Crown, LogIn,
+  Settings, HelpCircle, Crown, LogIn, Zap, Radio, Eye,
 } from 'lucide-react'
+
+// ─── Supabase REST helpers ────────────────────────────────────────────────────
+
+const SUPABASE_URL = 'https://cceisywxwhgljdpisjrl.supabase.co'
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNjZWlzeXd4d2hnbGpkcGlzanJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMzc3MzMsImV4cCI6MjA5MDkxMzczM30.feu_2g5erRI3eah0OotjdD5uxB9hjfJJu-f5CmwI-Pw'
+
+async function sbFetch(path) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+  })
+  if (!res.ok) return []
+  return res.json()
+}
+
+function useRisingCreators() {
+  const [creators, setCreators] = useState([])
+  const [liveIds, setLiveIds] = useState(new Set())
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    Promise.all([
+      sbFetch('profiles?is_creator=eq.true&select=id,display_name,username,spotlight_scores(tier),platform_metrics(heat_score)&order=created_at.desc&limit=20'),
+      sbFetch('platform_metrics?is_live=eq.true&select=user_id'),
+    ]).then(([rows, liveRows]) => {
+      if (cancelled) return
+      const ids = new Set((liveRows || []).map(r => r.user_id))
+      const parsed = (rows || []).map(r => {
+        const metrics = Array.isArray(r.platform_metrics) ? r.platform_metrics : r.platform_metrics ? [r.platform_metrics] : []
+        const heatScore = metrics.length ? Math.max(...metrics.map(m => m.heat_score ?? 0)) : 0
+        const sp = Array.isArray(r.spotlight_scores) ? r.spotlight_scores[0] : r.spotlight_scores
+        return {
+          id: r.id,
+          label: r.display_name || r.username || 'Anonymous',
+          tier: sp?.tier ?? null,
+          heatScore,
+        }
+      })
+      setLiveIds(ids)
+      setCreators(parsed)
+      setLoading(false)
+    }).catch(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  return { creators, liveIds, loading }
+}
+
+function useLiveFeed() {
+  const [metrics, setMetrics] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    sbFetch('platform_metrics?is_live=eq.true&select=user_id,platform,display_score,heat_score,live_viewer_count,stream_title,stream_category,platform_connections(platform_username)&order=display_score.desc&limit=20')
+      .then(rows => {
+        if (cancelled) return
+        const parsed = (rows || []).map(r => {
+          const conn = Array.isArray(r.platform_connections) ? r.platform_connections[0] : r.platform_connections
+          return {
+            userId: r.user_id,
+            platform: r.platform,
+            heatScore: r.heat_score ?? 0,
+            viewers: r.live_viewer_count ?? 0,
+            streamTitle: r.stream_title ?? null,
+            streamCategory: r.stream_category ?? null,
+            username: conn?.platform_username ?? null,
+          }
+        })
+        setMetrics(parsed)
+        setLoading(false)
+      })
+      .catch(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [])
+
+  return { metrics, loading }
+}
 
 // ─── Mock data ────────────────────────────────────────────────────────────────
 
@@ -525,6 +606,223 @@ function SideDrawer({ open, onClose }) {
   )
 }
 
+// ─── Tier badge ───────────────────────────────────────────────────────────────
+
+function TierBadge({ tier }) {
+  const info = {
+    on_fire: { emoji: '🔥', label: 'On Fire', color: '#FF6B35' },
+    rising:  { emoji: '⚡', label: 'Rising',  color: '#FFD700' },
+    watched: { emoji: '👀', label: 'Watched', color: '#6C63FF' },
+  }[tier]
+  if (!info) return null
+  return (
+    <span style={{
+      fontSize: 9, fontWeight: 700, color: info.color,
+      backgroundColor: `${info.color}1F`,
+      border: `1px solid ${info.color}59`,
+      borderRadius: 999, padding: '2px 6px',
+    }}>
+      {info.emoji} {info.label}
+    </span>
+  )
+}
+
+// ─── Rising carousel ──────────────────────────────────────────────────────────
+
+const AVATAR_PALETTE = ['#6C63FF','#00C896','#FF6B35','#EE1D52','#9146FF','#FFD700','#00BCD4']
+function avatarColor(label) {
+  const code = [...label].reduce((s, c) => s + c.charCodeAt(0), 0)
+  return AVATAR_PALETTE[code % AVATAR_PALETTE.length]
+}
+
+function RisingSection() {
+  const { creators, liveIds, loading } = useRisingCreators()
+
+  return (
+    <section style={{ padding: '0 24px 36px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 14 }}>
+        <Zap size={16} color="#FFD700" style={{ marginBottom: -2, flexShrink: 0 }} />
+        <span style={{ fontSize: 17, fontWeight: 700, color: 'white' }}>Rising</span>
+        <span style={{ fontSize: 12, color: '#8B8FA8' }}>Market Makers gaining traction</span>
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', gap: 12, overflowX: 'auto' }}>
+          {[...Array(6)].map((_, i) => (
+            <div key={i} style={{ width: 110, height: 120, borderRadius: 14, backgroundColor: '#1A1A2E', flexShrink: 0, opacity: 0.5 }} />
+          ))}
+        </div>
+      ) : creators.length === 0 ? (
+        <p style={{ color: '#8B8FA8', fontSize: 14, margin: 0 }}>No rising creators yet</p>
+      ) : (
+        <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 4 }}>
+          {creators.map(c => {
+            const isLive = liveIds.has(c.id)
+            const color = avatarColor(c.label)
+            return (
+              <div key={c.id} style={{
+                width: 110, flexShrink: 0,
+                backgroundColor: '#1A1A2E',
+                border: `1px solid ${isLive ? '#FF475780' : '#2A2A3E'}`,
+                borderRadius: 14, padding: 12,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+              }}>
+                {/* Avatar + live dot */}
+                <div style={{ position: 'relative' }}>
+                  <div style={{
+                    width: 44, height: 44, borderRadius: '50%',
+                    backgroundColor: `${color}26`,
+                    border: `1.5px solid ${color}66`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 18, fontWeight: 700, color,
+                  }}>
+                    {c.label[0].toUpperCase()}
+                  </div>
+                  {isLive && (
+                    <div style={{
+                      position: 'absolute', top: -2, right: -2,
+                      width: 10, height: 10, borderRadius: '50%',
+                      backgroundColor: '#FF4757',
+                      border: '1.5px solid #0A0A0F',
+                    }} />
+                  )}
+                </div>
+
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'white', textAlign: 'center', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', width: '100%' }}>
+                  {c.label}
+                </div>
+
+                {c.tier && <TierBadge tier={c.tier} />}
+
+                {c.heatScore > 0 && (
+                  <div style={{ fontSize: 10, color: '#8B8FA8' }}>
+                    🔥 {c.heatScore.toFixed(1)}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
+}
+
+// ─── Who's Live ───────────────────────────────────────────────────────────────
+
+function formatViewers(n) {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`
+  return String(n)
+}
+
+function WhoIsLiveSection() {
+  const { metrics, loading } = useLiveFeed()
+
+  return (
+    <section style={{ padding: '0 24px 36px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 14 }}>
+        <Radio size={16} color='#FF4757' style={{ marginBottom: -2, flexShrink: 0 }} />
+        <span style={{ fontSize: 17, fontWeight: 700, color: 'white' }}>Who's Live</span>
+        <span style={{ fontSize: 12, color: '#8B8FA8' }}>Creators streaming right now</span>
+      </div>
+
+      {loading ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {[...Array(3)].map((_, i) => (
+            <div key={i} style={{ height: 100, borderRadius: 16, backgroundColor: '#1A1A2E', opacity: 0.5 }} />
+          ))}
+        </div>
+      ) : metrics.length === 0 ? (
+        <div style={{
+          display: 'flex', flexDirection: 'column', alignItems: 'center',
+          padding: '32px 0', gap: 10, color: '#8B8FA8',
+        }}>
+          <Radio size={36} color='#8B8FA8' />
+          <span style={{ fontSize: 14 }}>No creators are live right now</span>
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {metrics.map((m, i) => {
+            const isYT = m.platform === 'youtube'
+            const platformLabel = isYT ? 'YT' : 'Twitch'
+            const platformColor = isYT ? '#FF4444' : '#9146FF'
+            return (
+              <div key={i} style={{
+                backgroundColor: '#1A1A2E',
+                border: '1px solid #2A2A3E',
+                borderRadius: 16, padding: 16,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: m.streamTitle ? 8 : 12 }}>
+                  {/* Platform chip */}
+                  <span style={{
+                    fontSize: 11, fontWeight: 600, color: platformColor,
+                    backgroundColor: `${platformColor}1F`,
+                    border: `1px solid ${platformColor}59`,
+                    borderRadius: 6, padding: '3px 7px', flexShrink: 0,
+                  }}>
+                    {platformLabel}
+                  </span>
+
+                  <span style={{ flex: 1, fontSize: 15, fontWeight: 700, color: 'white', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {m.username ? `@${m.username}` : 'Unknown'}
+                  </span>
+
+                  {/* Heat score */}
+                  <span style={{
+                    display: 'flex', alignItems: 'center', gap: 4,
+                    fontSize: 12, fontWeight: 700, color: '#6C63FF',
+                    backgroundColor: '#6C63FF1F',
+                    border: '1px solid #6C63FF66',
+                    borderRadius: 12, padding: '4px 9px', flexShrink: 0,
+                  }}>
+                    🔥 {m.heatScore.toFixed(1)}
+                  </span>
+                </div>
+
+                {m.streamTitle && (
+                  <p style={{ margin: '0 0 4px', fontSize: 14, color: 'white', overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {m.streamTitle}
+                  </p>
+                )}
+                {m.streamCategory && (
+                  <p style={{ margin: '0 0 10px', fontSize: 12, color: '#8B8FA8' }}>{m.streamCategory}</p>
+                )}
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <Eye size={13} color='#FF4757' />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#FF4757' }}>{formatViewers(m.viewers)}</span>
+                  <span style={{ fontSize: 12, color: '#8B8FA8' }}>watching</span>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </section>
+  )
+}
+
+// ─── Footer ───────────────────────────────────────────────────────────────────
+
+function FooterLinks() {
+  const linkStyle = {
+    color: '#8B8FA8', fontSize: 12,
+    textDecoration: 'underline',
+    textDecorationColor: '#8B8FA8',
+  }
+  return (
+    <footer style={{
+      display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 6,
+      padding: '0 24px 32px',
+    }}>
+      <a href="/privacy" style={linkStyle}>Privacy Policy</a>
+      <span style={{ color: '#8B8FA8', fontSize: 12 }}>·</span>
+      <a href="/terms" style={linkStyle}>Terms of Service</a>
+    </footer>
+  )
+}
+
 // ─── Main Landing component ───────────────────────────────────────────────────
 
 export default function Landing() {
@@ -739,6 +1037,19 @@ export default function Landing() {
 
           </div>
         </main>
+
+        {/* ── DIVIDER ────────────────────────────────────────────────────── */}
+        <div style={{ height: 1, backgroundColor: '#2A2A3E', margin: '0 24px 36px' }} />
+
+        {/* ── RISING CREATORS ────────────────────────────────────────────── */}
+        <RisingSection />
+
+        {/* ── WHO'S LIVE ──────────────────────────────────────────────────── */}
+        <WhoIsLiveSection />
+
+        {/* ── FOOTER ──────────────────────────────────────────────────────── */}
+        <FooterLinks />
+
       </div>
     </>
   )
