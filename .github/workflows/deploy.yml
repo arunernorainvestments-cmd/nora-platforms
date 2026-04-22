@@ -27,10 +27,19 @@ jobs:
       - name: Build web
         run: cd flutter_app && flutter build web --release --no-tree-shake-icons
 
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build landing page
+        run: cd landing && npm ci && npm run build
+
       - name: Prepare Vercel output structure
         run: |
           mkdir -p .vercel/output/static
           cp -r flutter_app/build/web/. .vercel/output/static/
+          cp -r landing/dist/. .vercel/output/static/landing/
           cat > .vercel/output/config.json << 'JSON'
           {
             "version": 3,
@@ -45,6 +54,14 @@ jobs:
               {
                 "src": "/terms",
                 "dest": "/terms.html"
+              },
+              {
+                "src": "/landing",
+                "dest": "/landing/index.html"
+              },
+              {
+                "src": "/landing/(.*)",
+                "dest": "/landing/index.html"
               },
               {
                 "src": "/.*",
