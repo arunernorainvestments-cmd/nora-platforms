@@ -65,21 +65,28 @@ providers except OAuth initiation.
 
 **Error handling:** try/catch with if (mounted) guard + ScaffoldMessenger snackbar.
 
-### React Landing Page (`/landing`)
+### React Home App (`/home`) — Phase 2 complete
 
-A separate Vite + React app lives in the `landing/` directory. It is served as a
-static bundle and is NOT part of the Flutter app. Vercel routes `/landing` and
-`/landing/(.*)` to `landing/index.html` (see vercel.json). All other paths hit
-the Flutter SPA (`index.html`).
+A separate Vite + React app lives in the `landing/` directory (source stays in `landing/`
+for historical reasons — only the served URL changed). It is the primary entry point,
+replacing Flutter's `/home` screen. Vercel routes `/home` and `/home/(.*)` to
+`home/index.html`; all other paths serve Flutter's `index.html`.
 
 - Entry: `landing/src/main.jsx` → `landing/src/Landing.jsx`
 - Styles: `landing/src/index.css`
-- Build output: `landing/dist/` (built separately from Flutter)
-- Supabase data fetched directly via REST (no SDK) using the anon key
-- Links out to Flutter routes: `/login`, `/signup`, `/explore`, `/markets`,
-  `/wallet`, `/profile`, `/dashboard`, `/privacy`, `/terms`
-- Does NOT use React Router — all cross-app navigation is plain `<a href>` or
-  `window.location` pointing at Flutter routes
+- Build output: `landing/dist/` → copied to `.vercel/output/static/home/` by `deploy.yml`
+- Supabase data fetched via `@supabase/supabase-js` in `landing/src/supabase.js`
+- Uses React Router (react-router-dom) with `BrowserRouter`; basename comes from
+  `BASE_PATH = '/home'` in `landing/src/config.js`
+- Internal pages use `<Link to="...">` for client-side navigation — no full page reload:
+  `/home/profile`, `/home/wallet`, `/home/mybets`, `/home/explore`, `/home/dashboard`
+- Pages live in `landing/src/pages/`; shared shell in `landing/src/components/PageShell.jsx`
+- External links that intentionally leave the React app (`/login`, `/signup`) stay as `<a href>`
+- Flutter's GoRouter has a top-level `/home` GoRoute (in `app_router.dart`) that calls
+  `web.window.location.replace('/home')` — bridges programmatic Flutter navigation to the
+  React app (post-login redirect, bottom nav Home tab)
+- Phase 3 (future): change `BASE_PATH` to `'/'` and update the Vercel rewrite source in
+  `deploy.yml` — no other files change
 - Build command: `cd landing && npm install && npm run build`
 
 ---

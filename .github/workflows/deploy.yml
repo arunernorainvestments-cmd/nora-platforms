@@ -39,7 +39,7 @@ jobs:
         run: |
           mkdir -p .vercel/output/static
           cp -r flutter_app/build/web/. .vercel/output/static/
-          cp -r landing/dist/. .vercel/output/static/landing/
+          cp -r landing/dist/. .vercel/output/static/home/
           cat > .vercel/output/config.json << 'JSON'
           {
             "version": 3,
@@ -56,15 +56,19 @@ jobs:
                 "dest": "/terms.html"
               },
               {
-                "src": "/landing",
-                "dest": "/landing/index.html"
+                "src": "/tiktok-verification",
+                "dest": "/tiktok-verification.html"
               },
               {
-                "src": "/landing/(.*)",
-                "dest": "/landing/index.html"
+                "src": "/home",
+                "dest": "/home/index.html"
               },
               {
-                "src": "/.*",
+                "src": "/home/(.*)",
+                "dest": "/home/index.html"
+              },
+              {
+                "src": "/((?!home|privacy|terms|tiktok-verification).*)",
                 "dest": "/index.html"
               }
             ]

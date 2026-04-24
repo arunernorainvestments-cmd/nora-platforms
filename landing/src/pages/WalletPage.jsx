@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { Wallet, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react'
 import { PageShell } from '../components/PageShell'
 import { sbFetchAuth } from '../supabase'
@@ -43,12 +44,12 @@ function WalletContent({ session }) {
       </div>
 
       {/* Get tokens */}
-      <a href="/landing" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#1A1A2E', border: '1px solid #6C63FF', borderRadius: 12, padding: '14px', color: '#9B8FFF', fontWeight: 700, fontSize: 14, textDecoration: 'none', marginBottom: 20, transition: 'background-color 0.15s' }}
+      <Link to="/" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#1A1A2E', border: '1px solid #6C63FF', borderRadius: 12, padding: '14px', color: '#9B8FFF', fontWeight: 700, fontSize: 14, textDecoration: 'none', marginBottom: 20, transition: 'background-color 0.15s' }}
         onMouseEnter={e => e.currentTarget.style.backgroundColor = '#16213E'}
         onMouseLeave={e => e.currentTarget.style.backgroundColor = '#1A1A2E'}
       >
         <Wallet size={16} /> Get More Tokens
-      </a>
+      </Link>
 
       {/* Transactions */}
       <div style={{ fontSize: 13, fontWeight: 700, color: '#8B8FA8', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 12 }}>

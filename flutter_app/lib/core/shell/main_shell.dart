@@ -8,7 +8,6 @@ class MainShell extends StatelessWidget {
   const MainShell({super.key, required this.child});
 
   int _locationToIndex(String location) {
-    if (location.startsWith('/home')) return 0;
     if (location.startsWith('/search')) return 1;
     if (location.startsWith('/markets')) return 2;
     if (location.startsWith('/profile')) return 3;

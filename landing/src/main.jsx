@@ -2,6 +2,7 @@ import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './index.css'
+import { BASE_PATH } from './config'
 import Landing from './Landing'
 import ProfilePage from './pages/ProfilePage'
 import WalletPage from './pages/WalletPage'
@@ -11,7 +12,7 @@ import DashboardPage from './pages/DashboardPage'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <BrowserRouter basename="/landing">
+    <BrowserRouter basename={BASE_PATH}>
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/profile" element={<ProfilePage />} />

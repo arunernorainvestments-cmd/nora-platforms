@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { ChevronLeft } from 'lucide-react'
 import { supabase } from '../supabase'
 
@@ -33,7 +33,7 @@ export function PageShell({ title, children, requireAuth = false }) {
   if (requireAuth && !session) {
     return (
       <div style={{ minHeight: '100vh', backgroundColor: '#0A0A0F', color: 'white', display: 'flex', flexDirection: 'column' }}>
-        <Header title={title} onBack={() => navigate('/landing')} />
+        <Header title={title} onBack={() => navigate('/')} />
         <SignInPrompt title={title} />
       </div>
     )
@@ -41,7 +41,7 @@ export function PageShell({ title, children, requireAuth = false }) {
 
   return (
     <div style={{ minHeight: '100vh', backgroundColor: '#0A0A0F', color: 'white', display: 'flex', flexDirection: 'column' }}>
-      <Header title={title} onBack={() => navigate('/landing')} />
+      <Header title={title} onBack={() => navigate('/')} />
       {children(session)}
     </div>
   )
@@ -65,9 +65,9 @@ function Header({ title, onBack }) {
       </button>
       <div style={{ fontWeight: 700, fontSize: 16, color: 'white' }}>{title}</div>
       <div style={{ flex: 1 }} />
-      <a href="/landing" style={{ border: '1px solid #2A2A3E', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#8B8FA8', textDecoration: 'none', fontWeight: 600 }}>
+      <Link to="/" style={{ border: '1px solid #2A2A3E', borderRadius: 8, padding: '6px 12px', fontSize: 12, color: '#8B8FA8', textDecoration: 'none', fontWeight: 600 }}>
         N.O.R.A.
-      </a>
+      </Link>
     </header>
   )
 }

@@ -1,25 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { Link } from 'react-router-dom'
 import {
   Menu, Search, TrendingUp, ChevronLeft, ChevronRight, X,
   LayoutDashboard, User, Receipt, Wallet, Trophy, Flame,
   Settings, HelpCircle, Crown, LogIn, Zap, Radio, Eye,
 } from 'lucide-react'
-
-// ─── Supabase REST helpers ────────────────────────────────────────────────────
-
-const SUPABASE_URL = 'https://cceisywxwhgljdpisjrl.supabase.co'
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNjZWlzeXd4d2hnbGpkcGlzanJsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUzMzc3MzMsImV4cCI6MjA5MDkxMzczM30.feu_2g5erRI3eah0OotjdD5uxB9hjfJJu-f5CmwI-Pw'
-
-async function sbFetch(path) {
-  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    headers: {
-      apikey: SUPABASE_ANON_KEY,
-      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-    },
-  })
-  if (!res.ok) return []
-  return res.json()
-}
+import { sbFetch } from './supabase'
 
 function useRisingCreators() {
   const [creators, setCreators] = useState([])
@@ -534,15 +520,15 @@ const NAV_ITEMS = [
   {
     icon: LayoutDashboard,
     label: 'Dashboard',
-    href: '/landing/dashboard',
+    to: '/dashboard',
     badge: { text: 'MM Only', color: '#03DAC6', bg: 'rgba(3,218,198,0.12)' },
     description: 'Market Maker hub',
   },
-  { icon: User,    label: 'Profile',   href: '/landing/profile',  description: 'Your public profile' },
-  { icon: Receipt, label: 'My Bets',   href: '/landing/mybets',   description: 'Active & past bets' },
-  { icon: Wallet,  label: 'Wallet',    href: '/landing/wallet',   description: 'Tokens & transactions' },
+  { icon: User,    label: 'Profile',   to: '/profile',  description: 'Your public profile' },
+  { icon: Receipt, label: 'My Bets',   to: '/mybets',   description: 'Active & past bets' },
+  { icon: Wallet,  label: 'Wallet',    to: '/wallet',   description: 'Tokens & transactions' },
   { icon: Trophy,  label: 'Arena',     description: 'Leaderboards & events' },
-  { icon: Flame,   label: 'Hot Topic', href: '/landing/explore',  description: 'Trending this week' },
+  { icon: Flame,   label: 'Hot Topic', to: '/explore',  description: 'Trending this week' },
 ]
 
 const UTILITY_ITEMS = [
@@ -554,25 +540,26 @@ function DrawerNavRow({ item, active = false }) {
   const [hovered, setHovered] = useState(false)
   const highlighted = hovered || active
   const Icon = item.icon
-  const Tag = item.href ? 'a' : 'button'
 
-  return (
-    <Tag
-      href={item.href}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        width: '100%', textAlign: 'left', textDecoration: 'none',
-        background: highlighted ? 'rgba(108,99,255,0.10)' : 'none',
-        border: 'none',
-        borderLeft: `3px solid ${active ? '#6C63FF' : 'transparent'}`,
-        borderRadius: active || hovered ? '0 8px 8px 0' : 0,
-        cursor: 'pointer',
-        padding: '11px 14px',
-        transition: 'background 0.15s, border-color 0.15s',
-      }}
-    >
+  const rowStyle = {
+    display: 'flex', alignItems: 'center', gap: 12,
+    width: '100%', textAlign: 'left', textDecoration: 'none',
+    background: highlighted ? 'rgba(108,99,255,0.10)' : 'none',
+    border: 'none',
+    borderLeft: `3px solid ${active ? '#6C63FF' : 'transparent'}`,
+    borderRadius: active || hovered ? '0 8px 8px 0' : 0,
+    cursor: 'pointer',
+    padding: '11px 14px',
+    transition: 'background 0.15s, border-color 0.15s',
+  }
+
+  const handlers = {
+    onMouseEnter: () => setHovered(true),
+    onMouseLeave: () => setHovered(false),
+  }
+
+  const inner = (
+    <>
       {/* Icon */}
       <div style={{
         width: 34, height: 34, borderRadius: 8, flexShrink: 0,
@@ -613,8 +600,18 @@ function DrawerNavRow({ item, active = false }) {
           </div>
         )}
       </div>
-    </Tag>
+    </>
   )
+
+  // Internal React route — use Link to avoid full page reload
+  if (item.to) {
+    return <Link to={item.to} style={rowStyle} {...handlers}>{inner}</Link>
+  }
+  // href is intentionally leaving the React app (e.g. /login, /signup → Flutter routes)
+  if (item.href) {
+    return <a href={item.href} style={rowStyle} {...handlers}>{inner}</a>
+  }
+  return <button style={rowStyle} {...handlers}>{inner}</button>
 }
 
 function SideDrawer({ open, onClose }) {
