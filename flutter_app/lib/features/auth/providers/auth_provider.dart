@@ -1,6 +1,10 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+// Stores the path the user was trying to reach before being redirected to /login.
+// More reliable than ?next= URL params across GoRouter's async redirect re-fires.
+final pendingNavigationProvider = StateProvider<String?>((ref) => null);
+
 // Lightweight approval check used by the router.
 // Re-evaluates whenever auth state changes.
 // Returns: true = approved, false = pending, null = not logged in / loading.

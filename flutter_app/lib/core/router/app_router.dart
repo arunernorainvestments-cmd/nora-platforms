@@ -29,43 +29,50 @@ final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/',
     redirect: (context, state) {
+      // ── Do not redirect while auth session is being restored ─────────────
+      // authStateProvider is a StreamProvider — its initial value is
+      // AsyncValue.loading() until the first onAuthStateChange event fires.
+      // Acting on that loading state would redirect every external deep-link
+      // to /login even for users who are already signed in.
+      if (authState.isLoading) return null;
+
       final isLoggedIn = authState.value?.session != null;
       final isApproved = approvalStatus.value; // null = loading or not logged in
       final loc = state.matchedLocation;
 
       // ── Beta gate: hard-block unapproved users ────────────────────────────
-      // isApproved == false (not null/loading) means the profile loaded and
-      // the flag is explicitly false. Redirect to pending screen regardless
-      // of what route they try to access.
       if (isLoggedIn && isApproved == false && loc != '/pending-approval') {
         return '/pending-approval';
       }
-
-      // If somehow an approved user lands on the pending screen, send them home.
       if (isLoggedIn && isApproved == true && loc == '/pending-approval') {
         return '/home';
       }
 
-      // ── Standard auth routing (approved users only reach here) ────────────
-
-      // Logged-in user on the launch/auth pages → go home (or ?next= destination)
+      // ── Logged-in user on auth/launch pages → intended destination or home ─
       if (isLoggedIn &&
           isApproved == true &&
           (loc == '/' ||
               loc == '/login' ||
               loc == '/signup' ||
               loc == '/forgot-password')) {
+        // Prefer the Riverpod-stored destination (set before the /login redirect)
+        // over the URL ?next= param — it survives GoRouter's async re-fire chain.
+        final pending = ref.read(pendingNavigationProvider);
+        if (pending != null) {
+          ref.read(pendingNavigationProvider.notifier).state = null;
+          return pending;
+        }
         final next = state.uri.queryParameters['next'];
         if (next != null && next.isNotEmpty) return next;
         return '/home';
       }
 
-      // Only these routes require authentication
+      // ── Protected routes require authentication ───────────────────────────
       const protectedRoutes = ['/markets', '/markets/mybets', '/profile', '/wallet'];
       final isProtected = protectedRoutes.contains(loc);
-
-      // Logged-out user hits a protected route → login with ?next= for return
       if (!isLoggedIn && isProtected) {
+        // Store destination in Riverpod — reliable across async redirect re-fires
+        ref.read(pendingNavigationProvider.notifier).state = loc;
         return '/login?next=${Uri.encodeComponent(loc)}';
       }
 

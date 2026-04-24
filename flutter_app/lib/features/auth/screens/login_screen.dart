@@ -25,7 +25,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _signIn() async {
-    // Capture ?next= before async changes router state
+    // Read both sources of the intended destination before async work begins.
+    final pending = ref.read(pendingNavigationProvider);
     final next = GoRouterState.of(context).uri.queryParameters['next'];
     setState(() { _isLoading = true; _error = null; });
     try {
@@ -33,10 +34,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _emailController.text.trim(),
         _passwordController.text,
       );
-      // Explicit navigation so the ?next= destination is never lost to
-      // async approval-status loading order.
-      if (mounted && next != null && next.isNotEmpty) {
-        context.go(next);
+      if (mounted) {
+        final destination = pending ?? (next?.isNotEmpty == true ? next : null);
+        if (destination != null) {
+          ref.read(pendingNavigationProvider.notifier).state = null;
+          context.go(destination);
+        }
+        // If no destination, GoRouter's redirect handles sending to /home.
       }
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); });
