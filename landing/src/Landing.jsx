@@ -534,15 +534,15 @@ const NAV_ITEMS = [
   {
     icon: LayoutDashboard,
     label: 'Dashboard',
-    href: '/dashboard',
+    href: '/landing/dashboard',
     badge: { text: 'MM Only', color: '#03DAC6', bg: 'rgba(3,218,198,0.12)' },
     description: 'Market Maker hub',
   },
-  { icon: User,    label: 'Profile',   href: '/profile',  description: 'Your public profile' },
-  { icon: Receipt, label: 'My Bets',   href: '/markets/mybets',  description: 'Active & past bets' },
-  { icon: Wallet,  label: 'Wallet',    href: '/wallet',   description: 'Tokens & transactions' },
+  { icon: User,    label: 'Profile',   href: '/landing/profile',  description: 'Your public profile' },
+  { icon: Receipt, label: 'My Bets',   href: '/landing/mybets',   description: 'Active & past bets' },
+  { icon: Wallet,  label: 'Wallet',    href: '/landing/wallet',   description: 'Tokens & transactions' },
   { icon: Trophy,  label: 'Arena',     description: 'Leaderboards & events' },
-  { icon: Flame,   label: 'Hot Topic', href: '/explore',  description: 'Trending this week' },
+  { icon: Flame,   label: 'Hot Topic', href: '/landing/explore',  description: 'Trending this week' },
 ]
 
 const UTILITY_ITEMS = [
