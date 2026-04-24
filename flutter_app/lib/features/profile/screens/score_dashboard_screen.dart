@@ -59,7 +59,7 @@ class _ScoreDashboardScreenState extends ConsumerState<ScoreDashboardScreen> {
             if (context.canPop()) {
               context.pop();
             } else {
-              context.go('/profile');
+              context.go('/home');
             }
           },
         ),

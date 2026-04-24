@@ -241,137 +241,130 @@ function NewsPanel() {
   )
 }
 
+const TOKEN_PACKAGES = [
+  { id: 'starter', label: 'Starter',  tokens: 120,  price: '$0.99',  badge: null },
+  { id: 'popular', label: 'Popular',  tokens: 650,  price: '$4.99',  badge: 'Most Popular' },
+  { id: 'pro',     label: 'Pro',      tokens: 1650, price: '$9.99',  badge: 'Best Value' },
+  { id: 'elite',   label: 'Elite',    tokens: 3500, price: '$19.99', badge: null },
+]
+
 function TokensModal({ onClose }) {
-  const [purchaseHovered, setPurchaseHovered] = useState(false)
+  const [view, setView] = useState('choice') // 'choice' | 'purchase'
   const [earnHovered, setEarnHovered] = useState(false)
+  const [hoveredPkg, setHoveredPkg] = useState(null)
+
+  const closeBtn = (
+    <button
+      onClick={view === 'purchase' ? () => setView('choice') : onClose}
+      style={{
+        position: 'absolute', top: 14, right: 14,
+        background: 'rgba(42,42,62,0.8)', border: 'none', cursor: 'pointer',
+        color: '#8B8FA8', display: 'flex', borderRadius: 8,
+        padding: 7, transition: 'background 0.15s, color 0.15s',
+      }}
+      onMouseEnter={e => { e.currentTarget.style.background = 'rgba(108,99,255,0.2)'; e.currentTarget.style.color = 'white' }}
+      onMouseLeave={e => { e.currentTarget.style.background = 'rgba(42,42,62,0.8)'; e.currentTarget.style.color = '#8B8FA8' }}
+    >
+      <X size={16} />
+    </button>
+  )
 
   return (
     <>
       {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{
-          position: 'fixed', inset: 0, zIndex: 100,
-          backgroundColor: 'rgba(0,0,0,0.72)',
-          backdropFilter: 'blur(6px)',
-        }}
-      />
+      <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 100, backgroundColor: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)' }} />
 
       {/* Modal card */}
       <div style={{
         position: 'fixed', zIndex: 101,
-        top: '50%', left: '50%',
-        transform: 'translate(-50%, -50%)',
-        width: 'min(420px, calc(100vw - 48px))',
-        backgroundColor: '#1A1A2E',
-        border: '1px solid #2A2A3E',
-        borderRadius: 20,
-        padding: '32px 28px 28px',
+        top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+        width: 'min(440px, calc(100vw - 48px))',
+        backgroundColor: '#1A1A2E', border: '1px solid #2A2A3E',
+        borderRadius: 20, padding: '32px 28px 28px',
         boxShadow: '0 24px 80px rgba(0,0,0,0.7)',
         animation: 'fadeIn 0.18s ease forwards',
+        maxHeight: 'calc(100vh - 48px)', overflowY: 'auto',
       }}>
+        {closeBtn}
 
-        {/* Close button */}
-        <button
-          onClick={onClose}
-          style={{
-            position: 'absolute', top: 14, right: 14,
-            background: 'rgba(42,42,62,0.8)', border: 'none', cursor: 'pointer',
-            color: '#8B8FA8', display: 'flex', borderRadius: 8,
-            padding: 7, transition: 'background 0.15s, color 0.15s',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(108,99,255,0.2)'; e.currentTarget.style.color = 'white' }}
-          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(42,42,62,0.8)'; e.currentTarget.style.color = '#8B8FA8' }}
-        >
-          <X size={16} />
-        </button>
+        {view === 'choice' ? (
+          <>
+            <div style={{ width: 52, height: 52, borderRadius: '50%', margin: '0 auto 20px', background: 'linear-gradient(135deg, #6C63FF, #03DAC6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>🪙</div>
+            <h2 style={{ margin: '0 0 8px', textAlign: 'center', fontSize: 20, fontWeight: 800, color: 'white', letterSpacing: '-0.3px' }}>
+              How do you want more tokens?
+            </h2>
+            <p style={{ margin: '0 0 24px', textAlign: 'center', fontSize: 13, color: '#8B8FA8', lineHeight: 1.5 }}>
+              Tokens power promotions, boosts, and bets on the platform.
+            </p>
 
-        {/* Token icon */}
-        <div style={{
-          width: 52, height: 52, borderRadius: '50%', margin: '0 auto 20px',
-          background: 'linear-gradient(135deg, #6C63FF, #03DAC6)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 24,
-        }}>
-          🪙
-        </div>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+              {/* Purchase — opens package view */}
+              <button
+                onClick={() => setView('purchase')}
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, backgroundColor: '#6C63FF', border: 'none', borderRadius: 14, padding: '18px 12px', cursor: 'pointer', transition: 'background-color 0.15s, box-shadow 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#7B73FF'; e.currentTarget.style.boxShadow = '0 0 20px rgba(108,99,255,0.45)' }}
+                onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#6C63FF'; e.currentTarget.style.boxShadow = 'none' }}
+              >
+                <span style={{ fontSize: 24 }}>💳</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>Purchase</span>
+                <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', textAlign: 'center' }}>Buy token packs instantly</span>
+              </button>
 
-        {/* Heading */}
-        <h2 style={{
-          margin: '0 0 8px', textAlign: 'center',
-          fontSize: 20, fontWeight: 800, color: 'white', letterSpacing: '-0.3px',
-        }}>
-          How do you want more tokens?
-        </h2>
+              {/* Earn */}
+              <a href="/challenges" onMouseEnter={() => setEarnHovered(true)} onMouseLeave={() => setEarnHovered(false)}
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, textDecoration: 'none', backgroundColor: earnHovered ? 'rgba(3,218,198,0.18)' : 'rgba(3,218,198,0.10)', border: `1px solid ${earnHovered ? '#03DAC6' : 'rgba(3,218,198,0.4)'}`, borderRadius: 14, padding: '18px 12px', cursor: 'pointer', transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s', boxShadow: earnHovered ? '0 0 20px rgba(3,218,198,0.2)' : 'none' }}
+              >
+                <span style={{ fontSize: 24 }}>🏆</span>
+                <span style={{ fontSize: 15, fontWeight: 700, color: '#03DAC6' }}>Earn</span>
+                <span style={{ fontSize: 11, color: '#8B8FA8', textAlign: 'center' }}>Complete challenges &amp; win bets</span>
+              </a>
+            </div>
 
-        <p style={{
-          margin: '0 0 24px', textAlign: 'center',
-          fontSize: 13, color: '#8B8FA8', lineHeight: 1.5,
-        }}>
-          Tokens power promotions, boosts, and bets on the platform.
-        </p>
+            {/* Equality note */}
+            <div style={{ backgroundColor: 'rgba(108,99,255,0.07)', border: '1px solid rgba(108,99,255,0.2)', borderRadius: 12, padding: '12px 14px', display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>🤝</span>
+              <p style={{ margin: 0, fontSize: 12, color: '#A8AABC', lineHeight: 1.6 }}>
+                We believe everyone should have access to the same promotion power.
+                If you cannot afford tokens, we ensure you will have the same opportunity as those with more affordability.
+              </p>
+            </div>
+          </>
+        ) : (
+          <>
+            <h2 style={{ margin: '0 0 4px', fontSize: 20, fontWeight: 800, color: 'white', letterSpacing: '-0.3px' }}>Buy Tokens</h2>
+            <p style={{ margin: '0 0 20px', fontSize: 13, color: '#8B8FA8' }}>Tokens fuel promotions, bets, and power-ups.</p>
 
-        {/* Action buttons */}
-        <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
-          <a
-            href="/wallet"
-            onMouseEnter={() => setPurchaseHovered(true)}
-            onMouseLeave={() => setPurchaseHovered(false)}
-            style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
-              alignItems: 'center', gap: 6, textDecoration: 'none',
-              backgroundColor: purchaseHovered ? '#7B73FF' : '#6C63FF',
-              border: 'none', borderRadius: 14, padding: '18px 12px',
-              cursor: 'pointer', transition: 'background-color 0.15s, box-shadow 0.15s',
-              boxShadow: purchaseHovered ? '0 0 20px rgba(108,99,255,0.45)' : 'none',
-            }}
-          >
-            <span style={{ fontSize: 24 }}>💳</span>
-            <span style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>Purchase</span>
-            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', textAlign: 'center' }}>
-              Buy token packs instantly
-            </span>
-          </a>
+            {TOKEN_PACKAGES.map(pkg => {
+              const isPopular = pkg.badge === 'Most Popular'
+              const hovered = hoveredPkg === pkg.id
+              return (
+                <a key={pkg.id} href="/wallet"
+                  onMouseEnter={() => setHoveredPkg(pkg.id)}
+                  onMouseLeave={() => setHoveredPkg(null)}
+                  style={{ display: 'flex', alignItems: 'center', gap: 14, textDecoration: 'none', backgroundColor: '#16213E', border: `${isPopular ? 1.5 : 1}px solid ${isPopular ? '#6C63FF' : hovered ? '#3A3A5E' : '#2A2A3E'}`, borderRadius: 14, padding: '14px 16px', marginBottom: 10, transition: 'border-color 0.15s, box-shadow 0.15s', boxShadow: hovered ? '0 4px 16px rgba(108,99,255,0.15)' : 'none' }}
+                >
+                  <div style={{ width: 44, height: 44, borderRadius: 10, flexShrink: 0, backgroundColor: '#1A1A2E', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🪙</div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>{pkg.label}</span>
+                      {pkg.badge && (
+                        <span style={{ fontSize: 9, fontWeight: 700, letterSpacing: '0.05em', color: isPopular ? '#9B8FFF' : '#03DAC6', backgroundColor: isPopular ? 'rgba(108,99,255,0.15)' : 'rgba(3,218,198,0.12)', border: `1px solid ${isPopular ? 'rgba(108,99,255,0.4)' : 'rgba(3,218,198,0.4)'}`, borderRadius: 999, padding: '2px 7px', textTransform: 'uppercase' }}>
+                          {pkg.badge}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ fontSize: 12, color: '#8B8FA8' }}>{pkg.tokens.toLocaleString()} tokens</div>
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: isPopular ? '#9B8FFF' : 'white', flexShrink: 0 }}>{pkg.price}</div>
+                </a>
+              )
+            })}
 
-          <a
-            href="/challenges"
-            onMouseEnter={() => setEarnHovered(true)}
-            onMouseLeave={() => setEarnHovered(false)}
-            style={{
-              flex: 1, display: 'flex', flexDirection: 'column',
-              alignItems: 'center', gap: 6, textDecoration: 'none',
-              backgroundColor: earnHovered ? 'rgba(3,218,198,0.18)' : 'rgba(3,218,198,0.10)',
-              border: `1px solid ${earnHovered ? '#03DAC6' : 'rgba(3,218,198,0.4)'}`,
-              borderRadius: 14, padding: '18px 12px',
-              cursor: 'pointer', transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
-              boxShadow: earnHovered ? '0 0 20px rgba(3,218,198,0.2)' : 'none',
-            }}
-          >
-            <span style={{ fontSize: 24 }}>🏆</span>
-            <span style={{ fontSize: 15, fontWeight: 700, color: '#03DAC6' }}>Earn</span>
-            <span style={{ fontSize: 11, color: '#8B8FA8', textAlign: 'center' }}>
-              Complete challenges & win bets
-            </span>
-          </a>
-        </div>
-
-        {/* Equality note */}
-        <div style={{
-          backgroundColor: 'rgba(108,99,255,0.07)',
-          border: '1px solid rgba(108,99,255,0.2)',
-          borderRadius: 12, padding: '12px 14px',
-          display: 'flex', gap: 10, alignItems: 'flex-start',
-        }}>
-          <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>🤝</span>
-          <p style={{
-            margin: 0, fontSize: 12, color: '#A8AABC', lineHeight: 1.6,
-          }}>
-            We believe everyone should have access to the same promotion power.
-            If you cannot afford tokens, we ensure you will have the same
-            opportunity as those with more affordability.
-          </p>
-        </div>
-
+            <p style={{ margin: '12px 0 0', fontSize: 11, color: '#8B8FA8', textAlign: 'center', lineHeight: 1.5 }}>
+              Sign in to complete your purchase in the app.
+            </p>
+          </>
+        )}
       </div>
     </>
   )

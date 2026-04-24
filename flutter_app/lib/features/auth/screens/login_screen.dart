@@ -25,16 +25,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   Future<void> _signIn() async {
+    // Capture ?next= before async changes router state
+    final next = GoRouterState.of(context).uri.queryParameters['next'];
     setState(() { _isLoading = true; _error = null; });
     try {
       await ref.read(authActionsProvider).signInWithEmail(
         _emailController.text.trim(),
         _passwordController.text,
       );
+      // Explicit navigation so the ?next= destination is never lost to
+      // async approval-status loading order.
+      if (mounted && next != null && next.isNotEmpty) {
+        context.go(next);
+      }
     } catch (e) {
-      setState(() { _error = e.toString(); });
+      if (mounted) setState(() { _error = e.toString(); });
     } finally {
-      setState(() { _isLoading = false; });
+      if (mounted) setState(() { _isLoading = false; });
     }
   }
 

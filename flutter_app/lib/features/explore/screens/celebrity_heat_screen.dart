@@ -136,7 +136,6 @@ class _CelebrityHeatScreenState extends State<CelebrityHeatScreen> {
             hours: hours,
             minutes: minutes,
             seconds: seconds,
-            onTap: () => context.go('/'),
           ),
         ],
       ),
@@ -357,20 +356,18 @@ class _EventCard extends StatelessWidget {
 
 class _MiniCountdownBanner extends StatelessWidget {
   final int days, hours, minutes, seconds;
-  final VoidCallback onTap;
 
   const _MiniCountdownBanner({
     required this.days,
     required this.hours,
     required this.minutes,
     required this.seconds,
-    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onTap,
+      onTap: null,
       child: Container(
         width: double.infinity,
         padding: EdgeInsets.only(
