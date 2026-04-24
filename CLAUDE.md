@@ -65,6 +65,23 @@ providers except OAuth initiation.
 
 **Error handling:** try/catch with if (mounted) guard + ScaffoldMessenger snackbar.
 
+### React Landing Page (`/landing`)
+
+A separate Vite + React app lives in the `landing/` directory. It is served as a
+static bundle and is NOT part of the Flutter app. Vercel routes `/landing` and
+`/landing/(.*)` to `landing/index.html` (see vercel.json). All other paths hit
+the Flutter SPA (`index.html`).
+
+- Entry: `landing/src/main.jsx` → `landing/src/Landing.jsx`
+- Styles: `landing/src/index.css`
+- Build output: `landing/dist/` (built separately from Flutter)
+- Supabase data fetched directly via REST (no SDK) using the anon key
+- Links out to Flutter routes: `/login`, `/signup`, `/explore`, `/markets`,
+  `/wallet`, `/profile`, `/dashboard`, `/privacy`, `/terms`
+- Does NOT use React Router — all cross-app navigation is plain `<a href>` or
+  `window.location` pointing at Flutter routes
+- Build command: `cd landing && npm install && npm run build`
+
 ---
 
 ## Supabase Schema

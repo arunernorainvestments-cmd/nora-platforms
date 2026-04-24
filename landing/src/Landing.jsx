@@ -241,24 +241,165 @@ function NewsPanel() {
   )
 }
 
+function TokensModal({ onClose }) {
+  const [purchaseHovered, setPurchaseHovered] = useState(false)
+  const [earnHovered, setEarnHovered] = useState(false)
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        style={{
+          position: 'fixed', inset: 0, zIndex: 100,
+          backgroundColor: 'rgba(0,0,0,0.72)',
+          backdropFilter: 'blur(6px)',
+        }}
+      />
+
+      {/* Modal card */}
+      <div style={{
+        position: 'fixed', zIndex: 101,
+        top: '50%', left: '50%',
+        transform: 'translate(-50%, -50%)',
+        width: 'min(420px, calc(100vw - 48px))',
+        backgroundColor: '#1A1A2E',
+        border: '1px solid #2A2A3E',
+        borderRadius: 20,
+        padding: '32px 28px 28px',
+        boxShadow: '0 24px 80px rgba(0,0,0,0.7)',
+        animation: 'fadeIn 0.18s ease forwards',
+      }}>
+
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          style={{
+            position: 'absolute', top: 14, right: 14,
+            background: 'rgba(42,42,62,0.8)', border: 'none', cursor: 'pointer',
+            color: '#8B8FA8', display: 'flex', borderRadius: 8,
+            padding: 7, transition: 'background 0.15s, color 0.15s',
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(108,99,255,0.2)'; e.currentTarget.style.color = 'white' }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(42,42,62,0.8)'; e.currentTarget.style.color = '#8B8FA8' }}
+        >
+          <X size={16} />
+        </button>
+
+        {/* Token icon */}
+        <div style={{
+          width: 52, height: 52, borderRadius: '50%', margin: '0 auto 20px',
+          background: 'linear-gradient(135deg, #6C63FF, #03DAC6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontSize: 24,
+        }}>
+          🪙
+        </div>
+
+        {/* Heading */}
+        <h2 style={{
+          margin: '0 0 8px', textAlign: 'center',
+          fontSize: 20, fontWeight: 800, color: 'white', letterSpacing: '-0.3px',
+        }}>
+          How do you want more tokens?
+        </h2>
+
+        <p style={{
+          margin: '0 0 24px', textAlign: 'center',
+          fontSize: 13, color: '#8B8FA8', lineHeight: 1.5,
+        }}>
+          Tokens power promotions, boosts, and bets on the platform.
+        </p>
+
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+          <a
+            href="/wallet"
+            onMouseEnter={() => setPurchaseHovered(true)}
+            onMouseLeave={() => setPurchaseHovered(false)}
+            style={{
+              flex: 1, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', gap: 6, textDecoration: 'none',
+              backgroundColor: purchaseHovered ? '#7B73FF' : '#6C63FF',
+              border: 'none', borderRadius: 14, padding: '18px 12px',
+              cursor: 'pointer', transition: 'background-color 0.15s, box-shadow 0.15s',
+              boxShadow: purchaseHovered ? '0 0 20px rgba(108,99,255,0.45)' : 'none',
+            }}
+          >
+            <span style={{ fontSize: 24 }}>💳</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: 'white' }}>Purchase</span>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.7)', textAlign: 'center' }}>
+              Buy token packs instantly
+            </span>
+          </a>
+
+          <a
+            href="/challenges"
+            onMouseEnter={() => setEarnHovered(true)}
+            onMouseLeave={() => setEarnHovered(false)}
+            style={{
+              flex: 1, display: 'flex', flexDirection: 'column',
+              alignItems: 'center', gap: 6, textDecoration: 'none',
+              backgroundColor: earnHovered ? 'rgba(3,218,198,0.18)' : 'rgba(3,218,198,0.10)',
+              border: `1px solid ${earnHovered ? '#03DAC6' : 'rgba(3,218,198,0.4)'}`,
+              borderRadius: 14, padding: '18px 12px',
+              cursor: 'pointer', transition: 'background-color 0.15s, border-color 0.15s, box-shadow 0.15s',
+              boxShadow: earnHovered ? '0 0 20px rgba(3,218,198,0.2)' : 'none',
+            }}
+          >
+            <span style={{ fontSize: 24 }}>🏆</span>
+            <span style={{ fontSize: 15, fontWeight: 700, color: '#03DAC6' }}>Earn</span>
+            <span style={{ fontSize: 11, color: '#8B8FA8', textAlign: 'center' }}>
+              Complete challenges & win bets
+            </span>
+          </a>
+        </div>
+
+        {/* Equality note */}
+        <div style={{
+          backgroundColor: 'rgba(108,99,255,0.07)',
+          border: '1px solid rgba(108,99,255,0.2)',
+          borderRadius: 12, padding: '12px 14px',
+          display: 'flex', gap: 10, alignItems: 'flex-start',
+        }}>
+          <span style={{ fontSize: 16, flexShrink: 0, marginTop: 1 }}>🤝</span>
+          <p style={{
+            margin: 0, fontSize: 12, color: '#A8AABC', lineHeight: 1.6,
+          }}>
+            We believe everyone should have access to the same promotion power.
+            If you cannot afford tokens, we ensure you will have the same
+            opportunity as those with more affordability.
+          </p>
+        </div>
+
+      </div>
+    </>
+  )
+}
+
 function GetTokensButton() {
   const [hovered, setHovered] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
   return (
-    <button
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        backgroundColor: hovered ? '#16213E' : '#1A1A2E',
-        border: '1px solid #6C63FF',
-        borderRadius: 12, color: 'white',
-        fontSize: 22, fontWeight: 800, cursor: 'pointer',
-        padding: '28px 0', width: '100%',
-        lineHeight: 1.35, transition: 'background-color 0.2s',
-        boxShadow: hovered ? '0 0 24px rgba(108,99,255,0.3)' : 'none',
-      }}
-    >
-      Get<br />Tokens
-    </button>
+    <>
+      {modalOpen && <TokensModal onClose={() => setModalOpen(false)} />}
+      <button
+        onClick={() => setModalOpen(true)}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          backgroundColor: hovered ? '#16213E' : '#1A1A2E',
+          border: '1px solid #6C63FF',
+          borderRadius: 12, color: 'white',
+          fontSize: 22, fontWeight: 800, cursor: 'pointer',
+          padding: '28px 0', width: '100%',
+          lineHeight: 1.35, transition: 'background-color 0.2s',
+          boxShadow: hovered ? '0 0 24px rgba(108,99,255,0.3)' : 'none',
+        }}
+      >
+        Get<br />Tokens
+      </button>
+    </>
   )
 }
 
@@ -400,14 +541,15 @@ const NAV_ITEMS = [
   {
     icon: LayoutDashboard,
     label: 'Dashboard',
+    href: '/dashboard',
     badge: { text: 'MM Only', color: '#03DAC6', bg: 'rgba(3,218,198,0.12)' },
     description: 'Market Maker hub',
   },
-  { icon: User,    label: 'Profile',  description: 'Your public profile' },
-  { icon: Receipt, label: 'My Bets',  description: 'Active & past bets' },
-  { icon: Wallet,  label: 'Wallet',   description: 'Tokens & transactions' },
-  { icon: Trophy,  label: 'Arena',    description: 'Leaderboards & events' },
-  { icon: Flame,   label: 'Hot Topic', description: 'Trending this week' },
+  { icon: User,    label: 'Profile',   href: '/profile',  description: 'Your public profile' },
+  { icon: Receipt, label: 'My Bets',   href: '/markets',  description: 'Active & past bets' },
+  { icon: Wallet,  label: 'Wallet',    href: '/wallet',   description: 'Tokens & transactions' },
+  { icon: Trophy,  label: 'Arena',     description: 'Leaderboards & events' },
+  { icon: Flame,   label: 'Hot Topic', href: '/explore',  description: 'Trending this week' },
 ]
 
 const UTILITY_ITEMS = [
@@ -419,14 +561,16 @@ function DrawerNavRow({ item, active = false }) {
   const [hovered, setHovered] = useState(false)
   const highlighted = hovered || active
   const Icon = item.icon
+  const Tag = item.href ? 'a' : 'button'
 
   return (
-    <button
+    <Tag
+      href={item.href}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
         display: 'flex', alignItems: 'center', gap: 12,
-        width: '100%', textAlign: 'left',
+        width: '100%', textAlign: 'left', textDecoration: 'none',
         background: highlighted ? 'rgba(108,99,255,0.10)' : 'none',
         border: 'none',
         borderLeft: `3px solid ${active ? '#6C63FF' : 'transparent'}`,
@@ -476,7 +620,7 @@ function DrawerNavRow({ item, active = false }) {
           </div>
         )}
       </div>
-    </button>
+    </Tag>
   )
 }
 
@@ -553,18 +697,19 @@ function SideDrawer({ open, onClose }) {
             <div style={{ fontSize: 13, fontWeight: 600, color: '#C8CAD8' }}>Guest</div>
             <div style={{ fontSize: 11, color: '#8B8FA8', marginTop: 1 }}>Sign in for full access</div>
           </div>
-          <button style={{
+          <a href="/login" style={{
             display: 'flex', alignItems: 'center', gap: 5,
             background: 'none', border: '1px solid #6C63FF', borderRadius: 7,
             color: '#9B8FFF', fontSize: 12, fontWeight: 600, cursor: 'pointer',
             padding: '6px 10px', flexShrink: 0, transition: 'background 0.15s',
+            textDecoration: 'none',
           }}
             onMouseEnter={e => { e.currentTarget.style.background = 'rgba(108,99,255,0.2)' }}
             onMouseLeave={e => { e.currentTarget.style.background = 'none' }}
           >
             <LogIn size={13} />
             Sign in
-          </button>
+          </a>
         </div>
 
         {/* ── Main navigation ── */}
@@ -932,23 +1077,24 @@ export default function Landing() {
           <div style={{ flex: 1 }} />
 
           {/* Auth */}
-          <button style={{ background: 'none', border: 'none', color: '#8B8FA8', fontSize: 14, fontWeight: 500, cursor: 'pointer', padding: '8px 4px', transition: 'color 0.15s' }}
+          <a href="/login" style={{ background: 'none', border: 'none', color: '#8B8FA8', fontSize: 14, fontWeight: 500, cursor: 'pointer', padding: '8px 4px', transition: 'color 0.15s', textDecoration: 'none' }}
             onMouseEnter={e => { e.currentTarget.style.color = 'white' }}
             onMouseLeave={e => { e.currentTarget.style.color = '#8B8FA8' }}
           >
             Login
-          </button>
-          <button style={{
+          </a>
+          <a href="/signup" style={{
             backgroundColor: '#6C63FF', border: 'none', borderRadius: 8,
             color: 'white', fontSize: 14, fontWeight: 600,
             padding: '8px 18px', cursor: 'pointer',
             transition: 'background-color 0.15s, box-shadow 0.15s',
+            textDecoration: 'none',
           }}
             onMouseEnter={e => { e.currentTarget.style.backgroundColor = '#7B73FF'; e.currentTarget.style.boxShadow = '0 0 16px rgba(108,99,255,0.45)' }}
             onMouseLeave={e => { e.currentTarget.style.backgroundColor = '#6C63FF'; e.currentTarget.style.boxShadow = 'none' }}
           >
             Sign Up
-          </button>
+          </a>
         </header>
 
         {/* ── CATEGORY NAV ────────────────────────────────────────────────── */}
