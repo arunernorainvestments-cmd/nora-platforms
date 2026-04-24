@@ -546,7 +546,7 @@ const NAV_ITEMS = [
     description: 'Market Maker hub',
   },
   { icon: User,    label: 'Profile',   href: '/profile',  description: 'Your public profile' },
-  { icon: Receipt, label: 'My Bets',   href: '/markets',  description: 'Active & past bets' },
+  { icon: Receipt, label: 'My Bets',   href: '/markets/mybets',  description: 'Active & past bets' },
   { icon: Wallet,  label: 'Wallet',    href: '/wallet',   description: 'Tokens & transactions' },
   { icon: Trophy,  label: 'Arena',     description: 'Leaderboards & events' },
   { icon: Flame,   label: 'Hot Topic', href: '/explore',  description: 'Trending this week' },

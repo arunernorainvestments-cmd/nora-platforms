@@ -61,7 +61,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       // Only these routes require authentication
-      const protectedRoutes = ['/markets', '/profile', '/wallet'];
+      const protectedRoutes = ['/markets', '/markets/mybets', '/profile', '/wallet'];
       final isProtected = protectedRoutes.contains(loc);
 
       // Logged-out user hits a protected route → login with ?next= for return
@@ -157,6 +157,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/markets',
             builder: (context, state) => const MarketsScreen(),
+          ),
+          GoRoute(
+            path: '/markets/mybets',
+            builder: (context, state) => const MarketsScreen(initialTab: 1),
           ),
           GoRoute(
             path: '/profile',

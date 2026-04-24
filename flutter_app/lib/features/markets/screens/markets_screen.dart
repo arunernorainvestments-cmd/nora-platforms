@@ -8,7 +8,8 @@ import '../../auth/providers/auth_provider.dart';
 import '../providers/markets_providers.dart';
 
 class MarketsScreen extends ConsumerStatefulWidget {
-  const MarketsScreen({super.key});
+  final int initialTab;
+  const MarketsScreen({super.key, this.initialTab = 0});
 
   @override
   ConsumerState<MarketsScreen> createState() => _MarketsScreenState();
@@ -21,7 +22,11 @@ class _MarketsScreenState extends ConsumerState<MarketsScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(
+      length: 2,
+      vsync: this,
+      initialIndex: widget.initialTab,
+    );
   }
 
   @override
