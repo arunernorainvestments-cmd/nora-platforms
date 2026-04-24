@@ -60,6 +60,16 @@ jobs:
                 "dest": "/tiktok-verification.html"
               },
               {
+                "src": "/landing",
+                "dest": "/home",
+                "status": 301
+              },
+              {
+                "src": "/landing/(.*)",
+                "dest": "/home/$1",
+                "status": 301
+              },
+              {
                 "src": "/home",
                 "dest": "/home/index.html"
               },

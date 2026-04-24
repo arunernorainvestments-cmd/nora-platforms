@@ -2,6 +2,10 @@
   "version": 2,
   "buildCommand": null,
   "framework": null,
+  "redirects": [
+    { "source": "/landing",        "destination": "/home",        "permanent": true },
+    { "source": "/landing/:path*", "destination": "/home/:path*", "permanent": true }
+  ],
   "rewrites": [
     { "source": "/privacy",             "destination": "/privacy.html"             },
     { "source": "/terms",               "destination": "/terms.html"               },
