@@ -395,97 +395,109 @@ class _WideSpotlightLayout extends ConsumerWidget {
   final ValueChanged<int> onSlide;
   const _WideSpotlightLayout({required this.slide, required this.onSlide});
 
+  Widget _buildRankSidebar(List<SpotlightCreator> creators, int safeSlide) {
+    final others = creators
+        .asMap()
+        .entries
+        .where((e) => e.key != safeSlide)
+        .take(4)
+        .toList();
+    return Column(
+      children: List.generate(4, (i) {
+        final rank = i + 2; // 2nd through 5th
+        if (i < others.length) {
+          final e = others[i];
+          return _RankCard(
+            creator: e.value,
+            rank: e.key + 1,
+            isActive: false,
+            onTap: () => onSlide(e.key),
+          );
+        }
+        return _PlaceholderRankCard(rank: rank);
+      }),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final creatorsAsync = ref.watch(spotlightCreatorsProvider);
+    final creators = creatorsAsync.valueOrNull ?? [];
+    final safeSlide = creators.isEmpty ? 0 : slide.clamp(0, creators.length - 1);
 
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          creatorsAsync.when(
-            loading: () => const _SpotlightShimmerWide(),
-            error: (_, __) => const SizedBox.shrink(),
-            data: (creators) {
-              if (creators.isEmpty) return const SizedBox.shrink();
-              final safeSlide = slide.clamp(0, creators.length - 1);
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        _ordinal(safeSlide),
-                        style: const TextStyle(
-                          color: AppTheme.primary,
-                          fontSize: 26,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text(
-                        'Weekly Spotlight',
-                        style: TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Main spotlight card — flex 5
-                      Expanded(
-                        flex: 5,
-                        child: _SpotlightCard(
+          // Heading — always visible
+          Row(
+            children: [
+              Text(
+                creators.isEmpty ? '1st' : _ordinal(safeSlide),
+                style: const TextStyle(
+                  color: AppTheme.primary,
+                  fontSize: 26,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Weekly Spotlight',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          // 3-column row — always visible, never collapses
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 420),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Main spotlight card — flex 5
+                Expanded(
+                  flex: 5,
+                  child: creators.isEmpty
+                      ? const _SpotlightPlaceholderCard(height: 400)
+                      : _SpotlightCard(
                           creator: creators[safeSlide],
+                          height: 400,
                           slide: safeSlide,
                           total: creators.length,
-                          onPrev: safeSlide > 0 ? () => onSlide(safeSlide - 1) : null,
-                          onNext: safeSlide < creators.length - 1 ? () => onSlide(safeSlide + 1) : null,
+                          onPrev: safeSlide > 0
+                              ? () => onSlide(safeSlide - 1)
+                              : null,
+                          onNext: safeSlide < creators.length - 1
+                              ? () => onSlide(safeSlide + 1)
+                              : null,
                           onDot: onSlide,
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Rank sidebar — flex 2
-                      Expanded(
-                        flex: 2,
-                        child: Column(
-                          children: creators
-                              .asMap()
-                              .entries
-                              .where((e) => e.key != safeSlide)
-                              .take(4)
-                              .map((e) => _RankCard(
-                                    creator: e.value,
-                                    rank: e.key + 1,
-                                    isActive: e.key == safeSlide,
-                                    onTap: () => onSlide(e.key),
-                                  ))
-                              .toList(),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      // Right column: news + tokens — flex 2
-                      Expanded(
-                        flex: 2,
-                        child: Column(
-                          children: [
-                            _NewsPanel(),
-                            const SizedBox(height: 14),
-                            _GetTokensButton(),
-                          ],
-                        ),
-                      ),
+                ),
+                const SizedBox(width: 12),
+                // Rank sidebar — flex 2 — always shows 4 cards
+                Expanded(
+                  flex: 2,
+                  child: _buildRankSidebar(creators, safeSlide),
+                ),
+                const SizedBox(width: 12),
+                // Right column: news + tokens — flex 2 — always visible
+                Expanded(
+                  flex: 2,
+                  child: Column(
+                    children: [
+                      _NewsPanel(),
+                      const SizedBox(height: 14),
+                      _GetTokensButton(),
                     ],
                   ),
-                ],
-              );
-            },
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -503,63 +515,79 @@ class _NarrowSpotlightLayout extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final creatorsAsync = ref.watch(spotlightCreatorsProvider);
+    final creators = creatorsAsync.valueOrNull ?? [];
+    final safeSlide = creators.isEmpty ? 0 : slide.clamp(0, creators.length - 1);
+
+    final others = creators
+        .asMap()
+        .entries
+        .where((e) => e.key != safeSlide)
+        .take(4)
+        .toList();
 
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: creatorsAsync.when(
-        loading: () => const _SpotlightShimmerNarrow(),
-        error: (_, __) => const SizedBox.shrink(),
-        data: (creators) {
-          if (creators.isEmpty) return const SizedBox.shrink();
-          final safeSlide = slide.clamp(0, creators.length - 1);
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(_ordinal(safeSlide),
-                      style: const TextStyle(
-                          color: AppTheme.primary,
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800)),
-                  const SizedBox(width: 10),
-                  const Text('Weekly Spotlight',
-                      style: TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 18,
-                          fontWeight: FontWeight.w700)),
-                ],
-              ),
-              const SizedBox(height: 12),
-              _SpotlightCard(
-                creator: creators[safeSlide],
-                slide: safeSlide,
-                total: creators.length,
-                onPrev: safeSlide > 0 ? () => onSlide(safeSlide - 1) : null,
-                onNext: safeSlide < creators.length - 1 ? () => onSlide(safeSlide + 1) : null,
-                onDot: onSlide,
-              ),
-              if (creators.length > 1) ...[
-                const SizedBox(height: 12),
-                ...creators
-                    .asMap()
-                    .entries
-                    .where((e) => e.key != safeSlide)
-                    .take(4)
-                    .map((e) => _RankCard(
-                          creator: e.value,
-                          rank: e.key + 1,
-                          isActive: false,
-                          onTap: () => onSlide(e.key),
-                        )),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 420),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Heading — always visible
+            Row(
+              children: [
+                Text(
+                  creators.isEmpty ? '1st' : _ordinal(safeSlide),
+                  style: const TextStyle(
+                      color: AppTheme.primary,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(width: 10),
+                const Text('Weekly Spotlight',
+                    style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700)),
               ],
-              const SizedBox(height: 16),
-              _NewsPanel(),
-              const SizedBox(height: 12),
-              _GetTokensButton(),
-            ],
-          );
-        },
+            ),
+            const SizedBox(height: 12),
+            // Carousel — full width, always visible
+            creators.isEmpty
+                ? const _SpotlightPlaceholderCard(height: 300)
+                : _SpotlightCard(
+                    creator: creators[safeSlide],
+                    height: 300,
+                    slide: safeSlide,
+                    total: creators.length,
+                    onPrev: safeSlide > 0
+                        ? () => onSlide(safeSlide - 1)
+                        : null,
+                    onNext: safeSlide < creators.length - 1
+                        ? () => onSlide(safeSlide + 1)
+                        : null,
+                    onDot: onSlide,
+                  ),
+            const SizedBox(height: 12),
+            // Rank cards — always show 4
+            ...List.generate(4, (i) {
+              final rank = i + 2;
+              if (i < others.length) {
+                final e = others[i];
+                return _RankCard(
+                  creator: e.value,
+                  rank: e.key + 1,
+                  isActive: false,
+                  onTap: () => onSlide(e.key),
+                );
+              }
+              return _PlaceholderRankCard(rank: rank);
+            }),
+            const SizedBox(height: 16),
+            _NewsPanel(),
+            const SizedBox(height: 12),
+            _GetTokensButton(),
+          ],
+        ),
       ),
     );
   }
@@ -574,6 +602,7 @@ class _SpotlightCard extends StatelessWidget {
   final VoidCallback? onPrev;
   final VoidCallback? onNext;
   final ValueChanged<int> onDot;
+  final double height;
 
   const _SpotlightCard({
     required this.creator,
@@ -582,13 +611,14 @@ class _SpotlightCard extends StatelessWidget {
     required this.onPrev,
     required this.onNext,
     required this.onDot,
+    this.height = 400,
   });
 
   @override
   Widget build(BuildContext context) {
     final accent = _paletteColor(creator.displayLabel);
     final card = Container(
-      height: 340,
+      height: height,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
@@ -766,6 +796,174 @@ class _CardGradient extends StatelessWidget {
   }
 }
 
+// ─── Spotlight placeholder card (shown when no data or loading) ───────────────
+
+class _SpotlightPlaceholderCard extends StatelessWidget {
+  final double height;
+  const _SpotlightPlaceholderCard({this.height = 400});
+
+  @override
+  Widget build(BuildContext context) {
+    final card = Container(
+      height: height,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
+      child: Stack(
+        children: [
+          // Dark gradient background
+          Positioned.fill(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFF1A1A2E), Color(0xFF0A0A0F)],
+                ),
+              ),
+            ),
+          ),
+          // Bottom fade
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: const [0.4, 1.0],
+                  colors: [
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.75),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Score chip top-right — placeholder
+          Positioned(
+            top: 16, right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1A1A2E).withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.trending_up, color: Color(0xFF00C896), size: 14),
+                  SizedBox(width: 5),
+                  Text('-- pts',
+                      style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700)),
+                ],
+              ),
+            ),
+          ),
+          // Follower count bottom-left — placeholder
+          Positioned(
+            bottom: 60, left: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.70),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('FOLLOWER COUNT',
+                      style: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.8)),
+                  SizedBox(height: 4),
+                  Text('—  —  —',
+                      style: TextStyle(
+                          color: Color(0xFF00C896),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ),
+          // Creator name + category bottom-right — placeholder
+          const Positioned(
+            bottom: 60, right: 16,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text('Weekly Spotlight',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold)),
+                SizedBox(height: 3),
+                Text('Connect platforms to appear here',
+                    style: TextStyle(color: Colors.white70, fontSize: 14)),
+              ],
+            ),
+          ),
+          // Left chevron — disabled
+          Positioned(
+            left: 8, top: 0, bottom: 0,
+            child: Center(
+              child: Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.30),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.chevron_left,
+                    color: Colors.white30, size: 24),
+              ),
+            ),
+          ),
+          // Right chevron — disabled
+          Positioned(
+            right: 8, top: 0, bottom: 0,
+            child: Center(
+              child: Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.30),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.chevron_right,
+                    color: Colors.white30, size: 24),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    // Single dot indicator below
+    return Column(
+      children: [
+        card,
+        const SizedBox(height: 10),
+        const Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            SizedBox(
+              width: 8, height: 8,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: Color(0xFF6C63FF),
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class _ChevronButton extends StatelessWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -866,6 +1064,68 @@ class _RankCard extends StatelessWidget {
                   ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Placeholder rank card (shown when fewer than 4 real creators exist) ──────
+
+class _PlaceholderRankCard extends StatelessWidget {
+  final int rank; // 2–5
+  const _PlaceholderRankCard({required this.rank});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 64,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A2E),
+        border: Border.all(color: Colors.white10),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Text(_ordinal(rank - 1),
+              style: const TextStyle(
+                  color: AppTheme.primary,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(width: 10),
+          const Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('—',
+                    style: TextStyle(
+                        color: Colors.white54,
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold)),
+                Text('No data yet',
+                    style:
+                        TextStyle(color: Colors.white38, fontSize: 11)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Container(
+            width: 34, height: 34,
+            decoration: const BoxDecoration(
+              color: Colors.white12,
+              shape: BoxShape.circle,
+            ),
+            child: const Center(
+              child: Text('?',
+                  style: TextStyle(
+                      color: Colors.white38,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -1025,9 +1285,14 @@ class _RisingSection extends ConsumerWidget {
               error: (_, __) => const SizedBox.shrink(),
               data: (creators) {
                 if (creators.isEmpty) {
-                  return const Center(
-                      child: Text('No rising creators yet',
-                          style: TextStyle(color: AppTheme.textSecondary)));
+                  return ListView(
+                    scrollDirection: Axis.horizontal,
+                    children: const [
+                      _RisingPlaceholderTile(),
+                      _RisingPlaceholderTile(),
+                      _RisingPlaceholderTile(),
+                    ],
+                  );
                 }
                 return ListView.builder(
                   scrollDirection: Axis.horizontal,
@@ -1134,6 +1399,50 @@ class _RisingTile extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RisingPlaceholderTile extends StatelessWidget {
+  const _RisingPlaceholderTile();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 110,
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        border: Border.all(color: AppTheme.cardBorder),
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: const Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 44, height: 44,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.white12,
+                shape: BoxShape.circle,
+              ),
+              child: Icon(Icons.person, color: Colors.white24, size: 22),
+            ),
+          ),
+          SizedBox(height: 8),
+          Text('Creator',
+              style: TextStyle(
+                  color: Colors.white38,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center),
+          Text('Connect\nplatforms',
+              style: TextStyle(color: Colors.white24, fontSize: 9),
+              textAlign: TextAlign.center,
+              maxLines: 2),
         ],
       ),
     );
@@ -1890,42 +2199,6 @@ class _FooterLinks extends StatelessWidget {
                       decorationColor: AppTheme.textSecondary)),
             ),
           ],
-        ),
-      );
-}
-
-// ─── Shimmer placeholders ─────────────────────────────────────────────────────
-
-class _SpotlightShimmerWide extends StatelessWidget {
-  const _SpotlightShimmerWide();
-
-  @override
-  Widget build(BuildContext context) => Shimmer.fromColors(
-        baseColor: AppTheme.surface,
-        highlightColor: AppTheme.cardBorder,
-        child: Container(
-          height: 340,
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(18),
-          ),
-        ),
-      );
-}
-
-class _SpotlightShimmerNarrow extends StatelessWidget {
-  const _SpotlightShimmerNarrow();
-
-  @override
-  Widget build(BuildContext context) => Shimmer.fromColors(
-        baseColor: AppTheme.surface,
-        highlightColor: AppTheme.cardBorder,
-        child: Container(
-          height: 240,
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(18),
-          ),
         ),
       );
 }
