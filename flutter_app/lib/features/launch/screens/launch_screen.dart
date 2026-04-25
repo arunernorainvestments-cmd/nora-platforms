@@ -428,7 +428,7 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
 
   Widget _buildExploreButton(BuildContext context) {
     return OutlinedButton.icon(
-      onPressed: () => context.push('/explore'),
+      onPressed: () => context.push('/news'),
       icon: const Text('🔥', style: TextStyle(fontSize: 14)),
       label: const Text(
         'SEE WHO\'S HOT RIGHT NOW',

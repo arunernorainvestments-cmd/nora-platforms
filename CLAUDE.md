@@ -52,8 +52,39 @@ No @riverpod annotations, no build_runner, no code generation.
 **Routing:** GoRouter (lib/core/router/app_router.dart). Unauthenticated users redirect
 to /login for protected routes; authenticated users land on /home. The main shell
 (lib/core/shell/main_shell.dart) wraps shell routes with the bottom nav bar.
-`/home` and `/explore` are PUBLIC — no auth required at the route level.
-Protected routes (require auth): `/markets`, `/markets/mybets`, `/profile`, `/wallet`.
+
+Complete route map:
+
+| Route | Screen | Auth | Notes |
+|-------|--------|------|-------|
+| `/` | LaunchScreen | public | pre-launch countdown, redirects logged-in to /home |
+| `/home` | HomeScreen | public | ShellRoute (bottom nav); header differs by auth state |
+| `/news` | CelebrityHeatScreen | public | canonical route |
+| `/explore` | — | public | redirects to /news (backwards compat) |
+| `/hot-topic` | HotTopicScreen | public | placeholder; no bottom nav |
+| `/mybets` | MyBetsScreen | **required** | standalone, no bottom nav |
+| `/markets/mybets` | — | — | redirects to /mybets (backwards compat) |
+| `/markets` | MarketsScreen | **required** | ShellRoute |
+| `/profile` | ProfileScreen | **required** | ShellRoute |
+| `/wallet` | WalletScreen | **required** | ShellRoute |
+| `/search` | SearchScreen | ShellRoute | ShellRoute |
+| `/login` | LoginScreen | public | |
+| `/signup` | SignupScreen | public | |
+| `/forgot-password` | ForgotPasswordScreen | public | |
+| `/pending-approval` | PendingApprovalScreen | public | beta gate |
+| `/dashboard` | ScoreDashboardScreen | public | no bottom nav |
+| `/challenges` | ChallengesScreen | public (route) | auth-checked in drawer nav |
+| `/u/:username` | PublicProfileScreen | public | |
+| `/markets/:id` | MarketDetailScreen | public | |
+| `/join` | ReferralScreen | public | ?ref=code |
+| `/privacy` | PrivacyPolicyScreen | public | |
+| `/terms` | TermsOfServiceScreen | public | |
+
+**HomeScreen header** (`lib/features/home/screens/home_screen.dart`):
+- Logged-out: hamburger | logo | [Spacer] | "Phase 2 & 3 →" (→ /news) | Login | Sign Up
+- Logged-in: hamburger | logo | [Spacer] | notification bell (opens sheet) | "Get Tokens" (→ /wallet)
+
+**"Explore All →"** in category tabs routes to `/markets` (not explore/news).
 
 **Feature structure:** Each feature lives in lib/features/<name>/ with subdirectories
 for screens/, widgets/, providers/, and models/. Features implemented: auth, home,

@@ -9,6 +9,7 @@ import '../../features/auth/providers/auth_provider.dart';
 import '../../features/challenges/screens/challenges_screen.dart';
 import '../../features/search/screens/search_screen.dart';
 import '../../features/markets/screens/markets_screen.dart';
+import '../../features/markets/screens/my_bets_screen.dart';
 import '../../features/profile/screens/profile_screen.dart';
 import '../../features/profile/screens/public_profile_screen.dart';
 import '../../features/profile/providers/platform_connection_providers.dart';
@@ -16,6 +17,7 @@ import '../../features/markets/screens/market_detail_screen.dart';
 import '../../features/wallet/screens/wallet_screen.dart';
 import '../../features/launch/screens/launch_screen.dart';
 import '../../features/explore/screens/celebrity_heat_screen.dart';
+import '../../features/explore/screens/hot_topic_screen.dart';
 import '../../features/legal/screens/privacy_policy_screen.dart';
 import '../../features/legal/screens/terms_of_service_screen.dart';
 import '../../features/profile/screens/score_dashboard_screen.dart';
@@ -68,8 +70,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       // ── Protected routes require authentication ───────────────────────────
-      // /home and /explore are intentionally PUBLIC — no auth required.
-      const protectedRoutes = ['/markets', '/markets/mybets', '/profile', '/wallet'];
+      // /home, /news, /explore, /hot-topic are intentionally PUBLIC.
+      const protectedRoutes = [
+        '/markets', '/profile', '/wallet', '/mybets',
+      ];
       final isProtected = protectedRoutes.contains(loc);
       if (!isLoggedIn && isProtected) {
         // Store destination in Riverpod — reliable across async redirect re-fires
@@ -110,10 +114,34 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ChallengesScreen(),
       ),
 
-      // ── Public explore / celebrity heat (no auth) ────────────────────────
+      // ── My Bets — standalone screen, no bottom nav ───────────────────────
+      GoRoute(
+        path: '/mybets',
+        builder: (context, state) => const MyBetsScreen(),
+      ),
+
+      // ── Backwards-compat redirect: /markets/mybets → /mybets ─────────────
+      GoRoute(
+        path: '/markets/mybets',
+        redirect: (context, state) => '/mybets',
+      ),
+
+      // ── News (celebrity heat) — canonical route, public ──────────────────
+      GoRoute(
+        path: '/news',
+        builder: (context, state) => const CelebrityHeatScreen(),
+      ),
+
+      // ── /explore redirects to /news for backwards compat ─────────────────
       GoRoute(
         path: '/explore',
-        builder: (context, state) => const CelebrityHeatScreen(),
+        redirect: (context, state) => '/news',
+      ),
+
+      // ── Hot Topic placeholder — public, no bottom nav ────────────────────
+      GoRoute(
+        path: '/hot-topic',
+        builder: (context, state) => const HotTopicScreen(),
       ),
 
       // ── Legal routes (public, no auth) ───────────────────────────────────
@@ -167,10 +195,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const MarketsScreen(),
           ),
           GoRoute(
-            path: '/markets/mybets',
-            builder: (context, state) => const MarketsScreen(initialTab: 1),
-          ),
-          GoRoute(
             path: '/profile',
             redirect: (context, state) {
               final connected = state.uri.queryParameters['connected'];
@@ -194,4 +218,3 @@ final routerProvider = Provider<GoRouter>((ref) {
     ],
   );
 });
-

@@ -56,7 +56,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final unreadCount = ref.watch(unreadCountProvider);
     final isWide = MediaQuery.of(context).size.width >= 900;
 
     return Scaffold(
@@ -66,10 +65,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _Header(
-              scaffoldKey: _scaffoldKey,
-              unreadCount: unreadCount,
-            ),
+            _Header(scaffoldKey: _scaffoldKey),
             const HomeTicker(),
             _CategoryTabs(
               selected: _categoryIndex,
@@ -119,13 +115,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
 // ─── Header ──────────────────────────────────────────────────────────────────
 
-class _Header extends StatelessWidget {
+class _Header extends ConsumerWidget {
   final GlobalKey<ScaffoldState> scaffoldKey;
-  final int unreadCount;
-  const _Header({required this.scaffoldKey, required this.unreadCount});
+  const _Header({required this.scaffoldKey});
+
+  void _openNotifications(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => const _NotificationSheet(),
+    );
+  }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final isLoggedIn = user != null;
+    final unreadCount =
+        isLoggedIn ? ref.watch(unreadCountProvider) : 0;
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: const BoxDecoration(
@@ -136,7 +145,8 @@ class _Header extends StatelessWidget {
         children: [
           // Hamburger
           IconButton(
-            icon: const Icon(Icons.menu, color: AppTheme.textPrimary, size: 22),
+            icon: const Icon(Icons.menu,
+                color: AppTheme.textPrimary, size: 22),
             onPressed: () => scaffoldKey.currentState?.openDrawer(),
             padding: EdgeInsets.zero,
             constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
@@ -159,45 +169,133 @@ class _Header extends StatelessWidget {
                         fontSize: 12,
                         fontWeight: FontWeight.w800)),
                 Text('Phase 1',
-                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 10)),
+                    style: TextStyle(
+                        color: AppTheme.textSecondary, fontSize: 10)),
               ],
             ),
           ),
           const Spacer(),
-          // Notification bell
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.notifications_outlined,
-                    color: AppTheme.textSecondary, size: 22),
-                onPressed: () => showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => const _NotificationSheet(),
+
+          if (isLoggedIn) ...[
+            // Notification bell with unread badge
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.notifications_outlined,
+                      color: AppTheme.textSecondary, size: 22),
+                  onPressed: () => _openNotifications(context),
+                  padding: EdgeInsets.zero,
+                  constraints:
+                      const BoxConstraints(minWidth: 36, minHeight: 36),
                 ),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-              ),
-              if (unreadCount > 0)
-                Positioned(
-                  right: 2, top: 2,
-                  child: Container(
-                    padding: const EdgeInsets.all(2),
-                    decoration: const BoxDecoration(
-                        color: AppTheme.danger, shape: BoxShape.circle),
-                    constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
-                    child: Text(
-                      unreadCount > 99 ? '99+' : '$unreadCount',
-                      style: const TextStyle(
-                          color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
+                if (unreadCount > 0)
+                  Positioned(
+                    right: 2, top: 2,
+                    child: Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: const BoxDecoration(
+                          color: AppTheme.danger, shape: BoxShape.circle),
+                      constraints:
+                          const BoxConstraints(minWidth: 15, minHeight: 15),
+                      child: Text(
+                        unreadCount > 99 ? '99+' : '$unreadCount',
+                        style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 8,
+                            fontWeight: FontWeight.bold),
+                        textAlign: TextAlign.center,
+                      ),
                     ),
                   ),
+              ],
+            ),
+            const SizedBox(width: 6),
+            // Get Tokens
+            GestureDetector(
+              onTap: () => GoRouter.of(context).go('/wallet'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: AppTheme.secondary.withValues(alpha: 0.12),
+                  border: Border.all(
+                      color: AppTheme.secondary.withValues(alpha: 0.5)),
+                  borderRadius: BorderRadius.circular(8),
                 ),
-            ],
-          ),
+                child: const Text(
+                  'Get Tokens',
+                  style: TextStyle(
+                    color: AppTheme.secondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ] else ...[
+            // Logged-out: Learn more + Login + Sign Up
+            GestureDetector(
+              onTap: () => GoRouter.of(context).go('/news'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 10, vertical: 6),
+                decoration: BoxDecoration(
+                  border: Border.all(
+                      color: AppTheme.cardBorder.withValues(alpha: 0.6)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Phase 2 & 3 →',
+                  style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: () => GoRouter.of(context).go('/login'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  border: Border.all(color: AppTheme.cardBorder),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Login',
+                  style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            GestureDetector(
+              onTap: () => GoRouter.of(context).go('/signup'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  'Sign Up',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -234,7 +332,7 @@ class _CategoryTabs extends StatelessWidget {
               label: 'Explore All →',
               active: false,
               accent: true,
-              onTap: () => GoRouter.of(context).go('/explore'),
+              onTap: () => GoRouter.of(context).go('/markets'),
             ),
           ],
         ),
@@ -1384,8 +1482,8 @@ class _SideDrawer extends ConsumerWidget {
                     icon: Icons.receipt_long_outlined,
                     label: 'My Bets',
                     subtitle: 'Active & past bets',
-                    onTap: () => _navTo(context, ref, '/markets/mybets',
-                        requiresAuth: true),
+                    onTap: () =>
+                        _navTo(context, ref, '/mybets', requiresAuth: true),
                   ),
                   _DrawerNavItem(
                     icon: Icons.account_balance_wallet_outlined,
@@ -1398,7 +1496,7 @@ class _SideDrawer extends ConsumerWidget {
                     icon: Icons.local_fire_department_outlined,
                     label: 'Hot Topic',
                     subtitle: 'Trending this week',
-                    onTap: () => _navTo(context, ref, '/explore'),
+                    onTap: () => _navTo(context, ref, '/hot-topic'),
                   ),
                   _DrawerNavItem(
                     icon: Icons.emoji_events_outlined,
