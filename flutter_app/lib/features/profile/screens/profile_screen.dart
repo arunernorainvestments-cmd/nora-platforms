@@ -599,7 +599,7 @@ class _MarketMakerDashboard extends StatelessWidget {
   });
 
   void _copyProfileLink(BuildContext context) {
-    const base = 'https://nora-platforms.vercel.app/u/';
+    const base = 'https://noraplatforms.com/u/';
     Clipboard.setData(ClipboardData(text: '$base$username'));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -664,7 +664,7 @@ class _MarketMakerDashboard extends StatelessWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'nora-platforms.vercel.app/u/$username',
+                      'noraplatforms.com/u/$username',
                       style: const TextStyle(
                         color: AppTheme.primary,
                         fontSize: 12,
@@ -1659,7 +1659,7 @@ class _InviteFriendsCard extends StatelessWidget {
   final String referralCode;
   const _InviteFriendsCard({required this.referralCode});
 
-  String get _link => 'nora-platforms.vercel.app/join?ref=$referralCode';
+  String get _link => 'noraplatforms.com/join?ref=$referralCode';
 
   void _copyLink(BuildContext context) {
     Clipboard.setData(ClipboardData(text: 'https://$_link'));

@@ -27,19 +27,10 @@ jobs:
       - name: Build web
         run: cd flutter_app && flutter build web --release --no-tree-shake-icons
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Build landing page
-        run: cd landing && npm ci && npm run build
-
       - name: Prepare Vercel output structure
         run: |
           mkdir -p .vercel/output/static
           cp -r flutter_app/build/web/. .vercel/output/static/
-          cp -r landing/dist/. .vercel/output/static/home/
           cat > .vercel/output/config.json << 'JSON'
           {
             "version": 3,
@@ -60,25 +51,7 @@ jobs:
                 "dest": "/tiktok-verification.html"
               },
               {
-                "src": "/landing",
-                "dest": "/home",
-                "status": 301
-              },
-              {
-                "src": "/landing/(.*)",
-                "dest": "/home/$1",
-                "status": 301
-              },
-              {
-                "src": "/home",
-                "dest": "/home/index.html"
-              },
-              {
-                "src": "/home/(.*)",
-                "dest": "/home/index.html"
-              },
-              {
-                "src": "/((?!home|privacy|terms|tiktok-verification).*)",
+                "src": "/(.*)",
                 "dest": "/index.html"
               }
             ]

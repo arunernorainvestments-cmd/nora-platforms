@@ -24,7 +24,7 @@ class PublicProfileScreen extends ConsumerWidget {
   const PublicProfileScreen({super.key, required this.username});
 
   void _copyShareLink(BuildContext context) {
-    const base = 'https://nora-platforms.vercel.app/u/';
+    const base = 'https://noraplatforms.com/u/';
     Clipboard.setData(ClipboardData(text: '$base$username'));
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(

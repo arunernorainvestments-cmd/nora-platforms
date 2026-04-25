@@ -68,6 +68,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       // ── Protected routes require authentication ───────────────────────────
+      // /home and /explore are intentionally PUBLIC — no auth required.
       const protectedRoutes = ['/markets', '/markets/mybets', '/profile', '/wallet'];
       final isProtected = protectedRoutes.contains(loc);
       if (!isLoggedIn && isProtected) {

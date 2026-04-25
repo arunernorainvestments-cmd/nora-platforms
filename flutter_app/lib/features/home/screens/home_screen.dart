@@ -10,6 +10,7 @@ import '../../challenges/providers/challenge_providers.dart';
 import '../../notifications/providers/notification_providers.dart';
 import '../../discover/providers/discover_providers.dart';
 import '../../profile/providers/platform_connection_providers.dart';
+import '../../profile/providers/profile_providers.dart';
 import '../../profile/models/platform_metric.dart';
 import '../providers/home_providers.dart';
 import '../widgets/home_ticker.dart';
@@ -539,7 +540,7 @@ class _SpotlightCard extends StatelessWidget {
                   const Icon(Icons.trending_up, color: AppTheme.success, size: 14),
                   const SizedBox(width: 5),
                   Text(
-                    '${creator.score.toStringAsFixed(0)} pts',
+                    '+${creator.score.toStringAsFixed(0)} pts',
                     style: const TextStyle(
                         color: AppTheme.success,
                         fontSize: 13,
@@ -741,6 +742,7 @@ class _RankCard extends StatelessWidget {
 
 // ─── News panel ───────────────────────────────────────────────────────────────
 
+// TODO: wire to news API — currently static placeholder headlines
 class _NewsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
@@ -762,7 +764,7 @@ class _NewsPanel extends StatelessWidget {
                 color: AppTheme.danger,
                 borderRadius: BorderRadius.circular(999),
               ),
-              child: const Text('🔥 Breaking News',
+              child: const Text('🔴 Breaking News',
                   style: TextStyle(
                       color: Colors.white,
                       fontSize: 11,
@@ -771,16 +773,16 @@ class _NewsPanel extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           const _NewsItem(
-              text: 'Spotlight rankings update weekly — bet now',
-              time: 'Live'),
+              text: 'JordanKicks breaks 1M followers',
+              time: '2m ago'),
           const _NewsDivider(),
           const _NewsItem(
-              text: 'New Market Makers joining — check Rising',
-              time: 'Today'),
+              text: 'New weekly score record set by CreatorKing',
+              time: '14m ago'),
           const _NewsDivider(),
           const _NewsItem(
-              text: 'Challenges reset — earn tokens daily',
-              time: 'Daily'),
+              text: 'BeatMaster drops surprise album — fans react',
+              time: '1h ago'),
         ],
       ),
     );
@@ -1195,10 +1197,32 @@ class _LiveCard extends StatelessWidget {
 class _SideDrawer extends ConsumerWidget {
   const _SideDrawer();
 
+  void _navTo(
+    BuildContext context,
+    WidgetRef ref,
+    String path, {
+    bool requiresAuth = false,
+  }) {
+    final isLoggedIn = ref.read(currentUserProvider) != null;
+    Navigator.pop(context);
+    if (requiresAuth && !isLoggedIn) {
+      ref.read(pendingNavigationProvider.notifier).state = path;
+      GoRouter.of(context).go('/login');
+    } else {
+      GoRouter.of(context).go(path);
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
-    final username = user?.email?.split('@')[0] ?? 'Guest';
+    final profile = ref.watch(userProfileProvider).valueOrNull;
+    final isLoggedIn = user != null;
+    final isMarketMaker = profile?.isMarketMaker ?? false;
+    final username = profile?.username ??
+        profile?.displayName ??
+        user?.email?.split('@')[0] ??
+        'Guest';
 
     return Drawer(
       backgroundColor: const Color(0xFF12122A),
@@ -1206,7 +1230,7 @@ class _SideDrawer extends ConsumerWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
+            // ── Header ──────────────────────────────────────────────────────
             Container(
               padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
               decoration: const BoxDecoration(
@@ -1239,141 +1263,205 @@ class _SideDrawer extends ConsumerWidget {
                 ],
               ),
             ),
-            // User area
-            Container(
-              margin: const EdgeInsets.all(16),
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: AppTheme.primary.withValues(alpha: 0.08),
-                border: Border.all(
-                    color: AppTheme.primary.withValues(alpha: 0.2)),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 40, height: 40,
-                    decoration: BoxDecoration(
-                      color: AppTheme.primary.withValues(alpha: 0.15),
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                          color: AppTheme.primary.withValues(alpha: 0.4)),
-                    ),
-                    child: Center(
-                      child: Text(
-                        user != null ? username[0].toUpperCase() : '?',
-                        style: const TextStyle(
-                            color: AppTheme.primary,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700),
+
+            // ── User card ───────────────────────────────────────────────────
+            GestureDetector(
+              onTap: isLoggedIn
+                  ? () => _navTo(context, ref, '/profile', requiresAuth: true)
+                  : null,
+              child: Container(
+                margin: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.08),
+                  border:
+                      Border.all(color: AppTheme.primary.withValues(alpha: 0.2)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 40, height: 40,
+                      decoration: BoxDecoration(
+                        color: AppTheme.primary.withValues(alpha: 0.15),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                            color: AppTheme.primary.withValues(alpha: 0.4)),
+                      ),
+                      child: Center(
+                        child: isLoggedIn
+                            ? Text(
+                                username[0].toUpperCase(),
+                                style: const TextStyle(
+                                    color: AppTheme.primary,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700),
+                              )
+                            : const Icon(Icons.person_outline,
+                                color: AppTheme.primary, size: 20),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(username,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isLoggedIn ? username : 'Guest',
                             style: const TextStyle(
                                 color: AppTheme.textPrimary,
                                 fontSize: 13,
-                                fontWeight: FontWeight.w600)),
-                        const Text('Tap to view profile',
-                            style: TextStyle(
-                                color: AppTheme.textSecondary, fontSize: 11)),
-                      ],
+                                fontWeight: FontWeight.w600),
+                          ),
+                          Text(
+                            isLoggedIn
+                                ? 'Tap to view profile'
+                                : 'Sign in for full access',
+                            style: const TextStyle(
+                                color: AppTheme.textSecondary, fontSize: 11),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                    if (!isLoggedIn)
+                      GestureDetector(
+                        onTap: () {
+                          Navigator.pop(context);
+                          GoRouter.of(context).go('/login');
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppTheme.primary,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Text('Sign in →',
+                              style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                      ),
+                  ],
+                ),
               ),
             ),
-            // Nav items
+
+            // ── NAVIGATE section ────────────────────────────────────────────
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 4, 20, 6),
+              child: Text(
+                'NAVIGATE',
+                style: TextStyle(
+                    color: AppTheme.textSecondary.withValues(alpha: 0.6),
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.2),
+              ),
+            ),
+
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.only(bottom: 8),
                 children: [
-                  _DrawerItem(
+                  _DrawerNavItem(
                     icon: Icons.bar_chart_outlined,
                     label: 'Dashboard',
-                    badge: 'MM Only',
-                    onTap: () {
-                      Navigator.pop(context);
-                      GoRouter.of(context).go('/dashboard');
-                    },
+                    subtitle: 'Market Maker hub',
+                    badge: isMarketMaker ? 'MM Only' : null,
+                    onTap: () =>
+                        _navTo(context, ref, '/dashboard', requiresAuth: true),
                   ),
-                  _DrawerItem(
+                  _DrawerNavItem(
                     icon: Icons.person_outline,
                     label: 'Profile',
-                    onTap: () {
-                      Navigator.pop(context);
-                      GoRouter.of(context).go('/profile');
-                    },
+                    subtitle: 'Your public profile',
+                    onTap: () =>
+                        _navTo(context, ref, '/profile', requiresAuth: true),
                   ),
-                  _DrawerItem(
+                  _DrawerNavItem(
                     icon: Icons.receipt_long_outlined,
                     label: 'My Bets',
-                    onTap: () {
-                      Navigator.pop(context);
-                      GoRouter.of(context).go('/markets/mybets');
-                    },
+                    subtitle: 'Active & past bets',
+                    onTap: () => _navTo(context, ref, '/markets/mybets',
+                        requiresAuth: true),
                   ),
-                  _DrawerItem(
+                  _DrawerNavItem(
                     icon: Icons.account_balance_wallet_outlined,
                     label: 'Wallet',
-                    onTap: () {
-                      Navigator.pop(context);
-                      GoRouter.of(context).go('/wallet');
-                    },
+                    subtitle: 'Tokens & transactions',
+                    onTap: () =>
+                        _navTo(context, ref, '/wallet', requiresAuth: true),
                   ),
-                  _DrawerItem(
+                  _DrawerNavItem(
                     icon: Icons.local_fire_department_outlined,
                     label: 'Hot Topic',
-                    onTap: () {
-                      Navigator.pop(context);
-                      GoRouter.of(context).go('/explore');
-                    },
+                    subtitle: 'Trending this week',
+                    onTap: () => _navTo(context, ref, '/explore'),
                   ),
-                  _DrawerItem(
+                  _DrawerNavItem(
                     icon: Icons.emoji_events_outlined,
                     label: 'Challenges',
-                    onTap: () {
-                      Navigator.pop(context);
-                      GoRouter.of(context).go('/challenges');
-                    },
+                    subtitle: 'Daily & weekly goals',
+                    onTap: () => _navTo(context, ref, '/challenges',
+                        requiresAuth: true),
+                  ),
+
+                  const SizedBox(height: 8),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    child: Divider(color: AppTheme.cardBorder, height: 1),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // ── SUPPORT section ───────────────────────────────────────
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(20, 0, 20, 6),
+                    child: Text(
+                      'SUPPORT',
+                      style: TextStyle(
+                          color: AppTheme.textSecondary.withValues(alpha: 0.6),
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 1.2),
+                    ),
+                  ),
+                  _DrawerNavItem(
+                    icon: Icons.settings_outlined,
+                    label: 'Settings',
+                    subtitle: 'App preferences',
+                    onTap: () => Navigator.pop(context), // placeholder
+                  ),
+                  _DrawerNavItem(
+                    icon: Icons.help_outline,
+                    label: 'Help',
+                    subtitle: 'Support & FAQ',
+                    onTap: () => Navigator.pop(context), // placeholder
                   ),
                 ],
               ),
             ),
-            const Divider(color: AppTheme.cardBorder),
-            _DrawerItem(
-              icon: Icons.search,
-              label: 'Search',
-              onTap: () {
-                Navigator.pop(context);
-                GoRouter.of(context).go('/search');
-              },
-            ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+
+            // ── Footer ──────────────────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 12),
+              decoration: const BoxDecoration(
+                border: Border(top: BorderSide(color: AppTheme.cardBorder)),
+              ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text('v1.0.0 — Phase 1',
                       style: TextStyle(
                           color: AppTheme.textSecondary, fontSize: 11)),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.pop(context);
-                      GoRouter.of(context).go('/privacy');
-                    },
-                    child: const Text('Privacy',
-                        style: TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 11,
-                            decoration: TextDecoration.underline,
-                            decorationColor: AppTheme.textSecondary)),
+                  Text(
+                    'NORA',
+                    style: TextStyle(
+                        color: AppTheme.primary.withValues(alpha: 0.6),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 1.5),
                   ),
                 ],
               ),
@@ -1385,14 +1473,17 @@ class _SideDrawer extends ConsumerWidget {
   }
 }
 
-class _DrawerItem extends StatelessWidget {
+class _DrawerNavItem extends StatelessWidget {
   final IconData icon;
   final String label;
+  final String subtitle;
   final String? badge;
   final VoidCallback onTap;
-  const _DrawerItem({
+
+  const _DrawerNavItem({
     required this.icon,
     required this.label,
+    required this.subtitle,
     required this.onTap,
     this.badge,
   });
@@ -1401,12 +1492,12 @@ class _DrawerItem extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       leading: Container(
-        width: 34, height: 34,
+        width: 36, height: 36,
         decoration: BoxDecoration(
           color: AppTheme.cardBorder,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: Icon(icon, color: AppTheme.textSecondary, size: 17),
+        child: Icon(icon, color: AppTheme.textSecondary, size: 18),
       ),
       title: Row(
         children: [
@@ -1414,14 +1505,15 @@ class _DrawerItem extends StatelessWidget {
               style: const TextStyle(
                   color: AppTheme.textPrimary,
                   fontSize: 14,
-                  fontWeight: FontWeight.w500)),
+                  fontWeight: FontWeight.w600)),
           if (badge != null) ...[
             const SizedBox(width: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
               decoration: BoxDecoration(
                 color: AppTheme.secondary.withValues(alpha: 0.12),
-                border: Border.all(color: AppTheme.secondary.withValues(alpha: 0.4)),
+                border:
+                    Border.all(color: AppTheme.secondary.withValues(alpha: 0.4)),
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(badge!,
@@ -1433,8 +1525,13 @@ class _DrawerItem extends StatelessWidget {
           ],
         ],
       ),
+      subtitle: Text(subtitle,
+          style: const TextStyle(
+              color: AppTheme.textSecondary, fontSize: 12)),
       onTap: onTap,
       dense: true,
+      contentPadding:
+          const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
     );
   }
 }

@@ -50,8 +50,10 @@ The .env file is loaded as an asset at runtime via flutter_dotenv.
 No @riverpod annotations, no build_runner, no code generation.
 
 **Routing:** GoRouter (lib/core/router/app_router.dart). Unauthenticated users redirect
-to /login; authenticated users land on /home. The main shell
-(lib/core/shell/main_shell.dart) wraps authenticated routes with bottom nav bar.
+to /login for protected routes; authenticated users land on /home. The main shell
+(lib/core/shell/main_shell.dart) wraps shell routes with the bottom nav bar.
+`/home` and `/explore` are PUBLIC — no auth required at the route level.
+Protected routes (require auth): `/markets`, `/markets/mybets`, `/profile`, `/wallet`.
 
 **Feature structure:** Each feature lives in lib/features/<name>/ with subdirectories
 for screens/, widgets/, providers/, and models/. Features implemented: auth, home,
@@ -65,29 +67,57 @@ providers except OAuth initiation.
 
 **Error handling:** try/catch with if (mounted) guard + ScaffoldMessenger snackbar.
 
-### React Home App (`/home`) — Phase 2 complete
+**Domains:** All profile share links and referral links use `noraplatforms.com`.
+Do not use `nora-platforms.vercel.app` anywhere.
 
-A separate Vite + React app lives in the `landing/` directory (source stays in `landing/`
-for historical reasons — only the served URL changed). It is the primary entry point,
-replacing Flutter's `/home` screen. Vercel routes `/home` and `/home/(.*)` to
-`home/index.html`; all other paths serve Flutter's `index.html`.
+### React Home App — RETIRED
 
-- Entry: `landing/src/main.jsx` → `landing/src/Landing.jsx`
-- Styles: `landing/src/index.css`
-- Build output: `landing/dist/` → copied to `.vercel/output/static/home/` by `deploy.yml`
-- Supabase data fetched via `@supabase/supabase-js` in `landing/src/supabase.js`
-- Uses React Router (react-router-dom) with `BrowserRouter`; basename comes from
-  `BASE_PATH = '/home'` in `landing/src/config.js`
-- Internal pages use `<Link to="...">` for client-side navigation — no full page reload:
-  `/home/profile`, `/home/wallet`, `/home/mybets`, `/home/explore`, `/home/dashboard`
-- Pages live in `landing/src/pages/`; shared shell in `landing/src/components/PageShell.jsx`
-- External links that intentionally leave the React app (`/login`, `/signup`) stay as `<a href>`
-- Flutter's GoRouter has a top-level `/home` GoRoute (in `app_router.dart`) that calls
-  `web.window.location.replace('/home')` — bridges programmatic Flutter navigation to the
-  React app (post-login redirect, bottom nav Home tab)
-- Phase 3 (future): change `BASE_PATH` to `'/'` and update the Vercel rewrite source in
-  `deploy.yml` — no other files change
-- Build command: `cd landing && npm install && npm run build`
+The React app (`landing/` directory) has been deleted. Flutter's `HomeScreen` is the
+sole home screen. Vercel routes all paths (except `/privacy`, `/terms`,
+`/tiktok-verification`) to Flutter's `index.html` via a single catch-all rewrite.
+
+### Home Screen (`/home`) — Flutter
+
+`lib/features/home/screens/home_screen.dart` — publicly accessible (no auth required).
+
+Layout:
+- Header: hamburger (opens drawer), NORA logo, notification bell
+- HomeTicker: scrolling strip with active promotions + Heat Score leaders
+- Category tabs: Trending | Athletes | Influencers | Artists | Scientists | Professionals | Explore All →
+- Spotlight: wide (≥900px) shows main card + rank sidebar + news panel + Get Tokens CTA;
+  narrow stacks them vertically
+- Rising section: horizontal scroll of creator tiles
+- Who's Live section: vertical list of live stream cards
+
+Breaking news panel is **static placeholder** — no API.
+Static headlines: "JordanKicks breaks 1M followers" / "New weekly score record set by CreatorKing" /
+"BeatMaster drops surprise album — fans react". See `// TODO: wire to news API` comment in code.
+
+### Burger Menu (Side Drawer)
+
+Defined in `home_screen.dart` as `_SideDrawer`. Structure:
+
+**TOP** — User card:
+- Logged in: colored-initial avatar, username, "Tap to view profile" → `/profile`
+- Logged out: person icon, "Guest", "Sign in for full access" + "Sign in →" button → `/login`
+
+**NAVIGATE** section:
+| Label | Subtitle | Route | Auth required |
+|-------|----------|-------|---------------|
+| Dashboard | Market Maker hub | /dashboard | ✓ (MM Only badge if isMarketMaker) |
+| Profile | Your public profile | /profile | ✓ |
+| My Bets | Active & past bets | /markets/mybets | ✓ |
+| Wallet | Tokens & transactions | /wallet | ✓ |
+| Hot Topic | Trending this week | /explore | public |
+| Challenges | Daily & weekly goals | /challenges | ✓ |
+
+**SUPPORT** section: Settings (placeholder), Help (placeholder)
+
+**Footer**: "v1.0.0 — Phase 1" left · "NORA" right (muted accent)
+
+Unauthenticated users tapping auth-required items are redirected to `/login` with
+`pendingNavigationProvider` set so they return to their destination after login.
+All nav uses `context.go()` — nothing leaves the Flutter app.
 
 ---
 
