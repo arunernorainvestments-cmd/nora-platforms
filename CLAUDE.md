@@ -88,14 +88,16 @@ Complete route map:
 **"Explore All →"** in category tabs routes to `/markets` (not explore/news).
 
 **HomeScreen sections** (scroll order):
-1. `_WideSpotlightLayout` / `_NarrowSpotlightLayout` — live 3-column spotlight layout from `spotlightCreatorsProvider`
-   - Wide (≥900px): carousel (flex 5) | rank sidebar (flex 2) | news+tokens panel (flex 2); 12px gaps
-   - Narrow: stacked vertically
-   - Carousel uses Stack with full-bleed `Image.network` (BoxFit.cover) + bottom gradient overlay; falls back to `_CardGradient` if no avatarUrl
-   - Rank cards: `_RankCard` — white10 border, 64px height, CircleAvatar from avatarUrl if available
+1. `_WideSpotlightLayout` / `_NarrowSpotlightLayout` — 3-column spotlight layout from `spotlightCreatorsProvider`
+   - Wide (≥900px): carousel (flex 5) | rank sidebar (flex 2) | news+tokens panel (flex 2); 12px gaps; wrapped in `ConstrainedBox(minHeight: 420)`
+   - Narrow: stacked vertically; also wrapped in `ConstrainedBox(minHeight: 420)`
+   - Both layouts use `creatorsAsync.valueOrNull ?? []` — loading and empty states show placeholder content immediately; layout never collapses
+   - Carousel: `_SpotlightCard` (real data, height 400 wide / 300 narrow) or `_SpotlightPlaceholderCard` when empty/loading. Stack with full-bleed `Image.network` (BoxFit.cover) + bottom gradient overlay; falls back to `_CardGradient` if no avatarUrl
+   - Rank sidebar: always renders exactly 4 cards (2nd–5th). Real creators use `_RankCard` (white10 border, 64px, CircleAvatar from avatarUrl). Missing slots use `_PlaceholderRankCard` (primary-color rank number, "—" / "No data yet", grey "?" avatar)
+   - News panel (`_NewsPanel`) and Get Tokens button (`_GetTokensButton`) render outside the data guard — always visible regardless of creator data
    - `_WeeklyChampionSection`, `_BreakingNewsSection`, `_Phase23Banner` have been removed
-2. `_RisingSection` — horizontal scroll of rising creators
-3. `_WhoIsLiveSection` — vertical list of live streams
+2. `_RisingSection` — horizontal scroll of creator tiles; shows 3 `_RisingPlaceholderTile` widgets when empty (grey person icon, "Creator" label, "Connect platforms" subtitle)
+3. `_WhoIsLiveSection` — vertical list of live streams; section header always visible; shows icon + "No creators are live right now" when empty
 4. `_FooterLinks`
 
 **Token purchase sheet**: `BuyTokensSheet` lives in `lib/features/wallet/widgets/buy_tokens_sheet.dart` (extracted from wallet_screen). Invoke via `showBuyTokensSheet(context)`. Used by wallet screen and home screen header.
@@ -129,10 +131,9 @@ Layout:
 - Header: hamburger (opens drawer), NORA logo, notification bell
 - HomeTicker: scrolling strip with active promotions + Heat Score leaders
 - Category tabs: Trending | Athletes | Influencers | Artists | Scientists | Professionals | Explore All →
-- Spotlight: wide (≥900px) shows main card + rank sidebar + news panel + Get Tokens CTA;
-  narrow stacks them vertically
-- Rising section: horizontal scroll of creator tiles
-- Who's Live section: vertical list of live stream cards
+- Spotlight: wide (≥900px) 3-column Row (flex 5/2/2): carousel | rank sidebar | news+tokens; narrow stacks vertically. Layout always renders — uses placeholder content when no creator data exists.
+- Rising section: horizontal scroll of creator tiles; placeholder tiles shown when empty
+- Who's Live section: vertical list of live stream cards; empty state always shows section header
 
 Breaking news panel is **static placeholder** — no API.
 Static headlines: "JordanKicks breaks 1M followers" / "New weekly score record set by CreatorKing" /
