@@ -36,6 +36,16 @@ jobs:
             "version": 3,
             "routes": [
               {
+                "src": "/flutter_service_worker\\.js",
+                "headers": { "cache-control": "no-cache, no-store, must-revalidate" },
+                "continue": true
+              },
+              {
+                "src": "/index\\.html",
+                "headers": { "cache-control": "no-cache, no-store, must-revalidate" },
+                "continue": true
+              },
+              {
                 "handle": "filesystem"
               },
               {
