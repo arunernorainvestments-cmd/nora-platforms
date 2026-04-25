@@ -82,18 +82,21 @@ Complete route map:
 | `/plan` | PlanScreen | public | roadmap placeholder; no bottom nav |
 
 **HomeScreen header** (`lib/features/home/screens/home_screen.dart`):
-- Logged-out: hamburger | logo | [Spacer] | "Phase 2 & 3 →" (→ /plan) | Login | Sign Up
+- Logged-out: hamburger | logo | Expanded(centered OutlinedButton "Learn more about Phase 2 and Phase 3" → /plan) | Login | Sign Up
 - Logged-in: hamburger | logo | [Spacer] | notification bell (opens sheet) | "Get Tokens" (opens `BuyTokensSheet` in place, does NOT navigate away)
 
 **"Explore All →"** in category tabs routes to `/markets` (not explore/news).
 
 **HomeScreen sections** (scroll order):
-1. `_WeeklyChampionSection` — design-only placeholder (TBD card, gold crown badge). // TODO: wire to weekly spotlight winner query
-2. `_WideSpotlightLayout` / `_NarrowSpotlightLayout` — live spotlight carousel from `spotlightCreatorsProvider`
-3. `_RisingSection` — horizontal scroll of rising creators
-4. `_WhoIsLiveSection` — vertical list of live streams
-5. `_BreakingNewsSection` — 3 static placeholder headlines → /news. // TODO: wire to live news/activity feed API
-6. `_Phase23Banner` — full-width banner → /plan
+1. `_WideSpotlightLayout` / `_NarrowSpotlightLayout` — live 3-column spotlight layout from `spotlightCreatorsProvider`
+   - Wide (≥900px): carousel (flex 5) | rank sidebar (flex 2) | news+tokens panel (flex 2); 12px gaps
+   - Narrow: stacked vertically
+   - Carousel uses Stack with full-bleed `Image.network` (BoxFit.cover) + bottom gradient overlay; falls back to `_CardGradient` if no avatarUrl
+   - Rank cards: `_RankCard` — white10 border, 64px height, CircleAvatar from avatarUrl if available
+   - `_WeeklyChampionSection`, `_BreakingNewsSection`, `_Phase23Banner` have been removed
+2. `_RisingSection` — horizontal scroll of rising creators
+3. `_WhoIsLiveSection` — vertical list of live streams
+4. `_FooterLinks`
 
 **Token purchase sheet**: `BuyTokensSheet` lives in `lib/features/wallet/widgets/buy_tokens_sheet.dart` (extracted from wallet_screen). Invoke via `showBuyTokensSheet(context)`. Used by wallet screen and home screen header.
 

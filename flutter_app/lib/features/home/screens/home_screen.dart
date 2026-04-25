@@ -79,8 +79,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 onRefresh: _refresh,
                 child: CustomScrollView(
                   slivers: [
-                    // Weekly champion placeholder — data wired when winner logic is built
-                    const SliverToBoxAdapter(child: _WeeklyChampionSection()),
                     SliverToBoxAdapter(
                       child: isWide
                           ? _WideSpotlightLayout(
@@ -95,8 +93,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     const SliverToBoxAdapter(child: _Divider()),
                     const SliverToBoxAdapter(child: _RisingSection()),
                     const SliverToBoxAdapter(child: _WhoIsLiveSection()),
-                    const SliverToBoxAdapter(child: _BreakingNewsSection()),
-                    const SliverToBoxAdapter(child: _Phase23Banner()),
                     const SliverToBoxAdapter(child: _FooterLinks()),
                     const SliverToBoxAdapter(child: SizedBox(height: 24)),
                   ],
@@ -179,9 +175,8 @@ class _Header extends ConsumerWidget {
               ],
             ),
           ),
-          const Spacer(),
-
           if (isLoggedIn) ...[
+            const Spacer(),
             // Notification bell with unread badge
             Stack(
               clipBehavior: Clip.none,
@@ -239,28 +234,31 @@ class _Header extends ConsumerWidget {
               ),
             ),
           ] else ...[
-            // Logged-out: Learn more + Login + Sign Up
-            GestureDetector(
-              onTap: () => GoRouter.of(context).go('/plan'),
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 10, vertical: 6),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                      color: AppTheme.cardBorder.withValues(alpha: 0.6)),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Text(
-                  'Phase 2 & 3 →',
-                  style: TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
+            // Center: "Learn more" button
+            const SizedBox(width: 12),
+            Expanded(
+              child: Center(
+                child: OutlinedButton(
+                  onPressed: () => GoRouter.of(context).go('/plan'),
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: AppTheme.primary),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 10),
+                  ),
+                  child: const Text(
+                    'Learn more about Phase 2 and Phase 3',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 12),
             GestureDetector(
               onTap: () => GoRouter.of(context).go('/login'),
               child: Container(
@@ -440,8 +438,9 @@ class _WideSpotlightLayout extends ConsumerWidget {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Main spotlight card
+                      // Main spotlight card — flex 5
                       Expanded(
+                        flex: 5,
                         child: _SpotlightCard(
                           creator: creators[safeSlide],
                           slide: safeSlide,
@@ -451,30 +450,29 @@ class _WideSpotlightLayout extends ConsumerWidget {
                           onDot: onSlide,
                         ),
                       ),
-                      const SizedBox(width: 16),
-                      // Rank sidebar
-                      if (creators.length > 1)
-                        SizedBox(
-                          width: 220,
-                          child: Column(
-                            children: creators
-                                .asMap()
-                                .entries
-                                .where((e) => e.key != safeSlide)
-                                .take(4)
-                                .map((e) => _RankCard(
-                                      creator: e.value,
-                                      rank: e.key + 1,
-                                      isActive: e.key == safeSlide,
-                                      onTap: () => onSlide(e.key),
-                                    ))
-                                .toList(),
-                          ),
+                      const SizedBox(width: 12),
+                      // Rank sidebar — flex 2
+                      Expanded(
+                        flex: 2,
+                        child: Column(
+                          children: creators
+                              .asMap()
+                              .entries
+                              .where((e) => e.key != safeSlide)
+                              .take(4)
+                              .map((e) => _RankCard(
+                                    creator: e.value,
+                                    rank: e.key + 1,
+                                    isActive: e.key == safeSlide,
+                                    onTap: () => onSlide(e.key),
+                                  ))
+                              .toList(),
                         ),
-                      const SizedBox(width: 16),
-                      // Right column: news + tokens
-                      SizedBox(
-                        width: 240,
+                      ),
+                      const SizedBox(width: 12),
+                      // Right column: news + tokens — flex 2
+                      Expanded(
+                        flex: 2,
                         child: Column(
                           children: [
                             _NewsPanel(),
@@ -589,63 +587,59 @@ class _SpotlightCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = _paletteColor(creator.displayLabel);
-    return Container(
+    final card = Container(
       height: 340,
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppTheme.cardBorder),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Stack(
         children: [
-          // Gradient background
+          // Layer 1 — full-bleed background image or gradient placeholder
+          Positioned.fill(
+            child: creator.avatarUrl != null
+                ? Image.network(
+                    creator.avatarUrl!,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _CardGradient(accent: accent),
+                  )
+                : _CardGradient(accent: accent),
+          ),
+          // Layer 2 — bottom gradient fade (covers bottom 40%)
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(0, -0.6),
-                  radius: 1.2,
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: const [0.4, 1.0],
                   colors: [
-                    accent.withValues(alpha: 0.55),
-                    accent.withValues(alpha: 0.15),
-                    AppTheme.background,
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.75),
                   ],
                 ),
               ),
             ),
           ),
-          // Bottom fade
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: [0.4, 1.0],
-                  colors: [Colors.transparent, Color(0xEB0A0A0F)],
-                ),
-              ),
-            ),
-          ),
-          // Score delta badge
+          // Layer 3 — score chip (top-right)
           Positioned(
             top: 16, right: 16,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
-                color: AppTheme.success.withValues(alpha: 0.12),
-                border: Border.all(color: AppTheme.success),
-                borderRadius: BorderRadius.circular(999),
+                color: const Color(0xFF1A1A2E).withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(20),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.trending_up, color: AppTheme.success, size: 14),
+                  const Icon(Icons.trending_up,
+                      color: Color(0xFF00C896), size: 14),
                   const SizedBox(width: 5),
                   Text(
                     '+${creator.score.toStringAsFixed(0)} pts',
                     style: const TextStyle(
-                        color: AppTheme.success,
+                        color: Colors.white,
                         fontSize: 13,
                         fontWeight: FontWeight.w700),
                   ),
@@ -653,94 +647,120 @@ class _SpotlightCard extends StatelessWidget {
               ),
             ),
           ),
-          // Left chevron
-          if (onPrev != null)
-            Positioned(
-              left: 12,
-              top: 0, bottom: 0,
-              child: Center(child: _ChevronButton(icon: Icons.chevron_left, onTap: onPrev!)),
-            ),
-          // Right chevron
-          if (onNext != null)
-            Positioned(
-              right: 12,
-              top: 0, bottom: 0,
-              child: Center(child: _ChevronButton(icon: Icons.chevron_right, onTap: onNext!)),
-            ),
-          // Bottom content
+          // Layer 4 — follower count overlay (bottom-left)
           Positioned(
-            left: 18, right: 18, bottom: 40,
-            child: Row(
+            bottom: 60, left: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.70),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('FOLLOWER COUNT',
+                      style: TextStyle(
+                          color: Colors.white54,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.8)),
+                  const SizedBox(height: 4),
+                  Text('Score: +${creator.score.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                          color: Color(0xFF00C896),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ),
+          // Layer 5 — creator name + category (bottom-right)
+          Positioned(
+            bottom: 60, right: 16,
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                // Follower count pill
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.65),
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: AppTheme.cardBorder.withValues(alpha: 0.8)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Follower Count',
-                          style: TextStyle(
-                              color: AppTheme.textSecondary,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              letterSpacing: 0.5)),
-                      const SizedBox(height: 4),
-                      Text('Score: ${creator.score.toStringAsFixed(0)}',
-                          style: const TextStyle(color: AppTheme.success, fontSize: 12, fontWeight: FontWeight.w600)),
-                    ],
-                  ),
-                ),
-                const Spacer(),
-                // Username + category
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(creator.displayLabel,
-                        style: const TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800)),
-                    const SizedBox(height: 3),
-                    Text(creator.tier,
-                        style: const TextStyle(
-                            color: AppTheme.textSecondary, fontSize: 13)),
-                  ],
-                ),
+                Text(creator.displayLabel,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold)),
+                const SizedBox(height: 3),
+                Text(creator.tier,
+                    style: const TextStyle(
+                        color: Colors.white70, fontSize: 14)),
               ],
             ),
           ),
-          // Pagination dots
-          if (total > 1)
+          // Layer 6 — navigation arrows
+          if (onPrev != null)
             Positioned(
-              bottom: 14,
-              left: 0, right: 0,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(total, (i) {
-                  final active = i == slide;
-                  return GestureDetector(
-                    onTap: () => onDot(i),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      margin: const EdgeInsets.symmetric(horizontal: 3),
-                      width: active ? 22 : 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: active ? AppTheme.primary : Colors.white30,
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  );
-                }),
-              ),
+              left: 8, top: 0, bottom: 0,
+              child: Center(
+                  child: _ChevronButton(
+                      icon: Icons.chevron_left, onTap: onPrev!)),
+            ),
+          if (onNext != null)
+            Positioned(
+              right: 8, top: 0, bottom: 0,
+              child: Center(
+                  child: _ChevronButton(
+                      icon: Icons.chevron_right, onTap: onNext!)),
             ),
         ],
+      ),
+    );
+
+    // Dots placed below the card, not inside the Stack
+    if (total <= 1) return card;
+    return Column(
+      children: [
+        card,
+        const SizedBox(height: 10),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(total, (i) {
+            final active = i == slide;
+            return GestureDetector(
+              onTap: () => onDot(i),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 250),
+                margin: const EdgeInsets.symmetric(horizontal: 3),
+                width: active ? 8 : 6,
+                height: active ? 8 : 6,
+                decoration: BoxDecoration(
+                  color: active
+                      ? const Color(0xFF6C63FF)
+                      : Colors.white30,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            );
+          }),
+        ),
+      ],
+    );
+  }
+}
+
+class _CardGradient extends StatelessWidget {
+  final Color accent;
+  const _CardGradient({required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: RadialGradient(
+          center: const Alignment(0, -0.6),
+          radius: 1.2,
+          colors: [
+            accent.withValues(alpha: 0.55),
+            accent.withValues(alpha: 0.15),
+            AppTheme.background,
+          ],
+        ),
       ),
     );
   }
@@ -756,12 +776,12 @@ class _ChevronButton extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        width: 38, height: 38,
+        width: 40, height: 40,
         decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.15),
+          color: Colors.black.withValues(alpha: 0.50),
           shape: BoxShape.circle,
         ),
-        child: Icon(icon, color: Colors.white, size: 22),
+        child: Icon(icon, color: Colors.white, size: 24),
       ),
     );
   }
@@ -787,55 +807,63 @@ class _RankCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        height: 64,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
         decoration: BoxDecoration(
-          color: isActive ? AppTheme.surfaceLight : AppTheme.surface,
-          border: Border.all(
-              color: isActive ? AppTheme.primary : AppTheme.cardBorder),
-          borderRadius: BorderRadius.circular(12),
+          color: const Color(0xFF1A1A2E),
+          border: Border.all(color: Colors.white10),
+          borderRadius: BorderRadius.circular(8),
         ),
         child: Row(
           children: [
             Text(_ordinal(rank - 1),
                 style: const TextStyle(
-                    color: AppTheme.textSecondary,
+                    color: Colors.white54,
                     fontSize: 11,
                     fontWeight: FontWeight.w700)),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(creator.displayLabel,
                       style: const TextStyle(
-                          color: AppTheme.textPrimary,
+                          color: Colors.white,
                           fontSize: 13,
-                          fontWeight: FontWeight.w600),
+                          fontWeight: FontWeight.bold),
                       overflow: TextOverflow.ellipsis),
                   Text(creator.tier,
                       style: const TextStyle(
-                          color: AppTheme.textSecondary, fontSize: 11)),
+                          color: Colors.white54, fontSize: 11)),
                 ],
               ),
             ),
-            Container(
-              width: 34, height: 34,
-              decoration: BoxDecoration(
-                color: accent.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
-                border: Border.all(color: accent.withValues(alpha: 0.4)),
-              ),
-              child: Center(
-                child: Text(
-                  creator.initials,
-                  style: TextStyle(
-                      color: accent,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800),
-                ),
-              ),
-            ),
+            const SizedBox(width: 8),
+            // Avatar — photo if available, else colored initial
+            creator.avatarUrl != null
+                ? CircleAvatar(
+                    radius: 17,
+                    backgroundImage: NetworkImage(creator.avatarUrl!),
+                    onBackgroundImageError: (_, __) {},
+                  )
+                : Container(
+                    width: 34, height: 34,
+                    decoration: BoxDecoration(
+                      color: accent.withValues(alpha: 0.20),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        creator.initials,
+                        style: TextStyle(
+                            color: accent,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ),
           ],
         ),
       ),
@@ -860,14 +888,14 @@ class _NewsPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           GestureDetector(
-            onTap: () => GoRouter.of(context).go('/explore'),
+            onTap: () => GoRouter.of(context).go('/news'),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
-                color: AppTheme.danger,
+                color: const Color(0xFFE53935),
                 borderRadius: BorderRadius.circular(999),
               ),
-              child: const Text('🔴 Breaking News',
+              child: const Text('Breaking News',
                   style: TextStyle(
                       color: Colors.white,
                       fontSize: 11,
@@ -875,15 +903,15 @@ class _NewsPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          const _NewsItem(
+          const _TappableNewsItem(
               text: 'JordanKicks breaks 1M followers',
               time: '2m ago'),
           const _NewsDivider(),
-          const _NewsItem(
+          const _TappableNewsItem(
               text: 'New weekly score record set by CreatorKing',
               time: '14m ago'),
           const _NewsDivider(),
-          const _NewsItem(
+          const _TappableNewsItem(
               text: 'BeatMaster drops surprise album — fans react',
               time: '1h ago'),
         ],
@@ -892,24 +920,29 @@ class _NewsPanel extends StatelessWidget {
   }
 }
 
-class _NewsItem extends StatelessWidget {
+class _TappableNewsItem extends StatelessWidget {
   final String text;
   final String time;
-  const _NewsItem({required this.text, required this.time});
+  const _TappableNewsItem({required this.text, required this.time});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(text,
-            style: const TextStyle(
-                color: AppTheme.textPrimary, fontSize: 12, height: 1.5)),
-        const SizedBox(height: 2),
-        Text(time,
-            style: const TextStyle(
-                color: AppTheme.textSecondary, fontSize: 11)),
-      ],
+    return GestureDetector(
+      onTap: () => GoRouter.of(context).go('/news'),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(text,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  color: AppTheme.textPrimary, fontSize: 13, height: 1.5)),
+          const SizedBox(height: 2),
+          Text(time,
+              style: const TextStyle(
+                  color: AppTheme.textSecondary, fontSize: 11)),
+        ],
+      ),
     );
   }
 }
@@ -933,20 +966,21 @@ class _GetTokensButton extends StatelessWidget {
       onTap: () => showBuyTokensSheet(context),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 28),
+        height: 80,
         decoration: BoxDecoration(
           color: AppTheme.surface,
-          border: Border.all(color: AppTheme.primary),
+          border: Border.all(color: AppTheme.secondary),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Text(
-          'Get\nTokens',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-              color: AppTheme.textPrimary,
-              fontSize: 22,
-              fontWeight: FontWeight.w800,
-              height: 1.35),
+        child: const Center(
+          child: Text(
+            'Get Tokens',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w800),
+          ),
         ),
       ),
     );
@@ -1806,285 +1840,6 @@ class _NotificationSheet extends ConsumerWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Weekly champion placeholder ─────────────────────────────────────────────
-
-// TODO: wire to weekly spotlight winner query
-class _WeeklyChampionSection extends StatelessWidget {
-  const _WeeklyChampionSection();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Row(
-            children: [
-              Text('🏆',
-                  style: TextStyle(fontSize: 16)),
-              SizedBox(width: 8),
-              Text('Weekly Spotlight',
-                  style: TextStyle(
-                      color: AppTheme.textPrimary,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w700)),
-              SizedBox(width: 8),
-              Text('Top creator of the week',
-                  style: TextStyle(
-                      color: AppTheme.textSecondary, fontSize: 12)),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(18),
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                  color: AppTheme.primary.withValues(alpha: 0.55), width: 1.5),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.primary.withValues(alpha: 0.12),
-                  blurRadius: 18,
-                  spreadRadius: 0,
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                // Placeholder avatar
-                Container(
-                  width: 68, height: 68,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFD700).withValues(alpha: 0.12),
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                        color: const Color(0xFFFFD700).withValues(alpha: 0.45),
-                        width: 2),
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.person_outline,
-                        color: Color(0xFFFFD700), size: 32),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color:
-                              const Color(0xFFFFD700).withValues(alpha: 0.10),
-                          border: Border.all(
-                              color: const Color(0xFFFFD700)
-                                  .withValues(alpha: 0.45)),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                        child: const Text(
-                          '👑 This week\'s champion',
-                          style: TextStyle(
-                              color: Color(0xFFFFD700),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text('TBD',
-                          style: TextStyle(
-                              color: AppTheme.textPrimary,
-                              fontSize: 22,
-                              fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 2),
-                      const Text('Category TBD',
-                          style: TextStyle(
-                              color: AppTheme.textSecondary, fontSize: 13)),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Winners announced every Monday',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-          ),
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Breaking news section ────────────────────────────────────────────────────
-
-// TODO: wire to live news/activity feed API
-class _BreakingNewsSection extends StatelessWidget {
-  const _BreakingNewsSection();
-
-  static const _headlines = [
-    ('JordanKicks breaks 1M followers', '2m ago'),
-    ('New weekly score record set by CreatorKing', '14m ago'),
-    ('BeatMaster drops surprise album — fans react', '1h ago'),
-  ];
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Row(
-                children: [
-                  Icon(Icons.radio, color: AppTheme.danger, size: 16),
-                  SizedBox(width: 8),
-                  Text('Breaking News',
-                      style: TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700)),
-                ],
-              ),
-              GestureDetector(
-                onTap: () => GoRouter.of(context).go('/news'),
-                child: const Text('See All →',
-                    style: TextStyle(
-                        color: AppTheme.primary,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          ..._headlines.map((h) => _HeadlineCard(text: h.$1, time: h.$2)),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeadlineCard extends StatelessWidget {
-  final String text;
-  final String time;
-  const _HeadlineCard({required this.text, required this.time});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: () => GoRouter.of(context).go('/news'),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          color: AppTheme.surface,
-          border: Border.all(color: AppTheme.cardBorder),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(text,
-                      style: const TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          height: 1.4)),
-                  const SizedBox(height: 4),
-                  Text(time,
-                      style: const TextStyle(
-                          color: AppTheme.textSecondary, fontSize: 11)),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            const Icon(Icons.chevron_right,
-                color: AppTheme.textSecondary, size: 18),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Phase 2 & 3 banner ───────────────────────────────────────────────────────
-
-class _Phase23Banner extends StatelessWidget {
-  const _Phase23Banner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
-      child: GestureDetector(
-        onTap: () => GoRouter.of(context).go('/plan'),
-        child: Container(
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: const Border(
-              left: BorderSide(color: AppTheme.primary, width: 4),
-              top: BorderSide(color: AppTheme.cardBorder),
-              right: BorderSide(color: AppTheme.cardBorder),
-              bottom: BorderSide(color: AppTheme.cardBorder),
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-            child: Row(
-              children: [
-                Container(
-                  width: 44, height: 44,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.10),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Center(
-                    child: Text('🚀', style: TextStyle(fontSize: 20)),
-                  ),
-                ),
-                const SizedBox(width: 14),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Phase 2 & 3 — What\'s Coming',
-                        style: TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700),
-                      ),
-                      SizedBox(height: 3),
-                      Text(
-                        'See the full product roadmap',
-                        style: TextStyle(
-                            color: AppTheme.textSecondary, fontSize: 12),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.chevron_right,
-                    color: AppTheme.textSecondary, size: 20),
-              ],
-            ),
-          ),
         ),
       ),
     );
