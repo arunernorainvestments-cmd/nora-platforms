@@ -40,7 +40,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: 'Missing required field: platform' }, 400, corsHeaders);
   }
 
-  if (!['youtube', 'twitch', 'x'].includes(platform)) {
+  if (!['youtube', 'twitch', 'x', 'spotify'].includes(platform)) {
     return json({ error: `Disconnect not supported for platform: ${platform}` }, 400, corsHeaders);
   }
 
@@ -116,8 +116,7 @@ async function revokeToken(platform: string, accessToken: string): Promise<void>
         token: accessToken,
       }),
     });
-  } else {
-    // x
+  } else if (platform === 'x') {
     const clientId = Deno.env.get('X_CLIENT_ID') ?? '';
     const clientSecret = Deno.env.get('X_CLIENT_SECRET') ?? '';
     const credentials = btoa(`${clientId}:${clientSecret}`);
@@ -134,6 +133,7 @@ async function revokeToken(platform: string, accessToken: string): Promise<void>
       }),
     });
   }
+  // spotify: no public token revocation endpoint — DB deletion is sufficient
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

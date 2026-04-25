@@ -13,7 +13,7 @@ const corsHeaders = {
 };
 
 interface InitiateRequest {
-  platform: 'youtube' | 'twitch' | 'x';
+  platform: 'youtube' | 'twitch' | 'x' | 'spotify';
   user_id: string;
 }
 
@@ -53,7 +53,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: 'Missing required fields: platform, user_id' }, 400, corsHeaders);
   }
 
-  if (platform !== 'youtube' && platform !== 'twitch' && platform !== 'x') {
+  if (platform !== 'youtube' && platform !== 'twitch' && platform !== 'x' && platform !== 'spotify') {
     return json({ error: `OAuth not configured for platform: ${platform}` }, 400, corsHeaders);
   }
 
@@ -91,7 +91,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
       force_verify: 'true', // always show consent page; prevents silent re-auth redirect loop
     });
     authUrl = `https://id.twitch.tv/oauth2/authorize?${params.toString()}`;
-  } else {
+  } else if (platform === 'x') {
     // x — confidential client (Web App), no PKCE required
     const clientId = Deno.env.get('X_CLIENT_ID') ?? '';
     const params = new URLSearchParams({
@@ -102,6 +102,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
       state,
     });
     authUrl = `https://twitter.com/i/oauth2/authorize?${params.toString()}`;
+  } else {
+    // spotify
+    const clientId = Deno.env.get('SPOTIFY_CLIENT_ID') ?? '';
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: callbackUri,
+      response_type: 'code',
+      scope: 'user-read-private user-follow-read user-library-read',
+      state,
+    });
+    authUrl = `https://accounts.spotify.com/authorize?${params.toString()}`;
   }
 
   return json({ auth_url: authUrl }, 200, corsHeaders);

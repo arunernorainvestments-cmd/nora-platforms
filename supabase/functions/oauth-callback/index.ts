@@ -190,7 +190,7 @@ async function exchangeCode(
     });
     if (!res.ok) throw new Error(`Twitch token exchange ${res.status}: ${await res.text()}`);
     return res.json();
-  } else {
+  } else if (platform === 'x') {
     // x — confidential client uses HTTP Basic auth
     const clientId = Deno.env.get('X_CLIENT_ID') ?? '';
     const clientSecret = Deno.env.get('X_CLIENT_SECRET') ?? '';
@@ -209,6 +209,25 @@ async function exchangeCode(
       }),
     });
     if (!res.ok) throw new Error(`X token exchange ${res.status}: ${await res.text()}`);
+    return res.json();
+  } else {
+    // spotify — Basic auth with client_id:client_secret
+    const clientId = Deno.env.get('SPOTIFY_CLIENT_ID') ?? '';
+    const clientSecret = Deno.env.get('SPOTIFY_CLIENT_SECRET') ?? '';
+    const credentials = btoa(`${clientId}:${clientSecret}`);
+    const res = await fetch('https://accounts.spotify.com/api/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Authorization: `Basic ${credentials}`,
+      },
+      body: new URLSearchParams({
+        code,
+        grant_type: 'authorization_code',
+        redirect_uri: redirectUri,
+      }),
+    });
+    if (!res.ok) throw new Error(`Spotify token exchange ${res.status}: ${await res.text()}`);
     return res.json();
   }
 }
@@ -247,8 +266,7 @@ async function fetchPlatformUser(
     const user = data.data?.[0];
     if (!user) throw new Error('No Twitch user found');
     return { id: user.id as string, username: user.login as string };
-  } else {
-    // x
+  } else if (platform === 'x') {
     const res = await fetch('https://api.twitter.com/2/users/me', {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
@@ -257,6 +275,18 @@ async function fetchPlatformUser(
     const user = data.data;
     if (!user) throw new Error('No X user found');
     return { id: user.id as string, username: user.username as string };
+  } else {
+    // spotify
+    const res = await fetch('https://api.spotify.com/v1/me', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    if (!res.ok) throw new Error(`Spotify user fetch ${res.status}`);
+    const data = await res.json();
+    if (!data.id) throw new Error('No Spotify user found');
+    return {
+      id: data.id as string,
+      username: (data.display_name ?? data.id) as string,
+    };
   }
 }
 

@@ -567,10 +567,12 @@ class _LiveCard extends StatelessWidget {
   static const _brandColors = {
     'twitch': Color(0xFF9146FF),
     'youtube': Color(0xFFFF0000),
+    'spotify': Color(0xFF1DB954),
   };
   static const _platformLabels = {
     'twitch': 'Twitch',
     'youtube': 'YouTube',
+    'spotify': 'Spotify',
   };
 
   String _formatCount(int count) {
@@ -720,10 +722,12 @@ class _PlatformStatCard extends StatelessWidget {
   static const _brandColors = {
     'twitch': Color(0xFF9146FF),
     'youtube': Color(0xFFFF0000),
+    'spotify': Color(0xFF1DB954),
   };
   static const _platformLabels = {
     'twitch': 'Twitch',
     'youtube': 'YouTube',
+    'spotify': 'Spotify',
   };
 
   String _formatCount(int count) {
@@ -823,6 +827,16 @@ class _PlatformStatCard extends StatelessWidget {
                 _StatItem(
                     label: 'Viewers',
                     value: _formatCount(metric.liveViewerCount)),
+              if (metric.platform == 'spotify') ...[
+                if (metric.recentPostViews != null)
+                  _StatItem(
+                      label: 'Saved Tracks',
+                      value: _formatCount(metric.recentPostViews!)),
+                if (metric.recentPostReposts != null)
+                  _StatItem(
+                      label: 'Saved Albums',
+                      value: _formatCount(metric.recentPostReposts!)),
+              ],
               _StatItem(
                   label: 'Display Score',
                   value: NumberFormat('#,###').format(metric.displayScore)),
@@ -844,10 +858,12 @@ class _RedactedStatCard extends StatelessWidget {
   static const _brandColors = {
     'twitch': Color(0xFF9146FF),
     'youtube': Color(0xFFFF0000),
+    'spotify': Color(0xFF1DB954),
   };
   static const _platformLabels = {
     'twitch': 'Twitch',
     'youtube': 'YouTube',
+    'spotify': 'Spotify',
   };
 
   @override
@@ -911,6 +927,10 @@ class _RedactedStatCard extends StatelessWidget {
             runSpacing: 10,
             children: [
               _StatItem(label: followerLabel, value: '---'),
+              if (connection.platform == 'spotify') ...[
+                const _StatItem(label: 'Saved Tracks', value: '---'),
+                const _StatItem(label: 'Saved Albums', value: '---'),
+              ],
               const _StatItem(label: 'Display Score', value: '---'),
               const _StatItem(label: 'Heat Score', value: '---'),
             ],

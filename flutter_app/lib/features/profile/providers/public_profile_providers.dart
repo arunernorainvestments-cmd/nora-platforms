@@ -41,7 +41,8 @@ final publicProfileProvider =
         .from('platform_metrics')
         .select(
           'platform, heat_score, display_score, is_live, '
-          'follower_count, live_viewer_count',
+          'follower_count, live_viewer_count, '
+          'recent_post_views, recent_post_reposts',
         )
         .eq('user_id', profileId);
     metrics = (metricsData as List)

@@ -33,6 +33,8 @@ interface PlatformMetrics {
   recentPostViews?: number;   // X only
   recentPostReposts?: number; // X only
   recentPostLikes?: number;   // X only
+  savedTracks?: number;       // Spotify only (stored in recent_post_views column)
+  savedAlbums?: number;       // Spotify only (stored in recent_post_reposts column)
   raw: Record<string, unknown>;
 }
 
@@ -86,7 +88,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     .from('platform_connections')
     .select('id, user_id, platform, platform_user_id, platform_username, access_token, refresh_token, token_expires_at')
     .eq('is_active', true)
-    .in('platform', ['youtube', 'twitch', 'x'])
+    .in('platform', ['youtube', 'twitch', 'x', 'spotify'])
     .or(`last_synced_at.is.null,last_synced_at.lt.${cooldownCutoff}`);
 
   if (targetUserId) {
@@ -139,6 +141,30 @@ Deno.serve(async (req: Request): Promise<Response> => {
         metrics = await fetchYouTubeMetrics(conn.platform_user_id, accessToken);
       } else if (conn.platform === 'twitch') {
         metrics = await fetchTwitchMetrics(conn.platform_user_id, accessToken);
+      } else if (conn.platform === 'spotify') {
+        try {
+          metrics = await fetchSpotifyMetrics(conn.platform_user_id, accessToken);
+        } catch (err) {
+          // Retry once with a fresh token on 401
+          if (err instanceof Error && err.message.startsWith('Spotify 401') && conn.refresh_token) {
+            const refreshed = await refreshAccessToken('spotify', conn.refresh_token);
+            if (refreshed) {
+              accessToken = refreshed.access_token;
+              const newExpiry = refreshed.expires_in
+                ? new Date(Date.now() + refreshed.expires_in * 1000).toISOString()
+                : null;
+              await supabase
+                .from('platform_connections')
+                .update({
+                  access_token: refreshed.access_token,
+                  refresh_token: refreshed.refresh_token ?? conn.refresh_token,
+                  token_expires_at: newExpiry,
+                })
+                .eq('id', conn.id);
+              metrics = await fetchSpotifyMetrics(conn.platform_user_id, accessToken);
+            } else throw err;
+          } else throw err;
+        }
       } else {
         // x
         metrics = await fetchXMetrics(conn.platform_user_id, accessToken);
@@ -160,8 +186,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
         currentFollowers,
         metrics.liveViewers,
         followerGrowth,
-        metrics.recentPostViews ?? 0,
-        metrics.recentPostReposts ?? 0,
+        conn.platform === 'spotify' ? (metrics.savedTracks ?? 0) : (metrics.recentPostViews ?? 0),
+        conn.platform === 'spotify' ? (metrics.savedAlbums ?? 0) : (metrics.recentPostReposts ?? 0),
         metrics.recentPostLikes ?? 0,
       );
 
@@ -199,9 +225,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
             display_score: displayScore,
             heat_score: heatScore,
             previous_follower_count: currentFollowers,
-            recent_post_views: metrics.recentPostViews ?? null,
-            recent_post_reposts: metrics.recentPostReposts ?? null,
-            recent_post_likes: metrics.recentPostLikes ?? null,
+            recent_post_views: conn.platform === 'spotify'
+              ? (metrics.savedTracks ?? null)
+              : (metrics.recentPostViews ?? null),
+            recent_post_reposts: conn.platform === 'spotify'
+              ? (metrics.savedAlbums ?? null)
+              : (metrics.recentPostReposts ?? null),
+            recent_post_likes: conn.platform === 'spotify' ? null : (metrics.recentPostLikes ?? null),
             raw_metrics: metrics.raw,
             fetched_at: new Date().toISOString(),
           },
@@ -268,6 +298,11 @@ function computeDisplayScore(
       xPostReposts * 3 +
       xPostLikes * 1,
     );
+  }
+  if (platform === 'spotify') {
+    // Spotify: followers×1 + savedTracks×3 + savedAlbums×3
+    // xPostViews param carries savedTracks; xPostReposts carries savedAlbums
+    return Math.floor(followers * 1 + xPostViews * 3 + xPostReposts * 3);
   }
   // YouTube: subscribers×1 + live_viewers×10 + 24h_growth×5
   // Twitch:  followers×1  + live_viewers×10 + 24h_growth×5
@@ -487,6 +522,75 @@ async function fetchXMetrics(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Spotify API
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function fetchSpotifyMetrics(
+  _spotifyUserId: string,
+  accessToken: string,
+): Promise<PlatformMetrics> {
+  const headers = { Authorization: `Bearer ${accessToken}` };
+
+  // 1. Follower count from /me
+  const meRes = await fetch('https://api.spotify.com/v1/me', { headers });
+  if (meRes.status === 429) {
+    console.warn('[sync-platform-metrics] Spotify rate limited on /me — skipping');
+    throw new Error('Spotify API rate limited');
+  }
+  if (meRes.status === 401) throw new Error('Spotify 401 — token expired');
+  if (!meRes.ok) throw new Error(`Spotify /me API ${meRes.status}`);
+  const meData = await meRes.json();
+  const followers = (meData.followers?.total as number) ?? 0;
+
+  // 2. Saved tracks total (read first page, limit=1, grab total only)
+  let savedTracks = 0;
+  try {
+    const tracksRes = await fetch(
+      'https://api.spotify.com/v1/me/tracks?limit=1',
+      { headers },
+    );
+    if (tracksRes.ok) {
+      const tracksData = await tracksRes.json();
+      savedTracks = (tracksData.total as number) ?? 0;
+    } else if (tracksRes.status === 429) {
+      console.warn('[sync-platform-metrics] Spotify rate limited on /me/tracks — skipping saved tracks');
+    } else {
+      console.warn(`[sync-platform-metrics] Spotify /me/tracks ${tracksRes.status} — skipping saved tracks`);
+    }
+  } catch (e) {
+    console.warn('[sync-platform-metrics] Spotify tracks fetch failed (non-fatal):', e);
+  }
+
+  // 3. Saved albums total (read first page, limit=1, grab total only)
+  let savedAlbums = 0;
+  try {
+    const albumsRes = await fetch(
+      'https://api.spotify.com/v1/me/albums?limit=1',
+      { headers },
+    );
+    if (albumsRes.ok) {
+      const albumsData = await albumsRes.json();
+      savedAlbums = (albumsData.total as number) ?? 0;
+    } else if (albumsRes.status === 429) {
+      console.warn('[sync-platform-metrics] Spotify rate limited on /me/albums — skipping saved albums');
+    } else {
+      console.warn(`[sync-platform-metrics] Spotify /me/albums ${albumsRes.status} — skipping saved albums`);
+    }
+  } catch (e) {
+    console.warn('[sync-platform-metrics] Spotify albums fetch failed (non-fatal):', e);
+  }
+
+  return {
+    isLive: false,
+    liveViewers: 0,
+    followers,
+    savedTracks,
+    savedAlbums,
+    raw: { me: meData },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Token refresh
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -521,7 +625,7 @@ async function refreshAccessToken(
       });
       if (!res.ok) return null;
       return res.json();
-    } else {
+    } else if (platform === 'x') {
       // x — confidential client uses Basic auth
       const clientId = Deno.env.get('X_CLIENT_ID') ?? '';
       const clientSecret = Deno.env.get('X_CLIENT_SECRET') ?? '';
@@ -536,6 +640,24 @@ async function refreshAccessToken(
           grant_type: 'refresh_token',
           refresh_token: refreshToken,
           client_id: clientId,
+        }),
+      });
+      if (!res.ok) return null;
+      return res.json();
+    } else {
+      // spotify — Basic auth with client_id:client_secret
+      const clientId = Deno.env.get('SPOTIFY_CLIENT_ID') ?? '';
+      const clientSecret = Deno.env.get('SPOTIFY_CLIENT_SECRET') ?? '';
+      const credentials = btoa(`${clientId}:${clientSecret}`);
+      const res = await fetch('https://accounts.spotify.com/api/token', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: `Basic ${credentials}`,
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: refreshToken,
         }),
       });
       if (!res.ok) return null;

@@ -38,6 +38,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     'x': 'X',
     'instagram': 'Instagram',
     'kick': 'Kick',
+    'spotify': 'Spotify',
   };
 
   @override
@@ -761,6 +762,7 @@ class _MarketMakerDashboard extends StatelessWidget {
             children: [
               _PlatformConnectionTile(platform: 'youtube'),
               _PlatformConnectionTile(platform: 'twitch'),
+              _PlatformConnectionTile(platform: 'spotify'),
               _PlatformConnectionTile(platform: 'tiktok', isStub: true),
               _PlatformConnectionTile(platform: 'x'),
               _PlatformConnectionTile(platform: 'instagram', isStub: true),
@@ -807,6 +809,7 @@ class _MarketMakerOptInSheetState
   static const _platforms = [
     ('youtube', 'YouTube', Icons.play_circle_outline),
     ('twitch', 'Twitch', Icons.sports_esports_outlined),
+    ('spotify', 'Spotify', Icons.headset_outlined),
     ('tiktok', 'TikTok', Icons.music_note_outlined),
     ('x', 'X', Icons.alternate_email),
     ('instagram', 'Instagram', Icons.photo_camera_outlined),
@@ -816,7 +819,7 @@ class _MarketMakerOptInSheetState
   Future<void> _tapPlatform(BuildContext context, String platform) async {
     setState(() => _attemptedPlatforms.add(platform));
 
-    if (platform == 'youtube' || platform == 'twitch' || platform == 'x') {
+    if (platform == 'youtube' || platform == 'twitch' || platform == 'x' || platform == 'spotify') {
       final messenger = ScaffoldMessenger.of(context);
       try {
         final user = Supabase.instance.client.auth.currentUser;
@@ -1192,6 +1195,7 @@ class _PlatformConnectionTileState
     'x': 'X',
     'instagram': 'Instagram',
     'kick': 'Kick',
+    'spotify': 'Spotify',
   };
 
   static const _icons = {
@@ -1201,6 +1205,7 @@ class _PlatformConnectionTileState
     'x': Icons.alternate_email,
     'instagram': Icons.photo_camera_outlined,
     'kick': Icons.videogame_asset_outlined,
+    'spotify': Icons.headset_outlined,
   };
 
   Future<void> _connect() async {

@@ -1220,10 +1220,21 @@ class _NewsDivider extends StatelessWidget {
 // ─── Get Tokens button ────────────────────────────────────────────────────────
 
 class _GetTokensButton extends StatelessWidget {
+  void _showGetTokensOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => _GetTokensOptionsSheet(parentContext: context),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => showBuyTokensSheet(context),
+      onTap: () => _showGetTokensOptions(context),
       child: Container(
         width: double.infinity,
         height: 80,
@@ -1242,6 +1253,222 @@ class _GetTokensButton extends StatelessWidget {
                 fontWeight: FontWeight.w800),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _GetTokensOptionsSheet extends StatelessWidget {
+  const _GetTokensOptionsSheet({required this.parentContext});
+
+  final BuildContext parentContext;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Get Tokens',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Choose how you want to earn tokens',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+          ),
+          const SizedBox(height: 20),
+          _OptionCard(
+            icon: Icons.shopping_bag_outlined,
+            label: 'Purchase',
+            subtitle: 'Buy token packages',
+            iconColor: AppTheme.secondary,
+            onTap: () {
+              Navigator.of(context).pop();
+              showBuyTokensSheet(parentContext);
+            },
+          ),
+          const SizedBox(height: 12),
+          _OptionCard(
+            icon: Icons.sports_esports_outlined,
+            label: 'Earn',
+            subtitle: 'Play games to earn free tokens',
+            iconColor: AppTheme.primary,
+            onTap: () {
+              Navigator.of(context).pop();
+              showModalBottomSheet(
+                context: parentContext,
+                backgroundColor: AppTheme.surface,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                ),
+                builder: (_) => const _EarnTokensSheet(),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OptionCard extends StatelessWidget {
+  const _OptionCard({
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+    required this.iconColor,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final String subtitle;
+  final Color iconColor;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceLight,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.cardBorder),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: iconColor, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(subtitle,
+                      style: const TextStyle(
+                          color: AppTheme.textSecondary, fontSize: 13)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EarnTokensSheet extends StatelessWidget {
+  const _EarnTokensSheet();
+
+  static const _games = [
+    (icon: Icons.sports_martial_arts_outlined, label: 'Arena'),
+    (icon: Icons.local_fire_department_outlined, label: 'Hot Topic'),
+    (icon: Icons.egg_outlined, label: 'Chicken Run'),
+    (icon: Icons.sports_basketball_outlined, label: 'Ball Bounce'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Earn Tokens',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Play games to earn free tokens',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+          ),
+          const SizedBox(height: 20),
+          ..._games.map((g) => Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _EarnGameCard(icon: g.icon, label: g.label),
+              )),
+        ],
+      ),
+    );
+  }
+}
+
+class _EarnGameCard extends StatelessWidget {
+  const _EarnGameCard({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: AppTheme.surfaceLight,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.cardBorder),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: AppTheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: AppTheme.primary, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Text(label,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700)),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppTheme.cardBorder,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: const Text(
+              'Coming Soon',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+            ),
+          ),
+        ],
       ),
     );
   }
