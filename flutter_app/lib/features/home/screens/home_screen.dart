@@ -14,6 +14,7 @@ import '../../profile/providers/profile_providers.dart';
 import '../../profile/models/platform_metric.dart';
 import '../providers/home_providers.dart';
 import '../widgets/home_ticker.dart';
+import '../../wallet/widgets/buy_tokens_sheet.dart';
 
 final _checkInProvider = FutureProvider.autoDispose<void>((ref) async {
   final actions = ref.read(challengeActionsProvider);
@@ -78,6 +79,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 onRefresh: _refresh,
                 child: CustomScrollView(
                   slivers: [
+                    // Weekly champion placeholder — data wired when winner logic is built
+                    const SliverToBoxAdapter(child: _WeeklyChampionSection()),
                     SliverToBoxAdapter(
                       child: isWide
                           ? _WideSpotlightLayout(
@@ -92,6 +95,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     const SliverToBoxAdapter(child: _Divider()),
                     const SliverToBoxAdapter(child: _RisingSection()),
                     const SliverToBoxAdapter(child: _WhoIsLiveSection()),
+                    const SliverToBoxAdapter(child: _BreakingNewsSection()),
+                    const SliverToBoxAdapter(child: _Phase23Banner()),
                     const SliverToBoxAdapter(child: _FooterLinks()),
                     const SliverToBoxAdapter(child: SizedBox(height: 24)),
                   ],
@@ -211,9 +216,9 @@ class _Header extends ConsumerWidget {
               ],
             ),
             const SizedBox(width: 6),
-            // Get Tokens
+            // Get Tokens — opens purchase sheet without leaving home screen
             GestureDetector(
-              onTap: () => GoRouter.of(context).go('/wallet'),
+              onTap: () => showBuyTokensSheet(context),
               child: Container(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 12, vertical: 7),
@@ -236,7 +241,7 @@ class _Header extends ConsumerWidget {
           ] else ...[
             // Logged-out: Learn more + Login + Sign Up
             GestureDetector(
-              onTap: () => GoRouter.of(context).go('/news'),
+              onTap: () => GoRouter.of(context).go('/plan'),
               child: Container(
                 padding: const EdgeInsets.symmetric(
                     horizontal: 10, vertical: 6),
@@ -925,7 +930,7 @@ class _GetTokensButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => GoRouter.of(context).go('/wallet'),
+      onTap: () => showBuyTokensSheet(context),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 28),
@@ -1801,6 +1806,285 @@ class _NotificationSheet extends ConsumerWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Weekly champion placeholder ─────────────────────────────────────────────
+
+// TODO: wire to weekly spotlight winner query
+class _WeeklyChampionSection extends StatelessWidget {
+  const _WeeklyChampionSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Text('🏆',
+                  style: TextStyle(fontSize: 16)),
+              SizedBox(width: 8),
+              Text('Weekly Spotlight',
+                  style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700)),
+              SizedBox(width: 8),
+              Text('Top creator of the week',
+                  style: TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: AppTheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                  color: AppTheme.primary.withValues(alpha: 0.55), width: 1.5),
+              boxShadow: [
+                BoxShadow(
+                  color: AppTheme.primary.withValues(alpha: 0.12),
+                  blurRadius: 18,
+                  spreadRadius: 0,
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // Placeholder avatar
+                Container(
+                  width: 68, height: 68,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFD700).withValues(alpha: 0.12),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                        color: const Color(0xFFFFD700).withValues(alpha: 0.45),
+                        width: 2),
+                  ),
+                  child: const Center(
+                    child: Icon(Icons.person_outline,
+                        color: Color(0xFFFFD700), size: 32),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color:
+                              const Color(0xFFFFD700).withValues(alpha: 0.10),
+                          border: Border.all(
+                              color: const Color(0xFFFFD700)
+                                  .withValues(alpha: 0.45)),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: const Text(
+                          '👑 This week\'s champion',
+                          style: TextStyle(
+                              color: Color(0xFFFFD700),
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text('TBD',
+                          style: TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontSize: 22,
+                              fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 2),
+                      const Text('Category TBD',
+                          style: TextStyle(
+                              color: AppTheme.textSecondary, fontSize: 13)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Winners announced every Monday',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Breaking news section ────────────────────────────────────────────────────
+
+// TODO: wire to live news/activity feed API
+class _BreakingNewsSection extends StatelessWidget {
+  const _BreakingNewsSection();
+
+  static const _headlines = [
+    ('JordanKicks breaks 1M followers', '2m ago'),
+    ('New weekly score record set by CreatorKing', '14m ago'),
+    ('BeatMaster drops surprise album — fans react', '1h ago'),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.radio, color: AppTheme.danger, size: 16),
+                  SizedBox(width: 8),
+                  Text('Breaking News',
+                      style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700)),
+                ],
+              ),
+              GestureDetector(
+                onTap: () => GoRouter.of(context).go('/news'),
+                child: const Text('See All →',
+                    style: TextStyle(
+                        color: AppTheme.primary,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ..._headlines.map((h) => _HeadlineCard(text: h.$1, time: h.$2)),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeadlineCard extends StatelessWidget {
+  final String text;
+  final String time;
+  const _HeadlineCard({required this.text, required this.time});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () => GoRouter.of(context).go('/news'),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          border: Border.all(color: AppTheme.cardBorder),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(text,
+                      style: const TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          height: 1.4)),
+                  const SizedBox(height: 4),
+                  Text(time,
+                      style: const TextStyle(
+                          color: AppTheme.textSecondary, fontSize: 11)),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right,
+                color: AppTheme.textSecondary, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Phase 2 & 3 banner ───────────────────────────────────────────────────────
+
+class _Phase23Banner extends StatelessWidget {
+  const _Phase23Banner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+      child: GestureDetector(
+        onTap: () => GoRouter.of(context).go('/plan'),
+        child: Container(
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: const Border(
+              left: BorderSide(color: AppTheme.primary, width: 4),
+              top: BorderSide(color: AppTheme.cardBorder),
+              right: BorderSide(color: AppTheme.cardBorder),
+              bottom: BorderSide(color: AppTheme.cardBorder),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Center(
+                    child: Text('🚀', style: TextStyle(fontSize: 20)),
+                  ),
+                ),
+                const SizedBox(width: 14),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Phase 2 & 3 — What\'s Coming',
+                        style: TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700),
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        'See the full product roadmap',
+                        style: TextStyle(
+                            color: AppTheme.textSecondary, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+                const Icon(Icons.chevron_right,
+                    color: AppTheme.textSecondary, size: 20),
+              ],
+            ),
+          ),
         ),
       ),
     );

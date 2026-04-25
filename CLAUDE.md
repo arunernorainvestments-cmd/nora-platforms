@@ -79,12 +79,23 @@ Complete route map:
 | `/join` | ReferralScreen | public | ?ref=code |
 | `/privacy` | PrivacyPolicyScreen | public | |
 | `/terms` | TermsOfServiceScreen | public | |
+| `/plan` | PlanScreen | public | roadmap placeholder; no bottom nav |
 
 **HomeScreen header** (`lib/features/home/screens/home_screen.dart`):
-- Logged-out: hamburger | logo | [Spacer] | "Phase 2 & 3 →" (→ /news) | Login | Sign Up
-- Logged-in: hamburger | logo | [Spacer] | notification bell (opens sheet) | "Get Tokens" (→ /wallet)
+- Logged-out: hamburger | logo | [Spacer] | "Phase 2 & 3 →" (→ /plan) | Login | Sign Up
+- Logged-in: hamburger | logo | [Spacer] | notification bell (opens sheet) | "Get Tokens" (opens `BuyTokensSheet` in place, does NOT navigate away)
 
 **"Explore All →"** in category tabs routes to `/markets` (not explore/news).
+
+**HomeScreen sections** (scroll order):
+1. `_WeeklyChampionSection` — design-only placeholder (TBD card, gold crown badge). // TODO: wire to weekly spotlight winner query
+2. `_WideSpotlightLayout` / `_NarrowSpotlightLayout` — live spotlight carousel from `spotlightCreatorsProvider`
+3. `_RisingSection` — horizontal scroll of rising creators
+4. `_WhoIsLiveSection` — vertical list of live streams
+5. `_BreakingNewsSection` — 3 static placeholder headlines → /news. // TODO: wire to live news/activity feed API
+6. `_Phase23Banner` — full-width banner → /plan
+
+**Token purchase sheet**: `BuyTokensSheet` lives in `lib/features/wallet/widgets/buy_tokens_sheet.dart` (extracted from wallet_screen). Invoke via `showBuyTokensSheet(context)`. Used by wallet screen and home screen header.
 
 **Feature structure:** Each feature lives in lib/features/<name>/ with subdirectories
 for screens/, widgets/, providers/, and models/. Features implemented: auth, home,

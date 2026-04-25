@@ -22,6 +22,7 @@ import '../../features/legal/screens/privacy_policy_screen.dart';
 import '../../features/legal/screens/terms_of_service_screen.dart';
 import '../../features/profile/screens/score_dashboard_screen.dart';
 import '../../features/home/screens/home_screen.dart';
+import '../../features/home/screens/plan_screen.dart';
 import '../shell/main_shell.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -142,6 +143,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/hot-topic',
         builder: (context, state) => const HotTopicScreen(),
+      ),
+
+      // ── Roadmap / Phase 2 & 3 — public, no bottom nav ────────────────────
+      GoRoute(
+        path: '/plan',
+        builder: (context, state) => const PlanScreen(),
       ),
 
       // ── Legal routes (public, no auth) ───────────────────────────────────
