@@ -1,221 +1,200 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/utils/open_url.dart';
+import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/open_url.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../challenges/providers/challenge_providers.dart';
 import '../../notifications/providers/notification_providers.dart';
 import '../../discover/providers/discover_providers.dart';
 import '../../profile/providers/platform_connection_providers.dart';
-import '../../../core/widgets/settings_menu_button.dart';
 import '../../profile/models/platform_metric.dart';
 import '../providers/home_providers.dart';
 import '../widgets/home_ticker.dart';
 
-// Fires daily check-in challenge evaluation when the home screen mounts.
-// autoDispose means it fires once per session mount, not on every rebuild.
-// The edge function is idempotent — duplicate calls within the same day are safe.
 final _checkInProvider = FutureProvider.autoDispose<void>((ref) async {
   final actions = ref.read(challengeActionsProvider);
   await actions.fireCheckIn();
 });
 
-class HomeScreen extends ConsumerWidget {
+const _kAccentPalette = [
+  Color(0xFF6C63FF), Color(0xFF00C896), Color(0xFFFF6B35),
+  Color(0xFFEE1D52), Color(0xFF9146FF), Color(0xFFFFD700),
+  Color(0xFF00BCD4),
+];
+
+Color _paletteColor(String label) {
+  final code = label.codeUnits.fold(0, (s, c) => s + c);
+  return _kAccentPalette[code % _kAccentPalette.length];
+}
+
+const _kCategories = [
+  'Trending', 'Athletes', 'Influencers', 'Artists',
+  'Scientists', 'Professionals',
+];
+
+class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Fire daily check-in (fire-and-forget; result intentionally ignored)
-    ref.watch(_checkInProvider);
+  ConsumerState<HomeScreen> createState() => _HomeScreenState();
+}
 
+class _HomeScreenState extends ConsumerState<HomeScreen> {
+  int _categoryIndex = 0;
+  int _spotlightSlide = 0;
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  @override
+  void initState() {
+    super.initState();
+    ref.read(_checkInProvider.future).ignore();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final unreadCount = ref.watch(unreadCountProvider);
+    final isWide = MediaQuery.of(context).size.width >= 900;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('N.O.R.A. Platforms'),
-        actions: [
-          IconButton(
-            tooltip: 'Notifications',
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.notifications_outlined),
-                if (unreadCount > 0)
-                  Positioned(
-                    right: -3,
-                    top: -3,
-                    child: Container(
-                      padding: const EdgeInsets.all(2),
-                      decoration: const BoxDecoration(
-                        color: AppTheme.danger,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints:
-                          const BoxConstraints(minWidth: 16, minHeight: 16),
-                      child: Text(
-                        unreadCount > 99 ? '99+' : '$unreadCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 9,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
+      key: _scaffoldKey,
+      backgroundColor: AppTheme.background,
+      drawer: const _SideDrawer(),
+      body: SafeArea(
+        child: Column(
+          children: [
+            _Header(
+              scaffoldKey: _scaffoldKey,
+              unreadCount: unreadCount,
+            ),
+            const HomeTicker(),
+            _CategoryTabs(
+              selected: _categoryIndex,
+              onSelect: (i) => setState(() => _categoryIndex = i),
+            ),
+            Expanded(
+              child: RefreshIndicator(
+                color: AppTheme.primary,
+                backgroundColor: AppTheme.surface,
+                onRefresh: _refresh,
+                child: CustomScrollView(
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: isWide
+                          ? _WideSpotlightLayout(
+                              slide: _spotlightSlide,
+                              onSlide: (i) => setState(() => _spotlightSlide = i),
+                            )
+                          : _NarrowSpotlightLayout(
+                              slide: _spotlightSlide,
+                              onSlide: (i) => setState(() => _spotlightSlide = i),
+                            ),
                     ),
-                  ),
-              ],
-            ),
-            onPressed: () => showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              backgroundColor: Colors.transparent,
-              builder: (_) => const _NotificationSheet(),
-            ),
-          ),
-          const SettingsMenuButton(),
-        ],
-      ),
-      body: RefreshIndicator(
-        color: AppTheme.primary,
-        backgroundColor: AppTheme.surface,
-        onRefresh: () async {
-          ref.invalidate(homeTokenBalanceProvider);
-          ref.invalidate(spotlightCreatorsProvider);
-          ref.invalidate(homeFamousCreatorsProvider);
-          ref.invalidate(famousCreatorsProvider);
-          ref.invalidate(risingCreatorsProvider);
-          ref.invalidate(liveUserIdsProvider);
-          ref.invalidate(liveMetricsFeedProvider);
-        },
-        child: const CustomScrollView(
-          slivers: [
-            // Persistent ticker — active promotions + Heat Score leaders
-            SliverToBoxAdapter(child: HomeTicker()),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: Column(
-                  children: [
-                    _WelcomeCard(),
-                    SizedBox(height: 28),
-                    _SpotlightSection(),
-                    SizedBox(height: 28),
-                    _FamousCarouselSection(),
-                    SizedBox(height: 28),
+                    const SliverToBoxAdapter(child: _Divider()),
+                    const SliverToBoxAdapter(child: _RisingSection()),
+                    const SliverToBoxAdapter(child: _WhoIsLiveSection()),
+                    const SliverToBoxAdapter(child: _FooterLinks()),
+                    const SliverToBoxAdapter(child: SizedBox(height: 24)),
                   ],
                 ),
               ),
             ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: _RisingCarouselSection(),
-              ),
-            ),
-            SliverToBoxAdapter(child: SizedBox(height: 28)),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
-                child: _HomeSectionLabel(
-                  title: "Who's Live",
-                  subtitle: 'Creators streaming right now',
-                ),
-              ),
-            ),
-            SliverToBoxAdapter(child: SizedBox(height: 12)),
-            _WhoIsLiveSliver(),
-            SliverToBoxAdapter(child: _FooterLinks()),
-            SliverToBoxAdapter(child: SizedBox(height: 40)),
           ],
         ),
       ),
     );
   }
+
+  Future<void> _refresh() async {
+    ref.invalidate(spotlightCreatorsProvider);
+    ref.invalidate(risingCreatorsProvider);
+    ref.invalidate(liveUserIdsProvider);
+    ref.invalidate(liveMetricsFeedProvider);
+    ref.invalidate(homeTokenBalanceProvider);
+  }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// WELCOME CARD
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Header ──────────────────────────────────────────────────────────────────
 
-class _WelcomeCard extends ConsumerWidget {
-  const _WelcomeCard();
+class _Header extends StatelessWidget {
+  final GlobalKey<ScaffoldState> scaffoldKey;
+  final int unreadCount;
+  const _Header({required this.scaffoldKey, required this.unreadCount});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.watch(currentUserProvider);
-    final balanceAsync = ref.watch(homeTokenBalanceProvider);
-
-    final displayName = user?.email?.split('@')[0] ?? 'Trader';
-
+  Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(22),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [AppTheme.primary, Color(0xFF9C27B0)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: const BoxDecoration(
+        color: Color(0xED0A0A0F),
+        border: Border(bottom: BorderSide(color: AppTheme.cardBorder)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          Text(
-            'Welcome back,',
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.8),
-              fontSize: 14,
-            ),
+          // Hamburger
+          IconButton(
+            icon: const Icon(Icons.menu, color: AppTheme.textPrimary, size: 22),
+            onPressed: () => scaffoldKey.currentState?.openDrawer(),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
           ),
-          const SizedBox(height: 4),
-          Text(
-            displayName,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
+          const SizedBox(width: 8),
+          // Logo
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            decoration: BoxDecoration(
+              border: Border.all(color: AppTheme.cardBorder),
+              borderRadius: BorderRadius.circular(8),
             ),
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              _WelcomeStat(
-                label: 'Tokens',
-                valueWidget: balanceAsync.when(
-                  loading: () => const _InlineShimmer(width: 48, height: 20),
-                  error: (_, __) => const Text(
-                    '—',
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('N.O.R.A. Platforms',
                     style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                  ),
-                  data: (b) => Text(
-                    '${b.availableTokens}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                        color: AppTheme.textPrimary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800)),
+                Text('Phase 1',
+                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 10)),
+              ],
+            ),
+          ),
+          const Spacer(),
+          // Notification bell
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.notifications_outlined,
+                    color: AppTheme.textSecondary, size: 22),
+                onPressed: () => showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) => const _NotificationSheet(),
+                ),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+              ),
+              if (unreadCount > 0)
+                Positioned(
+                  right: 2, top: 2,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: const BoxDecoration(
+                        color: AppTheme.danger, shape: BoxShape.circle),
+                    constraints: const BoxConstraints(minWidth: 15, minHeight: 15),
+                    child: Text(
+                      unreadCount > 99 ? '99+' : '$unreadCount',
+                      style: const TextStyle(
+                          color: Colors.white, fontSize: 8, fontWeight: FontWeight.bold),
+                      textAlign: TextAlign.center,
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(width: 12),
-              const _WelcomeStat(
-                label: 'Active Bets',
-                valueWidget: Text(
-                  '0',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
-              ),
             ],
           ),
         ],
@@ -224,426 +203,746 @@ class _WelcomeCard extends ConsumerWidget {
   }
 }
 
-class _WelcomeStat extends StatelessWidget {
-  final String label;
-  final Widget valueWidget;
-  const _WelcomeStat({required this.label, required this.valueWidget});
+// ─── Category tabs ────────────────────────────────────────────────────────────
+
+class _CategoryTabs extends StatelessWidget {
+  final int selected;
+  final ValueChanged<int> onSelect;
+  const _CategoryTabs({required this.selected, required this.onSelect});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(10),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppTheme.cardBorder)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.75),
-              fontSize: 11,
-              letterSpacing: 0.2,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            ..._kCategories.asMap().entries.map((e) {
+              final active = e.key == selected;
+              return _TabButton(
+                label: e.value,
+                active: active,
+                onTap: () => onSelect(e.key),
+              );
+            }),
+            _TabButton(
+              label: 'Explore All →',
+              active: false,
+              accent: true,
+              onTap: () => GoRouter.of(context).go('/explore'),
             ),
-          ),
-          const SizedBox(height: 2),
-          valueWidget,
-        ],
+          ],
+        ),
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// SPOTLIGHT SECTION
-// ─────────────────────────────────────────────────────────────────────────────
+class _TabButton extends StatelessWidget {
+  final String label;
+  final bool active;
+  final bool accent;
+  final VoidCallback onTap;
+  const _TabButton({
+    required this.label,
+    required this.active,
+    required this.onTap,
+    this.accent = false,
+  });
 
-class _SpotlightSection extends ConsumerWidget {
-  const _SpotlightSection();
+  @override
+  Widget build(BuildContext context) {
+    final color = accent
+        ? AppTheme.primary
+        : active
+            ? AppTheme.textPrimary
+            : AppTheme.textSecondary;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: active ? AppTheme.primary : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 13,
+            fontWeight: active || accent ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Wide spotlight layout (≥900px) ──────────────────────────────────────────
+
+class _WideSpotlightLayout extends ConsumerWidget {
+  final int slide;
+  final ValueChanged<int> onSlide;
+  const _WideSpotlightLayout({required this.slide, required this.onSlide});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final creatorsAsync = ref.watch(spotlightCreatorsProvider);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionHeader(
-          title: '🔥 Spotlight',
-          subtitle: 'Top creators right now',
-        ),
-        const SizedBox(height: 12),
-        creatorsAsync.when(
-          loading: () => const _SpotlightShimmer(),
-          error: (_, __) => const _SpotlightEmpty(),
-          data: (creators) {
-            if (creators.isEmpty) return const _SpotlightEmpty();
-            return Column(
-              children: creators
-                  .map((c) => _SpotlightCreatorCard(creator: c))
-                  .toList(),
-            );
-          },
-        ),
-      ],
+
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          creatorsAsync.when(
+            loading: () => const _SpotlightShimmerWide(),
+            error: (_, __) => const SizedBox.shrink(),
+            data: (creators) {
+              if (creators.isEmpty) return const SizedBox.shrink();
+              final safeSlide = slide.clamp(0, creators.length - 1);
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(
+                        _ordinal(safeSlide),
+                        style: const TextStyle(
+                          color: AppTheme.primary,
+                          fontSize: 26,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      const Text(
+                        'Weekly Spotlight',
+                        style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Main spotlight card
+                      Expanded(
+                        child: _SpotlightCard(
+                          creator: creators[safeSlide],
+                          slide: safeSlide,
+                          total: creators.length,
+                          onPrev: safeSlide > 0 ? () => onSlide(safeSlide - 1) : null,
+                          onNext: safeSlide < creators.length - 1 ? () => onSlide(safeSlide + 1) : null,
+                          onDot: onSlide,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      // Rank sidebar
+                      if (creators.length > 1)
+                        SizedBox(
+                          width: 220,
+                          child: Column(
+                            children: creators
+                                .asMap()
+                                .entries
+                                .where((e) => e.key != safeSlide)
+                                .take(4)
+                                .map((e) => _RankCard(
+                                      creator: e.value,
+                                      rank: e.key + 1,
+                                      isActive: e.key == safeSlide,
+                                      onTap: () => onSlide(e.key),
+                                    ))
+                                .toList(),
+                          ),
+                        ),
+                      const SizedBox(width: 16),
+                      // Right column: news + tokens
+                      SizedBox(
+                        width: 240,
+                        child: Column(
+                          children: [
+                            _NewsPanel(),
+                            const SizedBox(height: 14),
+                            _GetTokensButton(),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _SpotlightCreatorCard extends StatelessWidget {
+// ─── Narrow spotlight layout (<900px) ────────────────────────────────────────
+
+class _NarrowSpotlightLayout extends ConsumerWidget {
+  final int slide;
+  final ValueChanged<int> onSlide;
+  const _NarrowSpotlightLayout({required this.slide, required this.onSlide});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final creatorsAsync = ref.watch(spotlightCreatorsProvider);
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: creatorsAsync.when(
+        loading: () => const _SpotlightShimmerNarrow(),
+        error: (_, __) => const SizedBox.shrink(),
+        data: (creators) {
+          if (creators.isEmpty) return const SizedBox.shrink();
+          final safeSlide = slide.clamp(0, creators.length - 1);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(_ordinal(safeSlide),
+                      style: const TextStyle(
+                          color: AppTheme.primary,
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800)),
+                  const SizedBox(width: 10),
+                  const Text('Weekly Spotlight',
+                      style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700)),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _SpotlightCard(
+                creator: creators[safeSlide],
+                slide: safeSlide,
+                total: creators.length,
+                onPrev: safeSlide > 0 ? () => onSlide(safeSlide - 1) : null,
+                onNext: safeSlide < creators.length - 1 ? () => onSlide(safeSlide + 1) : null,
+                onDot: onSlide,
+              ),
+              if (creators.length > 1) ...[
+                const SizedBox(height: 12),
+                ...creators
+                    .asMap()
+                    .entries
+                    .where((e) => e.key != safeSlide)
+                    .take(4)
+                    .map((e) => _RankCard(
+                          creator: e.value,
+                          rank: e.key + 1,
+                          isActive: false,
+                          onTap: () => onSlide(e.key),
+                        )),
+              ],
+              const SizedBox(height: 16),
+              _NewsPanel(),
+              const SizedBox(height: 12),
+              _GetTokensButton(),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+// ─── Spotlight card ───────────────────────────────────────────────────────────
+
+class _SpotlightCard extends StatelessWidget {
   final SpotlightCreator creator;
-  const _SpotlightCreatorCard({required this.creator});
+  final int slide;
+  final int total;
+  final VoidCallback? onPrev;
+  final VoidCallback? onNext;
+  final ValueChanged<int> onDot;
+
+  const _SpotlightCard({
+    required this.creator,
+    required this.slide,
+    required this.total,
+    required this.onPrev,
+    required this.onNext,
+    required this.onDot,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final accent = _paletteColor(creator.displayLabel);
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.all(14),
+      height: 340,
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF3A2A4E)),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppTheme.cardBorder),
       ),
-      child: Row(
+      child: Stack(
         children: [
-          // Avatar
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: AppTheme.primary.withValues(alpha: 0.4),
-                width: 1.5,
-              ),
-            ),
-            child: Center(
-              child: Text(
-                creator.initials,
-                style: const TextStyle(
-                  color: AppTheme.primary,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
+          // Gradient background
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: const Alignment(0, -0.6),
+                  radius: 1.2,
+                  colors: [
+                    accent.withValues(alpha: 0.55),
+                    accent.withValues(alpha: 0.15),
+                    AppTheme.background,
+                  ],
                 ),
               ),
             ),
           ),
-          const SizedBox(width: 12),
-
-          // Name + score
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  creator.displayLabel,
-                  style: const TextStyle(
-                    color: AppTheme.textPrimary,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 15,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+          // Bottom fade
+          Positioned.fill(
+            child: Container(
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  stops: [0.4, 1.0],
+                  colors: [Colors.transparent, Color(0xEB0A0A0F)],
                 ),
-                const SizedBox(height: 3),
-                Text(
-                  'Score: ${creator.score.toStringAsFixed(1)}',
-                  style: const TextStyle(
-                    color: AppTheme.textSecondary,
-                    fontSize: 12,
+              ),
+            ),
+          ),
+          // Score delta badge
+          Positioned(
+            top: 16, right: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.success.withValues(alpha: 0.12),
+                border: Border.all(color: AppTheme.success),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.trending_up, color: AppTheme.success, size: 14),
+                  const SizedBox(width: 5),
+                  Text(
+                    '${creator.score.toStringAsFixed(0)} pts',
+                    style: const TextStyle(
+                        color: AppTheme.success,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700),
                   ),
+                ],
+              ),
+            ),
+          ),
+          // Left chevron
+          if (onPrev != null)
+            Positioned(
+              left: 12,
+              top: 0, bottom: 0,
+              child: Center(child: _ChevronButton(icon: Icons.chevron_left, onTap: onPrev!)),
+            ),
+          // Right chevron
+          if (onNext != null)
+            Positioned(
+              right: 12,
+              top: 0, bottom: 0,
+              child: Center(child: _ChevronButton(icon: Icons.chevron_right, onTap: onNext!)),
+            ),
+          // Bottom content
+          Positioned(
+            left: 18, right: 18, bottom: 40,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Follower count pill
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.65),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.cardBorder.withValues(alpha: 0.8)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('Follower Count',
+                          style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 0.5)),
+                      const SizedBox(height: 4),
+                      Text('Score: ${creator.score.toStringAsFixed(0)}',
+                          style: const TextStyle(color: AppTheme.success, fontSize: 12, fontWeight: FontWeight.w600)),
+                    ],
+                  ),
+                ),
+                const Spacer(),
+                // Username + category
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(creator.displayLabel,
+                        style: const TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800)),
+                    const SizedBox(height: 3),
+                    Text(creator.tier,
+                        style: const TextStyle(
+                            color: AppTheme.textSecondary, fontSize: 13)),
+                  ],
                 ),
               ],
             ),
           ),
-
-          // Tier badge
-          _TierBadge(tier: creator.tier),
+          // Pagination dots
+          if (total > 1)
+            Positioned(
+              bottom: 14,
+              left: 0, right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(total, (i) {
+                  final active = i == slide;
+                  return GestureDetector(
+                    onTap: () => onDot(i),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 250),
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      width: active ? 22 : 7,
+                      height: 7,
+                      decoration: BoxDecoration(
+                        color: active ? AppTheme.primary : Colors.white30,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                    ),
+                  );
+                }),
+              ),
+            ),
         ],
       ),
     );
   }
 }
 
-class _SpotlightEmpty extends StatelessWidget {
-  const _SpotlightEmpty();
+class _ChevronButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+  const _ChevronButton({required this.icon, required this.onTap});
 
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 38, height: 38,
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.15),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: Colors.white, size: 22),
+      ),
+    );
+  }
+}
+
+// ─── Rank card ────────────────────────────────────────────────────────────────
+
+class _RankCard extends StatelessWidget {
+  final SpotlightCreator creator;
+  final int rank;
+  final bool isActive;
+  final VoidCallback onTap;
+  const _RankCard({
+    required this.creator,
+    required this.rank,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _paletteColor(creator.displayLabel);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isActive ? AppTheme.surfaceLight : AppTheme.surface,
+          border: Border.all(
+              color: isActive ? AppTheme.primary : AppTheme.cardBorder),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Text(_ordinal(rank - 1),
+                style: const TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(creator.displayLabel,
+                      style: const TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600),
+                      overflow: TextOverflow.ellipsis),
+                  Text(creator.tier,
+                      style: const TextStyle(
+                          color: AppTheme.textSecondary, fontSize: 11)),
+                ],
+              ),
+            ),
+            Container(
+              width: 34, height: 34,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.15),
+                shape: BoxShape.circle,
+                border: Border.all(color: accent.withValues(alpha: 0.4)),
+              ),
+              child: Center(
+                child: Text(
+                  creator.initials,
+                  style: TextStyle(
+                      color: accent,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── News panel ───────────────────────────────────────────────────────────────
+
+class _NewsPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 20),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: AppTheme.cardBorder),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: const Column(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('🔥', style: TextStyle(fontSize: 32)),
-          SizedBox(height: 10),
-          Text(
-            'No spotlight creators yet — start betting to crown the first',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 14,
-              height: 1.4,
+          GestureDetector(
+            onTap: () => GoRouter.of(context).go('/explore'),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppTheme.danger,
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Text('🔥 Breaking News',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700)),
             ),
           ),
+          const SizedBox(height: 12),
+          const _NewsItem(
+              text: 'Spotlight rankings update weekly — bet now',
+              time: 'Live'),
+          const _NewsDivider(),
+          const _NewsItem(
+              text: 'New Market Makers joining — check Rising',
+              time: 'Today'),
+          const _NewsDivider(),
+          const _NewsItem(
+              text: 'Challenges reset — earn tokens daily',
+              time: 'Daily'),
         ],
       ),
     );
   }
 }
 
-class _SpotlightShimmer extends StatelessWidget {
-  const _SpotlightShimmer();
+class _NewsItem extends StatelessWidget {
+  final String text;
+  final String time;
+  const _NewsItem({required this.text, required this.time});
 
   @override
   Widget build(BuildContext context) {
-    return Shimmer.fromColors(
-      baseColor: AppTheme.surface,
-      highlightColor: AppTheme.cardBorder,
-      child: Column(
-        children: List.generate(
-          3,
-          (_) => Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            height: 72,
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(14),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// FAMOUS CREATORS CAROUSEL
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _FamousCarouselSection extends ConsumerWidget {
-  const _FamousCarouselSection();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final creatorsAsync = ref.watch(homeFamousCreatorsProvider);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const _SectionHeader(
-          title: 'Famous Creators',
-          subtitle: 'Explore — no betting on these',
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 130,
-          child: creatorsAsync.when(
-            loading: () => const _CarouselShimmer(),
-            error: (_, __) => const _CarouselError(),
-            data: (creators) {
-              if (creators.isEmpty) {
-                return const Center(
-                  child: Text(
-                    'No creators found',
-                    style: TextStyle(color: AppTheme.textSecondary),
-                  ),
-                );
-              }
-              return ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: creators.length,
-                itemBuilder: (context, i) =>
-                    _FamousCreatorTile(creator: creators[i]),
-              );
-            },
-          ),
-        ),
+        Text(text,
+            style: const TextStyle(
+                color: AppTheme.textPrimary, fontSize: 12, height: 1.5)),
+        const SizedBox(height: 2),
+        Text(time,
+            style: const TextStyle(
+                color: AppTheme.textSecondary, fontSize: 11)),
       ],
     );
   }
 }
 
-class _FamousCreatorTile extends StatelessWidget {
-  final HomeFamousCreator creator;
-  const _FamousCreatorTile({required this.creator});
-
-  String _formatFollowers(int count) {
-    if (count >= 1000000000) return '${(count / 1000000000).toStringAsFixed(1)}B';
-    if (count >= 1000000) return '${(count / 1000000).toStringAsFixed(1)}M';
-    if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}K';
-    return count.toString();
-  }
-
-  Color _avatarColor() {
-    const palette = [
-      Color(0xFF6C63FF), Color(0xFF00C896), Color(0xFFFF6B35),
-      Color(0xFFEE1D52), Color(0xFF9146FF), Color(0xFFFFD700),
-      Color(0xFF00BCD4),
-    ];
-    final index =
-        creator.name.codeUnits.fold(0, (sum, c) => sum + c) % palette.length;
-    return palette[index];
-  }
+class _NewsDivider extends StatelessWidget {
+  const _NewsDivider();
 
   @override
+  Widget build(BuildContext context) => const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Divider(color: AppTheme.cardBorder, height: 1),
+      );
+}
+
+// ─── Get Tokens button ────────────────────────────────────────────────────────
+
+class _GetTokensButton extends StatelessWidget {
+  @override
   Widget build(BuildContext context) {
-    final color = _avatarColor();
-    return Container(
-      width: 110,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.cardBorder),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
-              shape: BoxShape.circle,
-              border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
-            ),
-            child: Center(
-              child: Text(
-                creator.name[0].toUpperCase(),
-                style: TextStyle(
-                  color: color,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 18,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            creator.name,
-            style: const TextStyle(
+    return GestureDetector(
+      onTap: () => GoRouter.of(context).go('/wallet'),
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 28),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          border: Border.all(color: AppTheme.primary),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: const Text(
+          'Get\nTokens',
+          textAlign: TextAlign.center,
+          style: TextStyle(
               color: AppTheme.textPrimary,
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 3),
-          Text(
-            _formatFollowers(creator.totalFollowers),
-            style: const TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 11,
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            '${creator.platformCount} platform${creator.platformCount == 1 ? '' : 's'}',
-            style: const TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 10,
-            ),
-          ),
-        ],
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
+              height: 1.35),
+        ),
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// RISING CREATORS CAROUSEL
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Rising section ───────────────────────────────────────────────────────────
 
-class _RisingCarouselSection extends ConsumerWidget {
-  const _RisingCarouselSection();
+class _RisingSection extends ConsumerWidget {
+  const _RisingSection();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final creatorsAsync = ref.watch(risingCreatorsProvider);
     final liveIds = ref.watch(liveUserIdsProvider).valueOrNull ?? {};
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const _SectionHeader(
-          title: '⚡ Rising',
-          subtitle: 'Market Makers gaining traction',
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: 120,
-          child: creatorsAsync.when(
-            loading: () => const _CarouselShimmer(),
-            error: (_, __) => const _CarouselError(),
-            data: (creators) {
-              if (creators.isEmpty) {
-                return const Center(
-                  child: Text(
-                    'No rising creators yet',
-                    style: TextStyle(color: AppTheme.textSecondary),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.bolt, color: Color(0xFFFFD700), size: 18),
+              SizedBox(width: 6),
+              Text('Rising',
+                  style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700)),
+              SizedBox(width: 8),
+              Text('Market Makers gaining traction',
+                  style: TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 120,
+            child: creatorsAsync.when(
+              loading: () => _shimmerRow(),
+              error: (_, __) => const SizedBox.shrink(),
+              data: (creators) {
+                if (creators.isEmpty) {
+                  return const Center(
+                      child: Text('No rising creators yet',
+                          style: TextStyle(color: AppTheme.textSecondary)));
+                }
+                return ListView.builder(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: creators.length,
+                  itemBuilder: (context, i) => _RisingTile(
+                    creator: creators[i],
+                    isLive: liveIds.contains(creators[i].id),
                   ),
                 );
-              }
-              return ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: creators.length,
-                itemBuilder: (context, i) => _RisingCreatorTile(
-                  creator: creators[i],
-                  isLive: liveIds.contains(creators[i].id),
-                ),
-              );
-            },
+              },
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
+
+  Widget _shimmerRow() => Shimmer.fromColors(
+        baseColor: AppTheme.surface,
+        highlightColor: AppTheme.cardBorder,
+        child: Row(
+          children: List.generate(
+            5,
+            (_) => Container(
+              width: 110,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(14)),
+            ),
+          ),
+        ),
+      );
 }
 
-class _RisingCreatorTile extends StatelessWidget {
+class _RisingTile extends StatelessWidget {
   final RisingCreator creator;
   final bool isLive;
-  const _RisingCreatorTile({
-    required this.creator,
-    this.isLive = false,
-  });
-
-  Color _avatarColor() {
-    const palette = [
-      Color(0xFF6C63FF), Color(0xFF00C896), Color(0xFFFF6B35),
-      Color(0xFFEE1D52), Color(0xFF9146FF), Color(0xFFFFD700),
-      Color(0xFF00BCD4),
-    ];
-    final label = creator.displayLabel;
-    final index = label.codeUnits.fold(0, (sum, c) => sum + c) % palette.length;
-    return palette[index];
-  }
+  const _RisingTile({required this.creator, required this.isLive});
 
   @override
   Widget build(BuildContext context) {
-    final color = _avatarColor();
-    final label = creator.displayLabel;
+    final color = _paletteColor(creator.displayLabel);
     return Container(
       width: 110,
       margin: const EdgeInsets.only(right: 12),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(14),
         border: Border.all(
-          color: isLive
-              ? AppTheme.danger.withValues(alpha: 0.5)
-              : AppTheme.cardBorder,
-        ),
+            color: isLive
+                ? AppTheme.danger.withValues(alpha: 0.5)
+                : AppTheme.cardBorder),
+        borderRadius: BorderRadius.circular(14),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -652,8 +951,7 @@ class _RisingCreatorTile extends StatelessWidget {
             clipBehavior: Clip.none,
             children: [
               Container(
-                width: 44,
-                height: 44,
+                width: 44, height: 44,
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
@@ -661,26 +959,26 @@ class _RisingCreatorTile extends StatelessWidget {
                 ),
                 child: Center(
                   child: Text(
-                    label.isNotEmpty ? label[0].toUpperCase() : '?',
+                    creator.displayLabel.isNotEmpty
+                        ? creator.displayLabel[0].toUpperCase()
+                        : '?',
                     style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
+                        color: color,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700),
                   ),
                 ),
               ),
               if (isLive)
                 Positioned(
-                  right: -2,
-                  top: -2,
+                  right: -2, top: -2,
                   child: Container(
-                    width: 10,
-                    height: 10,
+                    width: 10, height: 10,
                     decoration: BoxDecoration(
                       color: AppTheme.danger,
                       shape: BoxShape.circle,
-                      border: Border.all(color: AppTheme.background, width: 1.5),
+                      border: Border.all(
+                          color: AppTheme.background, width: 1.5),
                     ),
                   ),
                 ),
@@ -688,23 +986,14 @@ class _RisingCreatorTile extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            label,
+            creator.displayLabel,
             style: const TextStyle(
-              color: AppTheme.textPrimary,
-              fontWeight: FontWeight.w600,
-              fontSize: 12,
-            ),
+                color: AppTheme.textPrimary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600),
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 3),
-          Text(
-            '${creator.availableTokens} tokens',
-            style: const TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 10,
-            ),
           ),
         ],
       ),
@@ -712,208 +1001,382 @@ class _RisingCreatorTile extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// WHO'S LIVE — sliver list
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Who's Live section ───────────────────────────────────────────────────────
 
-class _WhoIsLiveSliver extends ConsumerWidget {
-  const _WhoIsLiveSliver();
+class _WhoIsLiveSection extends ConsumerWidget {
+  const _WhoIsLiveSection();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final feedAsync = ref.watch(liveMetricsFeedProvider);
 
-    return feedAsync.when(
-      loading: () => const SliverToBoxAdapter(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: _LiveShimmer(),
-        ),
-      ),
-      error: (_, __) => const SliverToBoxAdapter(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Center(
-            child: Text(
-              'Could not load live creators',
-              style: TextStyle(color: AppTheme.textSecondary),
-            ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.radio, color: AppTheme.danger, size: 18),
+              SizedBox(width: 6),
+              Text("Who's Live",
+                  style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w700)),
+              SizedBox(width: 8),
+              Text('Creators streaming right now',
+                  style: TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 12)),
+            ],
           ),
-        ),
-      ),
-      data: (metrics) {
-        if (metrics.isEmpty) {
-          return const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 0),
-              child: Center(
-                child: Padding(
+          const SizedBox(height: 12),
+          feedAsync.when(
+            loading: () => _shimmerList(),
+            error: (_, __) => const SizedBox.shrink(),
+            data: (metrics) {
+              if (metrics.isEmpty) {
+                return const Padding(
                   padding: EdgeInsets.symmetric(vertical: 24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.live_tv_outlined,
-                          size: 40, color: AppTheme.textSecondary),
-                      SizedBox(height: 12),
-                      Text(
-                        'No creators are live right now',
-                        style: TextStyle(color: AppTheme.textSecondary),
-                      ),
-                    ],
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(Icons.live_tv_outlined,
+                            size: 36, color: AppTheme.textSecondary),
+                        SizedBox(height: 10),
+                        Text('No creators are live right now',
+                            style: TextStyle(color: AppTheme.textSecondary)),
+                      ],
+                    ),
                   ),
-                ),
-              ),
-            ),
-          );
-        }
-        return SliverList(
-          delegate: SliverChildBuilderDelegate(
-            (context, i) => Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: _LiveFeedCard(metric: metrics[i]),
-            ),
-            childCount: metrics.length,
+                );
+              }
+              return Column(
+                children: metrics
+                    .map((m) => _LiveCard(metric: m))
+                    .toList(),
+              );
+            },
           ),
-        );
-      },
+        ],
+      ),
     );
   }
+
+  Widget _shimmerList() => Shimmer.fromColors(
+        baseColor: AppTheme.surface,
+        highlightColor: AppTheme.cardBorder,
+        child: Column(
+          children: List.generate(
+            3,
+            (_) => Container(
+              height: 100,
+              margin: const EdgeInsets.only(bottom: 12),
+              decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(16)),
+            ),
+          ),
+        ),
+      );
 }
 
-class _LiveFeedCard extends StatelessWidget {
+class _LiveCard extends StatelessWidget {
   final PlatformMetric metric;
-  const _LiveFeedCard({required this.metric});
+  const _LiveCard({required this.metric});
 
-  String _formatViewers(int count) {
-    if (count >= 1000000) return '${(count / 1000000).toStringAsFixed(1)}M';
-    if (count >= 1000) return '${(count / 1000).toStringAsFixed(1)}K';
-    return count.toString();
+  String _fmtViewers(int n) {
+    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
+    return '$n';
   }
 
   @override
   Widget build(BuildContext context) {
-    final platformLabel = metric.platform == 'youtube' ? 'YT' : 'Twitch';
-    const platformColors = {
-      'YT': Color(0xFFFF4444),
-      'Twitch': Color(0xFF9146FF),
-    };
-    final platformColor = platformColors[platformLabel] ?? AppTheme.textSecondary;
+    final isYT = metric.platform == 'youtube';
+    final label = isYT ? 'YT' : 'Twitch';
+    final color = isYT ? const Color(0xFFFF4444) : const Color(0xFF9146FF);
 
     return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.cardBorder),
+        borderRadius: BorderRadius.circular(16),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                // Platform chip
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: platformColor.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(6),
-                    border:
-                        Border.all(color: platformColor.withValues(alpha: 0.35)),
-                  ),
-                  child: Text(
-                    platformLabel,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  border: Border.all(color: color.withValues(alpha: 0.35)),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(label,
                     style: TextStyle(
-                      color: platformColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    metric.platformUsername != null
-                        ? '@${metric.platformUsername}'
-                        : 'Unknown',
-                    style: const TextStyle(
+                        color: color,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  metric.platformUsername != null
+                      ? '@${metric.platformUsername}'
+                      : 'Unknown',
+                  style: const TextStyle(
                       color: AppTheme.textPrimary,
-                      fontWeight: FontWeight.w700,
                       fontSize: 15,
-                    ),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                      fontWeight: FontWeight.w700),
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(width: 8),
-                // Heat score
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: AppTheme.primary.withValues(alpha: 0.4)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.local_fire_department,
-                          size: 12, color: AppTheme.primary),
-                      const SizedBox(width: 3),
-                      Text(
-                        metric.displayScore.toStringAsFixed(1),
-                        style: const TextStyle(
-                          color: AppTheme.primary,
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary.withValues(alpha: 0.12),
+                  border: Border.all(color: AppTheme.primary.withValues(alpha: 0.4)),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-              ],
-            ),
-            if (metric.streamTitle != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                metric.streamTitle!,
+                child: Text(
+                  '🔥 ${metric.heatScore.toStringAsFixed(1)}',
+                  style: const TextStyle(
+                      color: AppTheme.primary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+          if (metric.streamTitle != null) ...[
+            const SizedBox(height: 8),
+            Text(metric.streamTitle!,
                 style: const TextStyle(
                     color: AppTheme.textPrimary, fontSize: 14),
                 maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
-            if (metric.streamCategory != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                metric.streamCategory!,
+                overflow: TextOverflow.ellipsis),
+          ],
+          if (metric.streamCategory != null) ...[
+            const SizedBox(height: 4),
+            Text(metric.streamCategory!,
                 style: const TextStyle(
-                    color: AppTheme.textSecondary, fontSize: 12),
-              ),
-            ],
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(Icons.remove_red_eye_outlined,
-                    size: 14, color: AppTheme.danger),
-                const SizedBox(width: 4),
-                Text(
-                  _formatViewers(metric.liveViewerCount),
+                    color: AppTheme.textSecondary, fontSize: 12)),
+          ],
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              const Icon(Icons.remove_red_eye_outlined,
+                  size: 14, color: AppTheme.danger),
+              const SizedBox(width: 4),
+              Text(_fmtViewers(metric.liveViewerCount),
                   style: const TextStyle(
-                    color: AppTheme.danger,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                      color: AppTheme.danger,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600)),
+              const SizedBox(width: 4),
+              const Text('watching',
+                  style: TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 12)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Side drawer ──────────────────────────────────────────────────────────────
+
+class _SideDrawer extends ConsumerWidget {
+  const _SideDrawer();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    final username = user?.email?.split('@')[0] ?? 'Guest';
+
+    return Drawer(
+      backgroundColor: const Color(0xFF12122A),
+      child: SafeArea(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+              decoration: const BoxDecoration(
+                border: Border(bottom: BorderSide(color: AppTheme.cardBorder)),
+              ),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('N.O.R.A. Platforms',
+                            style: TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800)),
+                        Text('Phase 1',
+                            style: TextStyle(
+                                color: AppTheme.primary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600)),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 4),
-                const Text(
-                  'watching',
-                  style:
-                      TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                ),
-              ],
+                  IconButton(
+                    icon: const Icon(Icons.close,
+                        color: AppTheme.textSecondary, size: 18),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            // User area
+            Container(
+              margin: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.primary.withValues(alpha: 0.08),
+                border: Border.all(
+                    color: AppTheme.primary.withValues(alpha: 0.2)),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40, height: 40,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primary.withValues(alpha: 0.15),
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                          color: AppTheme.primary.withValues(alpha: 0.4)),
+                    ),
+                    child: Center(
+                      child: Text(
+                        user != null ? username[0].toUpperCase() : '?',
+                        style: const TextStyle(
+                            color: AppTheme.primary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(username,
+                            style: const TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600)),
+                        const Text('Tap to view profile',
+                            style: TextStyle(
+                                color: AppTheme.textSecondary, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Nav items
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                children: [
+                  _DrawerItem(
+                    icon: Icons.bar_chart_outlined,
+                    label: 'Dashboard',
+                    badge: 'MM Only',
+                    onTap: () {
+                      Navigator.pop(context);
+                      GoRouter.of(context).go('/dashboard');
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.person_outline,
+                    label: 'Profile',
+                    onTap: () {
+                      Navigator.pop(context);
+                      GoRouter.of(context).go('/profile');
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.receipt_long_outlined,
+                    label: 'My Bets',
+                    onTap: () {
+                      Navigator.pop(context);
+                      GoRouter.of(context).go('/markets/mybets');
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.account_balance_wallet_outlined,
+                    label: 'Wallet',
+                    onTap: () {
+                      Navigator.pop(context);
+                      GoRouter.of(context).go('/wallet');
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.local_fire_department_outlined,
+                    label: 'Hot Topic',
+                    onTap: () {
+                      Navigator.pop(context);
+                      GoRouter.of(context).go('/explore');
+                    },
+                  ),
+                  _DrawerItem(
+                    icon: Icons.emoji_events_outlined,
+                    label: 'Challenges',
+                    onTap: () {
+                      Navigator.pop(context);
+                      GoRouter.of(context).go('/challenges');
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const Divider(color: AppTheme.cardBorder),
+            _DrawerItem(
+              icon: Icons.search,
+              label: 'Search',
+              onTap: () {
+                Navigator.pop(context);
+                GoRouter.of(context).go('/search');
+              },
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('v1.0.0 — Phase 1',
+                      style: TextStyle(
+                          color: AppTheme.textSecondary, fontSize: 11)),
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.pop(context);
+                      GoRouter.of(context).go('/privacy');
+                    },
+                    child: const Text('Privacy',
+                        style: TextStyle(
+                            color: AppTheme.textSecondary,
+                            fontSize: 11,
+                            decoration: TextDecoration.underline,
+                            decorationColor: AppTheme.textSecondary)),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
@@ -922,216 +1385,66 @@ class _LiveFeedCard extends StatelessWidget {
   }
 }
 
-class _LiveShimmer extends StatelessWidget {
-  const _LiveShimmer();
+class _DrawerItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String? badge;
+  final VoidCallback onTap;
+  const _DrawerItem({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.badge,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Shimmer.fromColors(
-      baseColor: AppTheme.surface,
-      highlightColor: AppTheme.cardBorder,
-      child: Column(
-        children: List.generate(
-          3,
-          (_) => Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            height: 100,
-            decoration: BoxDecoration(
-              color: AppTheme.surface,
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SECTION LABEL (for mid-screen sections with no subtitle)
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _HomeSectionLabel extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  const _HomeSectionLabel({required this.title, required this.subtitle});
-
-  @override
-  Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: AppTheme.textPrimary,
-              fontSize: 17,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            subtitle,
-            style: const TextStyle(
-              color: AppTheme.textSecondary,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SHARED WIDGETS
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _CarouselShimmer extends StatelessWidget {
-  const _CarouselShimmer();
-
-  @override
-  Widget build(BuildContext context) {
-    return Shimmer.fromColors(
-      baseColor: AppTheme.surface,
-      highlightColor: AppTheme.cardBorder,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: 5,
-        itemBuilder: (_, __) => Container(
-          width: 110,
-          margin: const EdgeInsets.only(right: 12),
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(14),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CarouselError extends StatelessWidget {
-  const _CarouselError();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Center(
-      child: Text(
-        'Could not load creators',
-        style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  const _SectionHeader({required this.title, required this.subtitle});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 17,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          subtitle,
-          style: const TextStyle(
-            color: AppTheme.textSecondary,
-            fontSize: 12,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _TierBadge extends StatelessWidget {
-  final String tier;
-  const _TierBadge({required this.tier});
-
-  ({String emoji, String label, Color color}) get _info => switch (tier) {
-        'on_fire' => (
-            emoji: '🔥',
-            label: 'On Fire',
-            color: const Color(0xFFFF6B35),
-          ),
-        'rising' => (
-            emoji: '⚡',
-            label: 'Rising',
-            color: const Color(0xFFFFD700),
-          ),
-        'watched' => (
-            emoji: '👀',
-            label: 'Watched',
-            color: AppTheme.primary,
-          ),
-        _ => (
-            emoji: '',
-            label: 'Listed',
-            color: AppTheme.textSecondary,
-          ),
-      };
-
-  @override
-  Widget build(BuildContext context) {
-    final info = _info;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: info.color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(6),
-        border: Border.all(color: info.color.withValues(alpha: 0.35)),
-      ),
-      child: Text(
-        '${info.emoji} ${info.label}'.trim(),
-        style: TextStyle(
-          color: info.color,
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-    );
-  }
-}
-
-class _InlineShimmer extends StatelessWidget {
-  final double width;
-  final double height;
-  const _InlineShimmer({required this.width, required this.height});
-
-  @override
-  Widget build(BuildContext context) {
-    return Shimmer.fromColors(
-      baseColor: Colors.white.withValues(alpha: 0.15),
-      highlightColor: Colors.white.withValues(alpha: 0.35),
-      child: Container(
-        width: width,
-        height: height,
+    return ListTile(
+      leading: Container(
+        width: 34, height: 34,
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(4),
+          color: AppTheme.cardBorder,
+          borderRadius: BorderRadius.circular(8),
         ),
+        child: Icon(icon, color: AppTheme.textSecondary, size: 17),
       ),
+      title: Row(
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500)),
+          if (badge != null) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+              decoration: BoxDecoration(
+                color: AppTheme.secondary.withValues(alpha: 0.12),
+                border: Border.all(color: AppTheme.secondary.withValues(alpha: 0.4)),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(badge!,
+                  style: const TextStyle(
+                      color: AppTheme.secondary,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ],
+      ),
+      onTap: onTap,
+      dense: true,
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// NOTIFICATION SHEET
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Notification sheet ───────────────────────────────────────────────────────
 
 class _NotificationSheet extends ConsumerWidget {
   const _NotificationSheet();
 
-  IconData _iconForType(String type) => switch (type) {
+  IconData _icon(String type) => switch (type) {
         'market_opened' => Icons.bar_chart_outlined,
         'bet_won' => Icons.emoji_events_outlined,
         'bet_lost' => Icons.sentiment_dissatisfied_outlined,
@@ -1141,7 +1454,7 @@ class _NotificationSheet extends ConsumerWidget {
         _ => Icons.notifications_outlined,
       };
 
-  Color _colorForType(String type) => switch (type) {
+  Color _color(String type) => switch (type) {
         'bet_won' || 'token_earned' || 'referral_bonus' => AppTheme.success,
         'bet_lost' => AppTheme.danger,
         'market_closing_soon' => const Color(0xFFFFD700),
@@ -1151,223 +1464,244 @@ class _NotificationSheet extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final notificationsAsync = ref.watch(notificationsProvider);
-
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
       minChildSize: 0.4,
       maxChildSize: 0.92,
-      builder: (context, scrollController) {
-        return Container(
-          decoration: const BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
-                child: Column(
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: 16),
-                        decoration: BoxDecoration(
-                          color: AppTheme.cardBorder,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
+      builder: (context, sc) => Container(
+        decoration: const BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+              child: Column(
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40, height: 4,
+                      margin: const EdgeInsets.only(bottom: 16),
+                      decoration: BoxDecoration(
+                        color: AppTheme.cardBorder,
+                        borderRadius: BorderRadius.circular(2),
                       ),
                     ),
-                    const Text(
-                      'Notifications',
-                      style: TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: 17,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Divider(color: AppTheme.cardBorder, height: 1),
-              Expanded(
-                child: notificationsAsync.when(
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
-                  error: (_, __) => const Center(
-                    child: Text('Could not load notifications',
-                        style: TextStyle(color: AppTheme.textSecondary)),
                   ),
-                  data: (notifications) {
-                    if (notifications.isEmpty) {
-                      return const Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.notifications_off_outlined,
-                                size: 48, color: AppTheme.textSecondary),
-                            SizedBox(height: 16),
-                            Text(
-                              'No notifications yet',
+                  const Text('Notifications',
+                      style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 17,
+                          fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+            const Divider(color: AppTheme.cardBorder, height: 1),
+            Expanded(
+              child: notificationsAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (_, __) => const Center(
+                  child: Text('Could not load notifications',
+                      style: TextStyle(color: AppTheme.textSecondary)),
+                ),
+                data: (notifications) {
+                  if (notifications.isEmpty) {
+                    return const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.notifications_off_outlined,
+                              size: 48, color: AppTheme.textSecondary),
+                          SizedBox(height: 16),
+                          Text('No notifications yet',
                               style: TextStyle(
-                                color: AppTheme.textSecondary,
-                                fontSize: 15,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-                    return ListView.separated(
-                      controller: scrollController,
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      itemCount: notifications.length,
-                      separatorBuilder: (_, __) =>
-                          const Divider(color: AppTheme.cardBorder, height: 1),
-                      itemBuilder: (context, i) {
-                        final n = notifications[i];
-                        final color = _colorForType(n.type);
-                        return InkWell(
-                          onTap: n.isRead
-                              ? null
-                              : () async {
-                                  await ref
-                                      .read(notificationActionsProvider)
-                                      .markRead(n.id);
-                                  ref.invalidate(notificationsProvider);
-                                },
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 20, vertical: 14),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Container(
-                                  width: 36,
-                                  height: 36,
-                                  decoration: BoxDecoration(
-                                    color: color.withValues(alpha: 0.12),
-                                    shape: BoxShape.circle,
-                                  ),
-                                  child: Icon(_iconForType(n.type),
-                                      color: color, size: 18),
+                                  color: AppTheme.textSecondary, fontSize: 15)),
+                        ],
+                      ),
+                    );
+                  }
+                  return ListView.separated(
+                    controller: sc,
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    itemCount: notifications.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(color: AppTheme.cardBorder, height: 1),
+                    itemBuilder: (context, i) {
+                      final n = notifications[i];
+                      final color = _color(n.type);
+                      return InkWell(
+                        onTap: n.isRead
+                            ? null
+                            : () async {
+                                await ref
+                                    .read(notificationActionsProvider)
+                                    .markRead(n.id);
+                                ref.invalidate(notificationsProvider);
+                              },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 14),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                width: 36, height: 36,
+                                decoration: BoxDecoration(
+                                  color: color.withValues(alpha: 0.12),
+                                  shape: BoxShape.circle,
                                 ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              n.title,
+                                child: Icon(_icon(n.type),
+                                    color: color, size: 18),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(n.title,
                                               style: TextStyle(
-                                                color: AppTheme.textPrimary,
-                                                fontSize: 14,
-                                                fontWeight: n.isRead
-                                                    ? FontWeight.normal
-                                                    : FontWeight.w600,
-                                              ),
+                                                  color: AppTheme.textPrimary,
+                                                  fontSize: 14,
+                                                  fontWeight: n.isRead
+                                                      ? FontWeight.normal
+                                                      : FontWeight.w600)),
+                                        ),
+                                        if (!n.isRead)
+                                          Container(
+                                            width: 8, height: 8,
+                                            margin: const EdgeInsets.only(left: 8),
+                                            decoration: const BoxDecoration(
+                                              color: AppTheme.primary,
+                                              shape: BoxShape.circle,
                                             ),
                                           ),
-                                          if (!n.isRead)
-                                            Container(
-                                              width: 8,
-                                              height: 8,
-                                              margin: const EdgeInsets.only(
-                                                  left: 8),
-                                              decoration: const BoxDecoration(
-                                                color: AppTheme.primary,
-                                                shape: BoxShape.circle,
-                                              ),
-                                            ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        n.body,
+                                      ],
+                                    ),
+                                    const SizedBox(height: 3),
+                                    Text(n.body,
                                         style: const TextStyle(
-                                          color: AppTheme.textSecondary,
-                                          fontSize: 13,
-                                          height: 1.4,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 5),
-                                      Text(
-                                        timeago.format(n.createdAt),
+                                            color: AppTheme.textSecondary,
+                                            fontSize: 13,
+                                            height: 1.4)),
+                                    const SizedBox(height: 5),
+                                    Text(timeago.format(n.createdAt),
                                         style: const TextStyle(
-                                          color: AppTheme.textSecondary,
-                                          fontSize: 11,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
+                                            color: AppTheme.textSecondary,
+                                            fontSize: 11)),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
-                        );
-                      },
-                    );
-                  },
-                ),
+                        ),
+                      );
+                    },
+                  );
+                },
               ),
-            ],
-          ),
-        );
-      },
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// FOOTER LINKS
-// ─────────────────────────────────────────────────────────────────────────────
+// ─── Divider / Footer ─────────────────────────────────────────────────────────
+
+class _Divider extends StatelessWidget {
+  const _Divider();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        height: 1,
+        margin: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+        color: AppTheme.cardBorder,
+      );
+}
 
 class _FooterLinks extends StatelessWidget {
   const _FooterLinks();
 
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          GestureDetector(
-            onTap: () => openUrlInBrowser('https://noraplatforms.com/privacy'),
-            child: const Text(
-              'Privacy Policy',
-              style: TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 12,
-                decoration: TextDecoration.underline,
-                decorationColor: AppTheme.textSecondary,
-              ),
+  Widget build(BuildContext context) => Padding(
+        padding: const EdgeInsets.only(bottom: 24),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            GestureDetector(
+              onTap: () => openUrlInBrowser('https://noraplatforms.com/privacy'),
+              child: const Text('Privacy Policy',
+                  style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 12,
+                      decoration: TextDecoration.underline,
+                      decorationColor: AppTheme.textSecondary)),
             ),
-          ),
-          const Text(
-            '  ·  ',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-          ),
-          GestureDetector(
-            onTap: () => openUrlInBrowser('https://noraplatforms.com/terms'),
-            child: const Text(
-              'Terms of Service',
-              style: TextStyle(
-                color: AppTheme.textSecondary,
-                fontSize: 12,
-                decoration: TextDecoration.underline,
-                decorationColor: AppTheme.textSecondary,
-              ),
+            const Text('  ·  ',
+                style: TextStyle(
+                    color: AppTheme.textSecondary, fontSize: 12)),
+            GestureDetector(
+              onTap: () => openUrlInBrowser('https://noraplatforms.com/terms'),
+              child: const Text('Terms of Service',
+                  style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 12,
+                      decoration: TextDecoration.underline,
+                      decorationColor: AppTheme.textSecondary)),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+      );
 }
+
+// ─── Shimmer placeholders ─────────────────────────────────────────────────────
+
+class _SpotlightShimmerWide extends StatelessWidget {
+  const _SpotlightShimmerWide();
+
+  @override
+  Widget build(BuildContext context) => Shimmer.fromColors(
+        baseColor: AppTheme.surface,
+        highlightColor: AppTheme.cardBorder,
+        child: Container(
+          height: 340,
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+      );
+}
+
+class _SpotlightShimmerNarrow extends StatelessWidget {
+  const _SpotlightShimmerNarrow();
+
+  @override
+  Widget build(BuildContext context) => Shimmer.fromColors(
+        baseColor: AppTheme.surface,
+        highlightColor: AppTheme.cardBorder,
+        child: Container(
+          height: 240,
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(18),
+          ),
+        ),
+      );
+}
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+String _ordinal(int index) => switch (index) {
+      0 => '1st',
+      1 => '2nd',
+      2 => '3rd',
+      3 => '4th',
+      _ => '${index + 1}th',
+    };

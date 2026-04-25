@@ -1,7 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:web/web.dart' as web;
 import '../../features/auth/screens/forgot_password_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/pending_approval_screen.dart';
@@ -21,6 +19,7 @@ import '../../features/explore/screens/celebrity_heat_screen.dart';
 import '../../features/legal/screens/privacy_policy_screen.dart';
 import '../../features/legal/screens/terms_of_service_screen.dart';
 import '../../features/profile/screens/score_dashboard_screen.dart';
+import '../../features/home/screens/home_screen.dart';
 import '../shell/main_shell.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -150,19 +149,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
 
-      // ── /home — exits Flutter and loads the React home app ───────────────────
-      // Reached via GoRouter (post-login redirect, bottom nav Home tab).
-      // web.window.location.replace triggers a full browser navigation so Vercel
-      // serves /home/index.html (React app) rather than Flutter's index.html.
-      GoRoute(
-        path: '/home',
-        builder: (context, state) => const _HomeRedirectScreen(),
-      ),
-
       // ── Authenticated shell routes ─────────────────────────────────────────
       ShellRoute(
         builder: (context, state, child) => MainShell(child: child),
         routes: [
+          GoRoute(
+            path: '/home',
+            builder: (context, state) => const HomeScreen(),
+          ),
           GoRoute(
             path: '/search',
             builder: (context, state) => const SearchScreen(),
@@ -200,30 +194,3 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 });
 
-// Bridges GoRouter's /home navigation to the React home app.
-// Shows a brief spinner while the browser performs the full-page reload.
-class _HomeRedirectScreen extends StatefulWidget {
-  const _HomeRedirectScreen();
-  @override
-  State<_HomeRedirectScreen> createState() => _HomeRedirectScreenState();
-}
-
-class _HomeRedirectScreenState extends State<_HomeRedirectScreen> {
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      web.window.location.replace('/home');
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-      backgroundColor: Color(0xFF0A0A0F),
-      body: Center(
-        child: CircularProgressIndicator(color: Color(0xFF6C63FF)),
-      ),
-    );
-  }
-}
