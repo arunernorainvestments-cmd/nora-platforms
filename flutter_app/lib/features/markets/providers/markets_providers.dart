@@ -164,7 +164,8 @@ final marketMakersProvider =
       .from('profiles')
       .select('id, username, category_1, subcategory')
       .eq('is_market_maker', true)
-      .eq('pending_opt_out', false);
+      .eq('pending_opt_out', false)
+      .eq('is_test_account', false);
 
   final makers = (data as List)
       .map((e) => MarketMakerProfile.fromJson(e as Map<String, dynamic>))

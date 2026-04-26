@@ -601,6 +601,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const db = createClient(supabaseUrl, serviceRoleKey);
 
   try {
+    // ── Skip test accounts — challenges do not fire for synthetic creators ────
+    const includeTestAccounts = Deno.env.get('INCLUDE_TEST_ACCOUNTS') === 'true';
+    if (!includeTestAccounts) {
+      const { data: profileCheck } = await db
+        .from('profiles')
+        .select('is_test_account')
+        .eq('id', userId)
+        .maybeSingle();
+      if (profileCheck?.is_test_account) {
+        return okResp({ challenges_completed: [], badges_awarded: [], tokens_awarded: 0 });
+      }
+    }
+
     // ── Check MM eligibility ──────────────────────────────────────────────────
     const { data: metricsRow } = await db
       .from('platform_metrics')

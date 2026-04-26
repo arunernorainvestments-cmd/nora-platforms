@@ -170,6 +170,7 @@ final risingCreatorsProvider = FutureProvider<List<RisingCreator>>((ref) async {
           'spotlight_scores(score, tier), token_balances(available_tokens), '
           'platform_metrics(heat_score, display_score)')
       .eq('is_creator', true)
+      .eq('is_test_account', false)
       .order('created_at', ascending: false);
 
   final creators = (data as List)

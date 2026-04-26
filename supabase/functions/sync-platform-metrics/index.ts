@@ -84,12 +84,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // exhaustion. NULL last_synced_at (new connections) always pass through.
   const cooldownCutoff = new Date(Date.now() - 4 * 60 * 1000).toISOString();
 
+  // Exclude synthetic test-account connections — they have no real OAuth tokens.
+  // INCLUDE_TEST_ACCOUNTS is never true in production.
+  const includeTestAccounts = Deno.env.get('INCLUDE_TEST_ACCOUNTS') === 'true';
+
   let query = supabase
     .from('platform_connections')
     .select('id, user_id, platform, platform_user_id, platform_username, access_token, refresh_token, token_expires_at')
     .eq('is_active', true)
     .in('platform', ['youtube', 'twitch', 'x', 'spotify'])
     .or(`last_synced_at.is.null,last_synced_at.lt.${cooldownCutoff}`);
+
+  if (!includeTestAccounts) {
+    query = query.eq('is_test_account', false);
+  }
 
   if (targetUserId) {
     query = query.eq('user_id', targetUserId);

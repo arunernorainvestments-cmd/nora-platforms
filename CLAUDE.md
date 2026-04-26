@@ -557,13 +557,20 @@ matches across 3 rounds. Outcomes determined by token flow, Heat Score influence
 power-up interactions, and archetype modifiers. Uses velocity / relative movement — NOT raw
 display_score (prevents large creators auto-winning).
 
-**Match structure:**
-- Round 1 — Discovery: 7 AM–7 PM, 1h matches, same category, 1 pt/win
-- Round 2 — Chaos: 7 PM–7 AM, 30min matches, cross-category, 2 pts/win
-- Round 3 — Champions: Friday 7 PM → Sunday midnight, 5min matches, weekly top performers,
-  5 pts/win; winners occupy Spotlight next week
+**Match length: 5 minutes, uniform across all rounds.**
+Rationale: shorter matches → more matchups per week → users can participate during a work
+break or downtime. This is a deliberate design choice for participation density.
 
-ArenaScore = BaseFlow + HeatInfluence + AbilityImpact + MomentumSpike − SuppressionEffects
+**Round structure and scheduling windows:**
+Each window contains many more matches now that match duration is 5 minutes (not 1h or 30min).
+
+- Round 1 — Discovery: 7 AM–7 PM daily. Same-category matchups. 1 pt/win.
+- Round 2 — Chaos: 7 PM–7 AM daily. Cross-category matchups. 2 pts/win.
+- Round 3 — Champions: Friday 7 PM → Sunday midnight. Weekly top performers only. 5 pts/win.
+  Winners occupy Spotlight the following week.
+
+**ArenaScore formula:**
+`ArenaScore = BaseFlow + HeatInfluence + AbilityImpact + MomentumSpike + MomentumCarry − SuppressionEffects`
 
 3 player actions: Back (allocate), Trigger (power-up), Shift (move tokens mid-match with penalty).
 
@@ -576,6 +583,33 @@ Stacking rule: EffectiveMultiplier = Base × (1 + log(1 + n)) — prevents expon
 **10 Archetypes** (one per primary category): each has 1 Passive, 2 Core abilities (30–60s cooldown),
 1 Signature (2–4min), 1 Ultimate (1/match). Abilities modify only multipliers/windows, never raw scores.
 Subcategories add light ±5–10% modifiers to one stat.
+
+**Spotlight Heat Reset & Momentum Carry (new rule — not yet implemented):**
+
+If a creator wins Spotlight in week N, their heat_score resets to 0 at the start of week N+1.
+This forces rotation and keeps the Spotlight fresh week over week.
+
+Non-Spotlight match winners carry forward a momentum advantage into the next week. This advantage
+is a SEPARATE signal from heat_score — heat_score is never modified directly except by
+promotions/power-ups (existing rule unchanged). The MomentumCarry term in ArenaScore is the
+vehicle for this advantage.
+
+Open design questions — resolve before Arena Phase A:
+
+1. **Carry mechanism options:**
+   - `momentum_score` column on platform_metrics (or sibling `creator_momentum` table) that
+     decays week-over-week and adds to ArenaScore as a separate term.
+   - Seeded matchmaking advantage (winners get higher seeds or first-round byes the following week).
+   - Token-economy carry (winners enter next week with bonus token_earn_rate or promotion_discount,
+     treated as a passive effect).
+
+2. **Decay curve:** linear over 1 week? Exponential?
+
+3. **Cap:** how much momentum can a creator stack before it plateaus?
+
+4. **Interaction with Spotlight reset:** working assumption is that Spotlight winners reset
+   BOTH heat_score AND momentum_score to 0. The Spotlight reward is public visibility + 5 pts,
+   not a compounding advantage — this preserves rotation. Flag for review before Phase A.
 
 **New tables needed:** arena_matches, arena_events, arena_state.
 **Build order:** Phase A (DB + cron engine) → Phase B (Flutter UI) → Phase C (Spotlight wiring).
@@ -634,6 +668,105 @@ All plain — no code generation.
 
 ---
 
+## Test Account System
+
+Test accounts are synthetic Market Makers used to seed dev data and validate Arena, markets,
+and other features without polluting real user queries. They are identified by
+`profiles.is_test_account = true` and filtered from all public-facing surfaces.
+
+### Column additions (migration 025)
+- `profiles.is_test_account` — boolean NOT NULL DEFAULT false. Index on (is_test_account).
+  Protected by trigger: only service_role can set this to true.
+- `platform_connections.is_test_account` — mirrors the flag; sync-platform-metrics skips
+  any connection where this is true.
+
+### Production filter rule
+**Default: test accounts are EXCLUDED from all user-facing queries.**
+Edge functions check `Deno.env.get('INCLUDE_TEST_ACCOUNTS') === 'true'` to opt in.
+This env var MUST NOT be set in production Supabase secrets. Flutter providers always filter
+`is_test_account = false` unconditionally.
+
+Surfaces that filter test accounts:
+- `marketMakersProvider` (Flutter) — `.eq('is_test_account', false)` on profiles query
+- `risingCreatorsProvider` (Flutter) — `.eq('is_test_account', false)` on profiles query
+- `compute-spotlight` edge function — `.eq('is_test_account', false)` on profiles query
+- `sync-platform-metrics` edge function — `.eq('is_test_account', false)` on connections query
+- `evaluate-challenges` edge function — early exit if user is a test account
+- `evaluate_main_character_badge()` DB function — excludes test accounts from #1 heat scan
+
+Surfaces that do NOT filter (by design):
+- `/u/:username` public profile — renders normally so we can QA the page
+- `resolve-markets` — test markets resolve normally; transactions are wiped in teardown
+- `marketDetailProvider` — individual market detail is fine to show
+
+### Seeded test accounts (migration 026, applied)
+20 creators, 2 per primary category, UUIDs `10000000-0000-0000-0000-000000000001` through `…000020`.
+All have `is_market_maker=true`, `pending_opt_out=false`, `is_approved=true`, `is_test_account=true`.
+Emails: `test+<username>@noraplatforms.com`. Token balance: 1000 tokens each.
+Platform connections: one synthetic 'youtube' connection per account, marked `is_test_account=true`,
+never synced. Platform metrics: seeded manually with varied heat_score (5–95) and display_score.
+
+| UUID suffix | Username | Category | Subcategory |
+|---|---|---|---|
+| 001 | test_athlete_basketball_1 | Athlete | Basketball |
+| 002 | test_athlete_football_1 | Athlete | Football |
+| 003 | test_musician_dj_1 | Musician | DJ |
+| 004 | test_musician_singer_1 | Musician | Singer |
+| 005 | test_healthcare_doctor_1 | Healthcare | Doctor General |
+| 006 | test_healthcare_nurse_1 | Healthcare | Nurse |
+| 007 | test_performer_comedian_1 | Performer | Comedian |
+| 008 | test_performer_dancer_1 | Performer | Dancer |
+| 009 | test_gamer_streamer_1 | Gamer | Streamer |
+| 010 | test_gamer_competitive_1 | Gamer | Competitive |
+| 011 | test_influencer_fitness_1 | Influencer | Fitness |
+| 012 | test_influencer_travel_1 | Influencer | Travel |
+| 013 | test_educator_teacher_1 | Educator | Teacher |
+| 014 | test_educator_author_1 | Educator | Author |
+| 015 | test_politician_congress_1 | Politician | Congress |
+| 016 | test_politician_governor_1 | Politician | Governor |
+| 017 | test_religion_pastor_1 | Religion | Pastor |
+| 018 | test_religion_rabbi_1 | Religion | Rabbi |
+| 019 | test_business_startup_1 | Business | Startup |
+| 020 | test_business_nonprofit_1 | Business | Non Profit |
+
+### Teardown (migration 027, committed but NOT applied)
+`027_teardown_test_accounts.sql` deletes all test account rows in FK order, wrapped in a
+transaction, idempotent. Run manually as part of the pre-launch reset.
+
+Do NOT:
+- Sign in as test accounts via the UI
+- Give test accounts a real Stripe customer ID
+- Give test accounts real OAuth tokens
+- Set `INCLUDE_TEST_ACCOUNTS=true` in production
+
+---
+
+## Pre-Launch Full Reset (run manually before July 4, 2026)
+
+Run each step manually and confirm before moving to the next. Gate each one.
+
+1. **Run `027_teardown_test_accounts.sql`** — removes all test accounts and their FK chain.
+2. **Truncate Arena tables** (when they exist): `arena_matches`, `arena_events`, `arena_state`.
+   Wipes all match history from beta testing.
+3. **Reset real user tokens:**
+   - Zero out `token_balances` (set `available_tokens = 0, lifetime_earned = 0`).
+   - Truncate `token_transactions`.
+   - Truncate `token_purchases`.
+   - Assumption: pre-launch users are beta testers. Confirm this before running.
+4. **Clear challenge and badge state:** truncate `user_badges`, `user_challenge_progress`, `user_streaks`.
+   Badge and challenge progress starts fresh at launch.
+5. **Clear market history:** truncate `bets`, `markets`, `score_history`.
+6. **Clear promotion state:** truncate `active_boosts`, `promotion_banners`.
+7. **Keep** `profiles` and `platform_connections` — real users keep their accounts and
+   platform connections through launch.
+8. **Keep** `waitlist` — untouched.
+9. **Do NOT re-run** OG/Early Adopter badge cutoff migration — already set in DB to
+   `2026-07-04T04:00:00Z`. Do not run again.
+10. **Re-grant signup bonuses** after reset: run `increment_token_balance(user_id, 100)` for
+    every real user so they start launch day with their 100 token welcome bonus.
+
+---
+
 ## Hard Implementation Rules
 
 1. Plain Riverpod only — no code generation, no @riverpod, no build_runner.
@@ -650,3 +783,4 @@ All plain — no code generation.
 12. `accepts_new_markets` column does not exist — use `is_market_maker=true AND pending_opt_out=false`.
 13. `power_up_cooldowns` table does not exist — cooldowns enforced via active_boosts queries.
 14. `spotlight_pinned_until` column does not exist on platform_metrics — spotlight pinning uses active_boosts (spotlight_entry type).
+15. Test accounts (`is_test_account=true`) must be filtered from all ranking/discovery queries. Flutter providers always add `.eq('is_test_account', false)`. Edge functions check `INCLUDE_TEST_ACCOUNTS` env var (default: filter ON). Never set `INCLUDE_TEST_ACCOUNTS=true` in production.

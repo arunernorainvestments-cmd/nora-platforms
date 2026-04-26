@@ -41,10 +41,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
     const cutoff24h = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString();
 
     // ── 1. Fetch all platform creators ───────────────────────────────────────
-    const { data: creators, error: creatorsErr } = await supabase
+    // Exclude test accounts unless explicitly opted in (never true in production).
+    const includeTestAccounts = Deno.env.get('INCLUDE_TEST_ACCOUNTS') === 'true';
+
+    const creatorsQuery = supabase
       .from('profiles')
       .select('id')
       .eq('is_creator', true);
+
+    const { data: creators, error: creatorsErr } = includeTestAccounts
+      ? await creatorsQuery
+      : await creatorsQuery.eq('is_test_account', false);
 
     if (creatorsErr) throw new Error(`Fetching creators: ${creatorsErr.message}`);
     if (!creators || creators.length === 0) {
