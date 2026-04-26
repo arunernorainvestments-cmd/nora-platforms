@@ -6,7 +6,7 @@ final searchProfilesProvider = FutureProvider.autoDispose
     .family<List<ProfileSearchResult>, String>((ref, query) async {
   final data = await Supabase.instance.client
       .from('profiles')
-      .select('username, category_1, category_2')
+      .select('username, category_1, subcategory')
       .ilike('username', '%$query%')
       .limit(10);
   return (data as List)

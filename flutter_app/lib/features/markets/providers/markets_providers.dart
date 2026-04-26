@@ -118,6 +118,73 @@ class MyBet {
 // PROVIDERS
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// MARKET MAKER PROFILES (for the circular-card markets screen)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class MarketMakerProfile {
+  final String id;
+  final String username;
+  final String? category1;
+  final String? subcategory;
+  final bool isLive;
+
+  const MarketMakerProfile({
+    required this.id,
+    required this.username,
+    this.category1,
+    this.subcategory,
+    this.isLive = false,
+  });
+
+  MarketMakerProfile copyWith({bool? isLive}) => MarketMakerProfile(
+        id: id,
+        username: username,
+        category1: category1,
+        subcategory: subcategory,
+        isLive: isLive ?? this.isLive,
+      );
+
+  factory MarketMakerProfile.fromJson(Map<String, dynamic> json) =>
+      MarketMakerProfile(
+        id: json['id'] as String,
+        username: json['username'] as String? ?? '',
+        category1: json['category_1'] as String?,
+        subcategory: json['subcategory'] as String?,
+      );
+}
+
+/// All Market Makers who accept new markets (is_market_maker=true, pending_opt_out=false),
+/// annotated with live status from platform_metrics.
+final marketMakersProvider =
+    FutureProvider.autoDispose<List<MarketMakerProfile>>((ref) async {
+  final client = Supabase.instance.client;
+
+  final data = await client
+      .from('profiles')
+      .select('id, username, category_1, subcategory')
+      .eq('is_market_maker', true)
+      .eq('pending_opt_out', false);
+
+  final makers = (data as List)
+      .map((e) => MarketMakerProfile.fromJson(e as Map<String, dynamic>))
+      .toList();
+
+  if (makers.isEmpty) return makers;
+
+  final liveRes = await client
+      .from('platform_metrics')
+      .select('user_id')
+      .eq('is_live', true);
+
+  final liveIds =
+      (liveRes as List).map((e) => e['user_id'] as String).toSet();
+
+  return makers
+      .map((m) => m.copyWith(isLive: liveIds.contains(m.id)))
+      .toList();
+});
+
 final openMarketsProvider =
     FutureProvider.autoDispose<List<MarketListing>>((ref) async {
   final data = await Supabase.instance.client

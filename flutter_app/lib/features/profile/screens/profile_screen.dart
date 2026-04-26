@@ -9,6 +9,7 @@ import '../../auth/providers/auth_provider.dart';
 import '../../challenges/widgets/badges_shelf.dart';
 import '../../promotions/widgets/promotions_sheet.dart';
 import '../models/platform_connection.dart';
+import '../../../core/constants/creator_categories.dart';
 import '../../../core/widgets/settings_menu_button.dart';
 import '../providers/platform_connection_providers.dart';
 import '../providers/profile_providers.dart';
@@ -26,10 +27,11 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   final _bioController = TextEditingController();
   bool _editInitialized = false;
   bool _categoriesInitialized = false;
-  List<String> _selectedCategories = [];
   bool _isSaving = false;
   bool _isTogglingMarketMaker = false;
   String? _shownConnectedPlatform;
+  String? _selectedCategory;
+  String? _selectedSubcategory;
 
   static const _platformLabels = {
     'youtube': 'YouTube',
@@ -87,21 +89,9 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
   void _maybeInitCategories(UserProfile profile) {
     if (_categoriesInitialized) return;
-    _selectedCategories = [
-      if (profile.category1 != null) profile.category1!,
-      if (profile.category2 != null) profile.category2!,
-    ];
+    _selectedCategory = profile.category1;
+    _selectedSubcategory = profile.subcategory;
     _categoriesInitialized = true;
-  }
-
-  void _toggleCategory(String cat) {
-    setState(() {
-      if (_selectedCategories.contains(cat)) {
-        _selectedCategories = _selectedCategories.where((c) => c != cat).toList();
-      } else if (_selectedCategories.length < 2) {
-        _selectedCategories = [..._selectedCategories, cat];
-      }
-    });
   }
 
   void _openMarketMakerSheet(BuildContext context, {bool skipToTerms = false}) {
@@ -170,10 +160,7 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           displayName: _displayNameController.text.trim(),
           bio: _bioController.text.trim(),
         ),
-        actions.updateCategories(
-          _selectedCategories.isNotEmpty ? _selectedCategories[0] : null,
-          _selectedCategories.length > 1 ? _selectedCategories[1] : null,
-        ),
+        actions.updateCategories(_selectedCategory, _selectedSubcategory),
       ]);
       ref.invalidate(userProfileProvider);
       if (mounted) {
@@ -442,13 +429,19 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                 const _SectionTitle('Creator Category'),
                 const SizedBox(height: 4),
                 const Text(
-                  'Select up to 2 categories that best describe you',
+                  'Select your primary category, then your specialty',
                   style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
                 ),
                 const SizedBox(height: 12),
-                _CategoryChips(
-                  selected: _selectedCategories,
-                  onToggle: _toggleCategory,
+                _CategoryPicker(
+                  selectedCategory: _selectedCategory,
+                  selectedSubcategory: _selectedSubcategory,
+                  onCategoryChanged: (cat) => setState(() {
+                    _selectedCategory = cat;
+                    _selectedSubcategory = null;
+                  }),
+                  onSubcategoryChanged: (sub) =>
+                      setState(() => _selectedSubcategory = sub),
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
@@ -1760,63 +1753,160 @@ class _InviteFriendsCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// CATEGORY CHIPS
+// TWO-STEP CATEGORY PICKER
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _CategoryChips extends StatelessWidget {
-  final List<String> selected;
-  final void Function(String) onToggle;
+class _CategoryPicker extends StatelessWidget {
+  final String? selectedCategory;
+  final String? selectedSubcategory;
+  final void Function(String?) onCategoryChanged;
+  final void Function(String?) onSubcategoryChanged;
 
-  const _CategoryChips({required this.selected, required this.onToggle});
-
-  static const _categories = [
-    'Athlete', 'Influencer', 'Musician', 'Healthcare', 'Doctor', 'Comedian',
-    'Politician', 'Gamer', 'Educator', 'Fitness', 'Business', 'Religion',
-    'Researcher', 'Sports',
-  ];
+  const _CategoryPicker({
+    required this.selectedCategory,
+    required this.selectedSubcategory,
+    required this.onCategoryChanged,
+    required this.onSubcategoryChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: _categories.map((cat) {
-        final isSelected = selected.contains(cat);
-        final isBlocked = !isSelected && selected.length >= 2;
-        return GestureDetector(
-          onTap: isBlocked ? null : () => onToggle(cat),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? AppTheme.primary.withValues(alpha: 0.18)
-                  : AppTheme.surfaceLight,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: isSelected
-                    ? AppTheme.primary
-                    : isBlocked
-                        ? AppTheme.cardBorder.withValues(alpha: 0.4)
-                        : AppTheme.cardBorder,
-                width: isSelected ? 2 : 1,
+    final subs = selectedCategory != null
+        ? kSubcategories[selectedCategory!] ?? <String>[]
+        : <String>[];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Step 1 — primary categories
+        const Text(
+          'PRIMARY',
+          style: TextStyle(
+            color: AppTheme.textSecondary,
+            fontSize: 10,
+            fontWeight: FontWeight.w600,
+            letterSpacing: 1.2,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: kPrimaryCategories.map((cat) {
+            final isSelected = selectedCategory == cat;
+            return GestureDetector(
+              onTap: () => onCategoryChanged(isSelected ? null : cat),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                decoration: BoxDecoration(
+                  color: isSelected
+                      ? AppTheme.primary.withValues(alpha: 0.18)
+                      : AppTheme.surfaceLight,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: isSelected ? AppTheme.primary : AppTheme.cardBorder,
+                    width: isSelected ? 2 : 1,
+                  ),
+                ),
+                child: Text(
+                  cat,
+                  style: TextStyle(
+                    color: isSelected ? AppTheme.primary : AppTheme.textSecondary,
+                    fontSize: 13,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                  ),
+                ),
               ),
-            ),
-            child: Text(
-              cat,
-              style: TextStyle(
-                color: isSelected
-                    ? AppTheme.primary
-                    : isBlocked
-                        ? AppTheme.textSecondary.withValues(alpha: 0.5)
-                        : AppTheme.textSecondary,
-                fontSize: 13,
-                fontWeight:
-                    isSelected ? FontWeight.w600 : FontWeight.normal,
-              ),
+            );
+          }).toList(),
+        ),
+
+        // Step 2 — subcategories (visible only when a primary is selected)
+        if (selectedCategory != null && subs.isNotEmpty) ...[
+          const SizedBox(height: 20),
+          const Text(
+            'SPECIALTY',
+            style: TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 10,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 1.2,
             ),
           ),
-        );
-      }).toList(),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              ...subs.map((sub) {
+                final isSelected = selectedSubcategory == sub;
+                return GestureDetector(
+                  onTap: () => onSubcategoryChanged(isSelected ? null : sub),
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppTheme.secondary.withValues(alpha: 0.15)
+                          : AppTheme.surfaceLight,
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: isSelected
+                            ? AppTheme.secondary
+                            : AppTheme.cardBorder,
+                        width: isSelected ? 2 : 1,
+                      ),
+                    ),
+                    child: Text(
+                      sub,
+                      style: TextStyle(
+                        color: isSelected
+                            ? AppTheme.secondary
+                            : AppTheme.textSecondary,
+                        fontSize: 13,
+                        fontWeight:
+                            isSelected ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                  ),
+                );
+              }),
+              // None option
+              GestureDetector(
+                onTap: () => onSubcategoryChanged(null),
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+                  decoration: BoxDecoration(
+                    color: selectedSubcategory == null
+                        ? AppTheme.secondary.withValues(alpha: 0.15)
+                        : AppTheme.surfaceLight,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: selectedSubcategory == null
+                          ? AppTheme.secondary
+                          : AppTheme.cardBorder,
+                      width: selectedSubcategory == null ? 2 : 1,
+                    ),
+                  ),
+                  child: Text(
+                    'None / Prefer not to say',
+                    style: TextStyle(
+                      color: selectedSubcategory == null
+                          ? AppTheme.secondary
+                          : AppTheme.textSecondary,
+                      fontSize: 13,
+                      fontWeight: selectedSubcategory == null
+                          ? FontWeight.w600
+                          : FontWeight.normal,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ],
     );
   }
 }

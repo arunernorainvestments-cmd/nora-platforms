@@ -245,17 +245,21 @@ class _HeaderSection extends StatelessWidget {
           ],
 
           // Category chips
-          if (profile.category1 != null || profile.category2 != null) ...[
+          if (profile.category1 != null) ...[
             const SizedBox(height: 10),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
+            Column(
               children: [
-                if (profile.category1 != null)
-                  _CategoryPill(label: profile.category1!),
-                if (profile.category1 != null && profile.category2 != null)
-                  const SizedBox(width: 8),
-                if (profile.category2 != null)
-                  _CategoryPill(label: profile.category2!),
+                _CategoryPill(label: profile.category1!),
+                if (profile.subcategory != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    profile.subcategory!,
+                    style: const TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ],
             ),
           ],

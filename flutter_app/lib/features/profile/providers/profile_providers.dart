@@ -16,7 +16,7 @@ class UserProfile {
   final bool popularityScorePublic;
   final String? referralCode;
   final String? category1;
-  final String? category2;
+  final String? subcategory;
   final bool isApproved;
 
   const UserProfile({
@@ -30,7 +30,7 @@ class UserProfile {
     required this.popularityScorePublic,
     this.referralCode,
     this.category1,
-    this.category2,
+    this.subcategory,
     required this.isApproved,
   });
 
@@ -45,7 +45,7 @@ class UserProfile {
         popularityScorePublic: json['popularity_score_public'] as bool? ?? false,
         referralCode: json['referral_code'] as String?,
         category1: json['category_1'] as String?,
-        category2: json['category_2'] as String?,
+        subcategory: json['subcategory'] as String?,
         isApproved: json['is_approved'] as bool? ?? false,
       );
 }
@@ -63,7 +63,7 @@ final userProfileProvider = FutureProvider.autoDispose<UserProfile?>((ref) async
       .select(
           'id, username, display_name, bio, is_creator, is_market_maker, '
           'pending_opt_out, popularity_score_public, referral_code, '
-          'category_1, category_2, is_approved')
+          'category_1, subcategory, is_approved')
       .eq('id', userId)
       .single();
 
@@ -164,12 +164,12 @@ class ProfileActions {
     }
   }
 
-  Future<void> updateCategories(String? category1, String? category2) async {
+  Future<void> updateCategories(String? category1, String? subcategory) async {
     final userId = _client.auth.currentUser?.id;
     if (userId == null) throw Exception('Not authenticated');
     await _client.from('profiles').update({
       'category_1': category1,
-      'category_2': category2,
+      'subcategory': subcategory,
     }).eq('id', userId);
   }
 }

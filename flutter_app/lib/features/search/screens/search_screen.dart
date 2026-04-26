@@ -206,15 +206,21 @@ class _ResultRow extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  if (result.category1 != null || result.category2 != null) ...[
+                  if (result.category1 != null) ...[
                     const SizedBox(height: 5),
-                    Wrap(
-                      spacing: 6,
+                    Row(
                       children: [
-                        if (result.category1 != null)
-                          _CategoryChip(label: result.category1!),
-                        if (result.category2 != null)
-                          _CategoryChip(label: result.category2!),
+                        _CategoryChip(label: result.category1!),
+                        if (result.subcategory != null) ...[
+                          const SizedBox(width: 6),
+                          Text(
+                            result.subcategory!,
+                            style: const TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ],

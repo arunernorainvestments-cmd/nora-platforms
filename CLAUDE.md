@@ -167,6 +167,45 @@ All nav uses `context.go()` — nothing leaves the Flutter app.
 
 ---
 
+## Creator Category System
+
+Two-tier structure. The flat 14-category list is fully retired as of migration 024.
+
+**profiles table columns:**
+- `category_1` TEXT — one of 10 primary categories (CHECK constraint). Nullable.
+- `subcategory` TEXT — role-specific label within the primary. No CHECK constraint. Nullable.
+- `category_2` — column exists but is always NULL; ignored by all app code.
+
+**10 primary categories and their subcategories:**
+
+| Primary | Subcategories |
+|---------|--------------|
+| Athlete | Basketball, Football, Golf, Tennis, Baseball, Lacrosse |
+| Musician | Guitarist, Singer, Drummer, Violinist, DJ, Pianist |
+| Healthcare | Geneticist, Nurse, Surgeon, Hospitalist, Doctor General, Researcher |
+| Performer | Comedian, Dancer, Magician, Podcaster |
+| Gamer | Competitive, Developer, Streamer, Tabletop, PC, Console |
+| Influencer | Fitness, Travel, Vlog, Food, Prankster, Journalist, Commentator |
+| Educator | Author, Teacher, Professor, Expert |
+| Politician | City Council, State Senate, Congress, Governor, Other |
+| Religion | Bishop, Deacon, Minister, Priest, Pastor, Rabbi, Guru, Yogi |
+| Business | Startup, Retail, Non Profit, Small Business, Niche, Handmade, Corporation |
+
+**Old → new migration mapping (applied in migration 024):**
+Comedian→Performer/Comedian · Doctor→Healthcare/Doctor General · Researcher→Healthcare/Researcher ·
+Fitness→Influencer/Fitness · Sports→Athlete/(subcategory null, flag for reselection)
+
+**Markets Screen** (`lib/features/markets/screens/markets_screen.dart`):
+- Queries `profiles` where `is_market_maker=true AND pending_opt_out=false` via `marketMakersProvider`
+- Filter tabs: Live Now | All | + 10 primary categories; counts show Market Makers per category
+- Content: vertically scrolling subcategory sections, each with a horizontal scroll of circular creator cards
+- Circular card: 90px CircleAvatar with username-hash color, `@username` label, subcategory label below
+- Live ring: `Border.all(color: Color(0xFFFF4757), width: 3)` + LIVE badge chip
+- Tapping a card navigates to `/u/:username`
+- Live Now tab: single horizontal row of all live MMs, no subcategory grouping
+
+---
+
 ## Supabase Schema
 
 All tables have RLS enabled. Migrations run in order:
@@ -185,6 +224,7 @@ All tables have RLS enabled. Migrations run in order:
 | 010 | duration_label on markets |
 | 011 | Re-applies token_transactions type constraint with 'refund' (applied directly in SQL Editor) |
 | 012 | market_series, market_event, market_identifier, category_1, category_2 on markets; category_1, category_2 on profiles |
+| 024 | Two-tier category system: profiles.category_1 migrated to 10 primary categories; subcategory column added; old flat categories retired; category_2 nulled out |
 | 013 | Rename score columns: heat_score→display_score (raw composite), display_score→heat_score (UI composite), opening_display_score→opening_heat_score |
 | 014 | active_boosts table for Phase 6 promotions |
 | 015 | promotion_banners table (Realtime); active_boosts CHECK updated |
@@ -378,7 +418,7 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
     Black Hole (250T — cancels ALL universe+galaxy on target),
     Super Massive Black Hole (800T — cancels every active Galaxy in a chosen category)
   - Black Hole disabled if target has no active Universe or Galaxy
-  - SMBH opens category picker dialog (all 14 categories)
+  - SMBH opens category picker dialog (all 10 primary categories)
   - Cooldown shown when Universe/Galaxy already active on target by current user
 - Promote button on public profile (own) → Promotions sheet (self-boosts)
 - Other MM public profile → Bet (full width) + Boost / Sabotage row:
@@ -395,7 +435,7 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
   Universe = all users; Galaxy = only users with open bets in matching category_1
 - HomeTicker: persistent scrolling strip at top of home screen; combines active
   Universe/Galaxy banners + Heat Score leaders; live via Realtime subscription
-- kCreatorCategories shared constant (lib/core/constants/creator_categories.dart)
+- `kPrimaryCategories` and `kSubcategories` constants (lib/core/constants/creator_categories.dart) — the old `kCreatorCategories` flat list has been replaced
 - Realtime on promotion_banners verified working via SQL Editor test insert
 
 ### Completed (Phase 7 — Challenges & Badges)

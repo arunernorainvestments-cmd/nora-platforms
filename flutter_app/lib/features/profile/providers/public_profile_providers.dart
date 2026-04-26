@@ -12,7 +12,7 @@ final publicProfileProvider =
   // 1. Fetch profile row
   final profileData = await client
       .from('profiles')
-      .select('id, username, bio, category_1, category_2, is_market_maker')
+      .select('id, username, bio, category_1, subcategory, is_market_maker')
       .eq('username', username)
       .maybeSingle();
 
@@ -55,7 +55,7 @@ final publicProfileProvider =
     username: profileData['username'] as String? ?? username,
     bio: profileData['bio'] as String?,
     category1: profileData['category_1'] as String?,
-    category2: profileData['category_2'] as String?,
+    subcategory: profileData['subcategory'] as String?,
     isMarketMaker: profileData['is_market_maker'] as bool? ?? false,
     connections: connections,
     metrics: metrics,

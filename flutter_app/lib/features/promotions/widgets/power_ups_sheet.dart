@@ -308,13 +308,13 @@ class _CategoryPickerDialog extends StatelessWidget {
         width: double.maxFinite,
         child: ListView.separated(
           shrinkWrap: true,
-          itemCount: kCreatorCategories.length,
+          itemCount: kPrimaryCategories.length,
           separatorBuilder: (_, __) => const Divider(
             height: 1,
             color: AppTheme.cardBorder,
           ),
           itemBuilder: (context, i) {
-            final cat = kCreatorCategories[i];
+            final cat = kPrimaryCategories[i];
             return InkWell(
               borderRadius: BorderRadius.circular(8),
               onTap: () => Navigator.of(context).pop(cat),

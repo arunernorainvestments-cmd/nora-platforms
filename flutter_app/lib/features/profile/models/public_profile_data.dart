@@ -6,7 +6,7 @@ class PublicProfileData {
   final String username;
   final String? bio;
   final String? category1;
-  final String? category2;
+  final String? subcategory;
   final bool isMarketMaker;
   final List<PlatformConnection> connections;
   final List<PlatformMetric> metrics;
@@ -16,7 +16,7 @@ class PublicProfileData {
     required this.username,
     this.bio,
     this.category1,
-    this.category2,
+    this.subcategory,
     required this.isMarketMaker,
     required this.connections,
     required this.metrics,
