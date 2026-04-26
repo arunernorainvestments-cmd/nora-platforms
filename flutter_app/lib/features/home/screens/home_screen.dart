@@ -390,6 +390,11 @@ class _TabButton extends StatelessWidget {
   }
 }
 
+// TODO (post Arena Phase A): Split Weekly Spotlight section into
+// "Arena Champions" (5 slots) and "Top Movers" (5 slots).
+// Champions sourced from previous week's Round 3 winners.
+// Top Movers sourced from trailing 7-day display_score growth.
+
 // ─── Wide spotlight layout (≥900px) ──────────────────────────────────────────
 
 class _WideSpotlightLayout extends ConsumerWidget {

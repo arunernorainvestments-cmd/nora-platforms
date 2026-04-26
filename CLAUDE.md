@@ -14,6 +14,90 @@ as of 2026-04-26). DNS: Cloudflare → noraplatforms.com. Supabase project ref: 
 
 ---
 
+## Two-Game Architecture
+
+NORA has two distinct games sharing one wallet and one creator pool, but with separate scoring,
+separate reward loops, and separate Spotlight visibility.
+
+### Game 1 — Markets (Prediction Loop)
+
+Already built. Phases 1–5 complete.
+
+- Users place token bets on whether a creator's composite Display Score will be higher or lower
+  at market close than at market open.
+- Settled by composite Display Score from real platform APIs (sync-platform-metrics).
+- Creator is passive — markets resolve based on real-world metric movement.
+- Pool split: 90% to winning bettors, 5% platform rake, 5% to the Market Maker (creator).
+- User role: predict. Place bet, wait, win or lose.
+- Time horizon: hours to days.
+- Driven by display_score. Does not interact with Arena state.
+
+### Game 2 — Arena (Competitive Loop)
+
+To be built (Phase A onward).
+
+- Users participate in live 5-minute matches between two creators.
+- Settled by ArenaScore, an in-match composite that exists only during the match.
+- Creator is the avatar/champion; the audience drives the outcome through token actions.
+- Pool split: 90% to backers of the winning creator, 5% platform rake, 5% to the winning creator.
+- User role: participate. Two token actions:
+  - **Back** — allocate tokens to a side. Feeds BaseFlow, contributes to ArenaScore. Backed tokens
+    are at-risk and resolve to 90% pool share if your side wins, or are lost if your side loses.
+  - **Trigger** — spend tokens on power-ups or archetype abilities. Spent tokens are consumed; they
+    cause ability effects but are not returned. This is the primary token sink.
+- There is no separate "bet on Arena match winner" mechanic. Backing IS the participation.
+  Predicting outcomes is the Markets game's job. Do not introduce a third loop.
+- Time horizon: 5 minutes per match.
+- Driven by ArenaScore (BaseFlow + HeatInfluence + AbilityImpact + MomentumSpike + MomentumCarry −
+  Suppression). Does not modify display_score. Does not modify heat_score directly.
+
+### Shared Infrastructure
+
+- **One wallet** (`token_balances`). Same tokens flow through both games.
+- **One creator pool.** Eligibility for both games: `is_market_maker = true AND pending_opt_out = false AND is_test_account = false` (in production).
+- **One Heat Score.** Both games can read it; only promotions and power-ups can modify it.
+- **Independent rewards.** A win in one game does not directly grant rewards in the other.
+
+### Shared but Read-Only
+
+- Arena reads `heat_score` to compute HeatInfluence term in ArenaScore. Arena does not write `heat_score`.
+- Arena reads creator category to determine archetype. Arena does not write category.
+
+---
+
+## Dual Spotlight Architecture
+
+The home page Spotlight is split into two distinct sections, each driven by one game.
+
+### Section 1 — Arena Champions
+
+- Five slots on the home page (1st through 5th).
+- Populated by Round 3 winners from the previous week.
+- Round 3 = Champions bracket, runs Friday 7 PM through Sunday midnight, 5-minute matches;
+  weekly top points earners qualify.
+- Slot 1 = Round 3 1st place finisher. Slots 2–5 = 2nd through 5th place.
+- Slots are locked Monday 00:00 and held for the full week.
+- The Monday after a creator holds a Spotlight slot, their `heat_score` resets to 0 AND their
+  `momentum_score` resets to 0. Spotlight reward is the public visibility plus points already
+  earned — not a compounding advantage into the next week. This is the rotation rule.
+
+### Section 2 — Top Movers
+
+- Five slots on the home page (1st through 5th).
+- Populated by creators with the largest weekly composite Display Score growth.
+- Computed from `score_history` deltas over the trailing 7 days.
+- Updated continuously throughout the week (not locked weekly like Champions).
+- This is what `compute-spotlight` should evolve toward — token-activity ranking is the current
+  legacy implementation; Top Movers is the canonical replacement when we wire it up.
+
+### Home Page Layout
+
+The current single Spotlight strip (carousel + 2nd–5th rank sidebar) must eventually become two
+strips, both labeled. Do not implement the layout change now — it ships with Phase A Arena UI.
+See TODO comment in `lib/features/home/screens/home_screen.dart`.
+
+---
+
 ## Commands
 
 All Flutter commands run from the `flutter_app/` directory:
@@ -252,6 +336,25 @@ stores saved albums count. These columns are NOT X-exclusive — always check pl
 resolve-markets sums all `platform_metrics.display_score` rows for the creator at resolution time.
 Compares current composite vs `opening_resolution_score`. above/below/tie→refund.
 Void conditions: missing metrics, tied score, or no bets on the winning side → full refund.
+
+---
+
+## Score Hierarchy & Roles
+
+How every score in the system relates to every game. Read this before touching any score logic.
+
+| Score | Where stored | Modified by | Role |
+|-------|-------------|-------------|------|
+| Display Score (composite) | `platform_metrics.display_score` (bigint, sum across platforms) | `sync-platform-metrics` only | Drives Market resolution. Drives Top Movers Spotlight. NOT used in Arena. |
+| Heat Score | `platform_metrics.heat_score` (0–100) | Promotions and power-ups only | UI-facing popularity number. Read by Arena to compute HeatInfluence term. Not modified by Arena. |
+| Momentum Score | `platform_metrics.momentum_score` (to be added) | Arena match wins/losses + weekly decay + Spotlight reset | Persistent Arena win-streak signal. Feeds MomentumCarry term in ArenaScore. Resets to 0 on Spotlight win. |
+| ArenaScore | In-memory `arena_state.score_p1` / `score_p2` | Tick loop only | Live in-match score. Decides match winner. Does not persist after match end. |
+| Weekly Arena Points | New table or column (to be added) | Match win deposits + Monday reset | Determines Round 3 qualification. Resets weekly. |
+| Round 3 placement | `arena_matches` (Round 3 match outcomes) | Round 3 match outcomes | Directly determines Arena Champions Spotlight slots. |
+
+`resolution_score` no longer exists. It was dropped in migration 019. Composite Display Score
+absorbed its job for Market resolution. Do not reference `resolution_score` in any new code,
+comment, or documentation.
 
 ---
 
@@ -572,7 +675,11 @@ Each window contains many more matches now that match duration is 5 minutes (not
 **ArenaScore formula:**
 `ArenaScore = BaseFlow + HeatInfluence + AbilityImpact + MomentumSpike + MomentumCarry − SuppressionEffects`
 
-3 player actions: Back (allocate), Trigger (power-up), Shift (move tokens mid-match with penalty).
+Two token actions (see Two-Game Architecture section for authoritative definitions):
+- **Back** — allocate tokens to a side; at-risk; resolves 90% pool share on win or lost on loss.
+- **Trigger** — spend tokens on power-ups or archetype abilities; consumed, never returned.
+
+There is no "Shift" action and no separate bet-on-outcome mechanic. Do not add a third loop.
 
 Existing power-ups reinterpreted (not replaced): +Popularity → HeatInfluence weight;
 Universe → global flow rate; Galaxy → same-category flow rate; −Popularity → opponent efficiency;
@@ -584,32 +691,16 @@ Stacking rule: EffectiveMultiplier = Base × (1 + log(1 + n)) — prevents expon
 1 Signature (2–4min), 1 Ultimate (1/match). Abilities modify only multipliers/windows, never raw scores.
 Subcategories add light ±5–10% modifiers to one stat.
 
-**Spotlight Heat Reset & Momentum Carry (new rule — not yet implemented):**
+**Spotlight Reset & Momentum Carry (canonical — implement in Phase A):**
 
-If a creator wins Spotlight in week N, their heat_score resets to 0 at the start of week N+1.
-This forces rotation and keeps the Spotlight fresh week over week.
+Carry mechanism: `momentum_score` column on `platform_metrics`. Decays linearly over 1 week.
+Arena match wins deposit momentum points; losses do not subtract. Cap to be finalized in Phase A spec.
+The MomentumCarry term in ArenaScore reads this column at match start.
 
-Non-Spotlight match winners carry forward a momentum advantage into the next week. This advantage
-is a SEPARATE signal from heat_score — heat_score is never modified directly except by
-promotions/power-ups (existing rule unchanged). The MomentumCarry term in ArenaScore is the
-vehicle for this advantage.
-
-Open design questions — resolve before Arena Phase A:
-
-1. **Carry mechanism options:**
-   - `momentum_score` column on platform_metrics (or sibling `creator_momentum` table) that
-     decays week-over-week and adds to ArenaScore as a separate term.
-   - Seeded matchmaking advantage (winners get higher seeds or first-round byes the following week).
-   - Token-economy carry (winners enter next week with bonus token_earn_rate or promotion_discount,
-     treated as a passive effect).
-
-2. **Decay curve:** linear over 1 week? Exponential?
-
-3. **Cap:** how much momentum can a creator stack before it plateaus?
-
-4. **Interaction with Spotlight reset:** working assumption is that Spotlight winners reset
-   BOTH heat_score AND momentum_score to 0. The Spotlight reward is public visibility + 5 pts,
-   not a compounding advantage — this preserves rotation. Flag for review before Phase A.
+Spotlight rotation rule: the Monday after a creator holds a Spotlight slot (Arena Champions),
+their `heat_score` resets to 0 AND their `momentum_score` resets to 0. The Spotlight reward is
+public visibility plus the weekly Arena points already earned — not a compounding advantage.
+This preserves rotation. Non-Spotlight match winners carry their momentum_score into the next week.
 
 **New tables needed:** arena_matches, arena_events, arena_state.
 **Build order:** Phase A (DB + cron engine) → Phase B (Flutter UI) → Phase C (Spotlight wiring).
@@ -784,3 +875,7 @@ Run each step manually and confirm before moving to the next. Gate each one.
 13. `power_up_cooldowns` table does not exist — cooldowns enforced via active_boosts queries.
 14. `spotlight_pinned_until` column does not exist on platform_metrics — spotlight pinning uses active_boosts (spotlight_entry type).
 15. Test accounts (`is_test_account=true`) must be filtered from all ranking/discovery queries. Flutter providers always add `.eq('is_test_account', false)`. Edge functions check `INCLUDE_TEST_ACCOUNTS` env var (default: filter ON). Never set `INCLUDE_TEST_ACCOUNTS=true` in production.
+16. Arena and Markets are independent reward loops. Do not design any feature that grants Arena progress as a result of a Market outcome, or vice versa.
+17. Arena does not modify `display_score`, `heat_score`, or `token_balances` outside of: (a) Back action — debits tokens at action time, credits 90% pool share at match end if winning side, lost otherwise; (b) Trigger action — debits tokens at action time, never returned; (c) Match resolution — writes `momentum_score`, writes weekly Arena points, fires evaluate-challenges.
+18. ArenaScore is an in-memory match-only value. Do not persist it after match end. Only `winner_id` and final scores are recorded in `arena_matches`.
+19. Spotlight has two distinct sections (Arena Champions, Top Movers). When `compute-spotlight` is updated, it must produce both rankings independently.
