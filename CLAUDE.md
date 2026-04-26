@@ -177,22 +177,13 @@ logged in + unapproved → /pending-approval; logged in + approved on auth/launc
 **"Explore All →"** in category tabs routes to `/markets` (not explore/news).
 
 **HomeScreen sections** (scroll order):
-1. `_WideSpotlightLayout` / `_NarrowSpotlightLayout` — 3-column spotlight layout from `spotlightCreatorsProvider`
-   - Wide (≥900px): carousel (flex 5) | rank sidebar (flex 2) | news+tokens panel (flex 2); 12px gaps; wrapped in `ConstrainedBox(minHeight: 420)`
-   - Narrow: stacked vertically; also wrapped in `ConstrainedBox(minHeight: 420)`
-   - Both layouts use `creatorsAsync.valueOrNull ?? []` — loading and empty states show placeholder content immediately; layout never collapses
-   - Carousel: `_SpotlightCard` (real data, height 400 wide / 300 narrow) or `_SpotlightPlaceholderCard` when empty/loading
-   - Rank sidebar: always renders exactly 4 cards (2nd–5th). Real creators use `_RankCard` (white10 border, 64px, CircleAvatar). Missing slots use `_PlaceholderRankCard`
-   - News panel (`_NewsPanel`) and Get Tokens button (`_GetTokensButton`) render outside the data guard — always visible regardless of creator data
-   - Breaking News is static placeholder (3 hardcoded headlines). See `// TODO: wire to news API` in code.
-2. `_RisingSection` — horizontal scroll of creator tiles; shows 3 `_RisingPlaceholderTile` widgets when empty
-3. `_WhoIsLiveSection` — vertical list of live streams; section header always visible; "No creators are live right now" when empty
+1. `_WideSpotlightLayout` / `_NarrowSpotlightLayout` — wide (≥900px): carousel (flex 5) | rank sidebar (flex 2) | news+tokens panel (flex 2); narrow stacks vertically. Both use `creatorsAsync.valueOrNull ?? []`; placeholder cards fill empty slots; layout never collapses. Breaking News is static.
+2. `_RisingSection` — horizontal scroll of creator tiles; 3 placeholder tiles when empty.
+3. `_WhoIsLiveSection` — vertical live stream list; "No creators are live right now" when empty.
 4. `_FooterLinks`
 
 **Token purchase sheet**: `BuyTokensSheet` in `lib/features/wallet/widgets/buy_tokens_sheet.dart`.
 Invoke via `showBuyTokensSheet(context)`. Used by wallet screen and home screen header.
-The news-panel "Get Tokens" button currently goes directly to `showBuyTokensSheet` — a two-step
-flow (Purchase vs Earn modal) is a planned but not-yet-built outstanding item.
 
 **Feature structure:** Each feature lives in `lib/features/<name>/` with subdirectories
 screens/, widgets/, providers/, and models/.
@@ -208,37 +199,9 @@ except OAuth initiation.
 **Domains:** All profile share links and referral links use `noraplatforms.com`.
 Do not use `nora-platforms.vercel.app` anywhere.
 
-### React Home App — RETIRED
+**React landing app** — deleted. Flutter's HomeScreen is the sole home page. Vercel catch-all routes everything except `/privacy`, `/terms`, `/tiktok-verification` to `/index.html`.
 
-The React app (`landing/` directory) has been deleted. Flutter's `HomeScreen` is the
-sole home screen. Vercel routes all paths (except `/privacy`, `/terms`,
-`/tiktok-verification`) to Flutter's `index.html` via a single catch-all rewrite.
-
-### Burger Menu (Side Drawer)
-
-Defined in `home_screen.dart` as `_SideDrawer`. Structure:
-
-**TOP** — User card:
-- Logged in: colored-initial avatar, username, "Tap to view profile" → `/profile`
-- Logged out: person icon, "Guest", "Sign in for full access" + "Sign in →" button → `/login`
-
-**NAVIGATE** section:
-| Label | Subtitle | Route | Auth required |
-|-------|----------|-------|---------------|
-| Dashboard | Market Maker hub | /dashboard | ✓ (MM Only badge if isMarketMaker) |
-| Profile | Your public profile | /profile | ✓ |
-| My Bets | Active & past bets | /markets/mybets | ✓ |
-| Wallet | Tokens & transactions | /wallet | ✓ |
-| Hot Topic | Trending this week | /explore | public |
-| Challenges | Daily & weekly goals | /challenges | ✓ |
-
-**SUPPORT** section: Settings (placeholder), Help (placeholder)
-
-**Footer**: "v1.0.0 — Phase 1" left · "NORA" right (muted accent)
-
-Unauthenticated users tapping auth-required items are redirected to `/login` with
-`pendingNavigationProvider` set so they return to their destination after login.
-All nav uses `context.go()` — nothing leaves the Flutter app.
+**Burger Menu** (`_SideDrawer` in `home_screen.dart`): user card (logged-in → `/profile`, guest → `/login`); NAVIGATE items: Dashboard (`/dashboard`), Profile (`/profile`), My Bets (`/markets/mybets`), Wallet (`/wallet`), Hot Topic (`/explore`), Challenges (`/challenges`). Auth-required items redirect to `/login` with `pendingNavigationProvider`. Support: Settings + Help (placeholder). All nav via `context.go()`.
 
 ---
 
@@ -266,21 +229,9 @@ Two-tier structure. The flat 14-category list is fully retired as of migration 0
 | Religion | Bishop, Deacon, Minister, Priest, Pastor, Rabbi, Guru, Yogi |
 | Business | Startup, Retail, Non Profit, Small Business, Niche, Handmade, Corporation |
 
-**Old → new migration mapping (applied in migration 024):**
-Comedian→Performer/Comedian · Doctor→Healthcare/Doctor General · Researcher→Healthcare/Researcher ·
-Fitness→Influencer/Fitness · Sports→Athlete/(subcategory null, flag for reselection)
+`kPrimaryCategories` and `kSubcategories` constants live in `lib/core/constants/creator_categories.dart`.
 
-`kPrimaryCategories` and `kSubcategories` constants live in
-`lib/core/constants/creator_categories.dart`. The old `kCreatorCategories` flat list is retired.
-
-**Markets Screen** (`lib/features/markets/screens/markets_screen.dart`):
-- Queries `profiles` where `is_market_maker=true AND pending_opt_out=false` via `marketMakersProvider`
-- Filter tabs: Live Now | All | + 10 primary categories; counts show Market Makers per category
-- Content: vertically scrolling subcategory sections, each with a horizontal scroll of circular creator cards
-- Circular card: 90px CircleAvatar with username-hash color, `@username` label, subcategory label below
-- Live ring: `Border.all(color: Color(0xFFFF4757), width: 3)` + LIVE badge chip
-- Tapping a card navigates to `/u/:username`
-- Live Now tab: single horizontal row of all live MMs, no subcategory grouping
+**Markets Screen** (`lib/features/markets/screens/markets_screen.dart`): filter tabs (Live Now | All | 10 primary categories); vertically scrolling subcategory sections each with a horizontal scroll of circular creator cards; 90px CircleAvatar with username-hash color; live ring = `Border.all(color: Color(0xFFFF4757), width: 3)` + LIVE chip; tap → `/u/:username`. Live Now tab: single horizontal row of all live MMs.
 
 ---
 
@@ -322,9 +273,7 @@ stores saved albums count. These columns are NOT X-exclusive — always check pl
 - Computed as: `CLAMP(SUM(active boost deltas where not expired/cancelled), 0, 100)`
 - Spotlight trigger fires on `heat_score` updates (not display_score).
 
-### resolution_score — DROPPED (migration 019)
-- This column no longer exists on `platform_metrics`. Do not reference it.
-- Market resolution now uses composite `display_score` (sum across all platforms).
+Dropped columns (do not reference): `resolution_score` (dropped migration 019), `power_up_cooldowns` table, `platform_metrics.spotlight_pinned_until`, `profiles.accepts_new_markets`, `profiles.token_balance`. See docs/ARCHIVE.md for context.
 
 ### markets table snapshots at open:
 - `opening_resolution_score` — stores the composite display_score (bigint sum) at market creation.
@@ -390,13 +339,12 @@ All tables have RLS enabled. Migrations run in order:
 | 024 | Two-tier category system: category_1 → 10 primaries; subcategory column added; old flat categories retired |
 
 ### Key table notes
-- `profiles`: has both `is_creator` (migration 001, used by compute-spotlight) and `is_market_maker` (migration 003, used by Flutter app and markets queries). These are separate flags.
-- `profiles`: has `is_approved` (migration 021) for beta gate. Users redirected to /pending-approval until approved.
+- `profiles`: has `is_creator` (migration 001, compute-spotlight), `is_market_maker` (migration 003, Flutter/markets), and `is_approved` (migration 021, beta gate; redirects to /pending-approval). All separate flags.
 - `token_balances`: separate table (NOT a column on profiles). Holds `available_tokens` (integer).
 - `platform_metrics`: has `previous_follower_count` (bigint) for 24h growth delta tracking.
-- `active_boosts`: handles cooldown enforcement — no separate `power_up_cooldowns` table exists. Cooldowns are checked by querying active_boosts for existing non-expired entries.
+- `active_boosts`: handles cooldown enforcement (no separate `power_up_cooldowns` table).
 - `waitlist`: table name is `waitlist` (NOT `waitlist_emails`). Anon INSERT allowed; no anon SELECT (count shown in UI uses a hardcoded floor).
-- `score_history`: time-series snapshots for Robinhood-style dashboard chart. Columns: user_id, composite_score (bigint), recorded_at.
+- `score_history`: time-series snapshots. Columns: user_id, composite_score (bigint), recorded_at.
 
 ### token_transactions type constraint (migration 018, final)
 ```
@@ -416,13 +364,7 @@ All tables have RLS enabled. Migrations run in order:
 - waitlist — anon INSERT; no anon SELECT
 
 ### user_passive_effects view (migration 017)
-Aggregates per-user passive badge effects:
-- `visibility_multiplier` — additive sum
-- `token_earn_rate` — additive sum
-- `promotion_discount` — max across badges
-- `referral_bonus` — max tier across badges
-
-Passive effects are read-only at query time — never written back to any table.
+`visibility_multiplier` (additive sum), `token_earn_rate` (additive sum), `promotion_discount` (max across badges), `referral_bonus` (max tier). Read-only at query time — never written back to any table.
 
 ---
 
@@ -460,9 +402,7 @@ Supabase project uses ES256 (asymmetric) JWTs — HS256 runtime verification alw
 | create-checkout-session | Validates auth, creates Stripe hosted checkout, inserts pending token_purchases row |
 | stripe-webhook | Verifies Stripe HMAC signature, idempotency check, credits tokens via increment_token_balance RPC |
 
-**`main-character-check`** is NOT an edge function. It is a `pg_cron` job (registered in migration 018)
-that calls the `evaluate_main_character_badge()` DB function hourly. Awards 150T + badge after
-24h consecutive #1 heat_score.
+`main-character-check` — pg_cron job (migration 018); calls `evaluate_main_character_badge()` hourly; awards 150T + badge after 24h as #1 heat_score.
 
 ### Deploying edge functions
 ```bash
@@ -470,9 +410,7 @@ export SUPABASE_ACCESS_TOKEN=your_token
 npx supabase functions deploy <function-name> --project-ref cceisywxwhgljdpisjrl --no-verify-jwt
 ```
 
-IMPORTANT: Never paste SUPABASE_ACCESS_TOKEN into Claude Code chat. Run deploy
-commands directly in your terminal tab. Rotate token at
-supabase.com/dashboard/account/tokens before sharing repo access.
+IMPORTANT: Never paste SUPABASE_ACCESS_TOKEN into Claude Code. Run deploy commands in your terminal. Rotate token at supabase.com/dashboard/account/tokens.
 
 ### Edge Function Secrets (set in Supabase Dashboard → Edge Functions → Secrets)
 ```
@@ -483,32 +421,20 @@ SPOTIFY_CLIENT_ID / SPOTIFY_CLIENT_SECRET
 APP_URL               https://noraplatforms.com
 OAUTH_STATE_SECRET
 STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET
-SYNC_SECRET           (for sync-platform-metrics auth header alternative)
+SYNC_SECRET           (sync-platform-metrics alt auth)
 ```
 
 ---
 
 ## Deployment
 
-Push to main triggers GitHub Actions (.github/workflows/deploy.yml) which builds
-Flutter web and deploys to Vercel.
-
-Required GitHub secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID,
-SUPABASE_URL, SUPABASE_ANON_KEY.
-
-vercel.json rewrites all paths to /index.html for SPA routing.
-Static exceptions: /privacy, /terms, /tiktok-verification serve static HTML directly.
+Push to main triggers GitHub Actions → Flutter web build → Vercel deploy. GitHub secrets: VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID, SUPABASE_URL, SUPABASE_ANON_KEY. `vercel.json` rewrites all paths to `/index.html`; static exceptions: `/privacy`, `/terms`, `/tiktok-verification`.
 
 ---
 
 ## Opening URLs in Flutter Web
 
-Do NOT use url_launcher directly for OAuth or external URLs. Use the custom utility:
-- lib/core/utils/open_url.dart (conditional export)
-- lib/core/utils/open_url_web.dart (uses window.open(url, '_blank'))
-- lib/core/utils/open_url_stub.dart (url_launcher fallback for non-web)
-
-Call openUrlInBrowser(url) from open_url.dart everywhere.
+Use `openUrlInBrowser(url)` from `lib/core/utils/open_url.dart` (NOT url_launcher directly). Web impl: `window.open(url, '_blank')`. Non-web: url_launcher fallback.
 
 ---
 
@@ -522,102 +448,24 @@ textSecondary #8B8FA8 · cardBorder #2A2A3E
 
 ## Current Build Status
 
-### Completed (Phases 1–3.5)
-- Auth: signup, login, forgot password, username selection
-- Token economy: 100 signup bonus, referral system (+25 tokens each)
-- Home screen: spotlight leaderboard, famous creators carousel, notification bell
-- Discover: Famous tab + Rising tab (tier badges + Live Now pulsing badge) + Who's Live tab
-- Wallet: token balance, transaction history
-- Profile: edit profile, Market Maker opt-in (3-step), opt-out flow
-- Platform connections: YouTube + Twitch OAuth, already-connected bottom sheet
-- Public profiles: /u/username route, shareable, no login required
-- Referral: /join?ref=code route, tracking, bonus tokens
-- Notifications: bell icon, notification center, mark as read
-- Markets: Open Markets + My Bets tabs, pool ratio bars, timeago countdowns
-- Betting: 4-step bottom sheet, join or create markets
-- pg_cron: syncs platform metrics every 5 minutes
+### Completed phases (full details in docs/ARCHIVE.md)
+- **Phases 1–3.5**: Auth, token economy, home/discover/wallet/profile, markets, betting, YouTube + Twitch OAuth, pg_cron sync.
+- **Phase 4 — Stripe**: Token purchase sheets, create-checkout-session + stripe-webhook, deep link handling.
+- **Phase 5 — Market Resolution**: resolve-markets edge function, market detail countdown/resolving states, bet blocking.
+- **Post-Phase-5 — Public Profile**: /u/:username screen, publicProfileProvider, preview + promote buttons.
+- **Phase 6 — Promotions & Power-Ups**: active_boosts, apply-promotion, all promo/sabotage sheets, PromotionFlashBanner, HomeTicker.
+- **Phase 7 — Challenges & Badges**: migrations 016–018, evaluate-challenges, BadgesShelf, ChallengesScreen, passive effects.
+- **Phase 8 — Scoring Redesign**: display_score→bigint, resolution_score dropped, score_history, ScoreDashboard.
+- **Post-Phase-7 Platform Additions**: X + Spotify OAuth, public_platform_connections view, beta approval gate.
+- **Pre-Launch — Cover Screen**: LaunchScreen countdown, waitlist table (migration 022).
 
-### Completed (Phase 4 — Stripe Token Purchases)
-- create-checkout-session + stripe-webhook edge functions
-- token_purchases table (migration 007)
-- Wallet screen: "Get More Tokens" bottom sheet (Starter $0.99 / Popular $4.99 / Pro $9.99 / Elite $19.99)
-- Deep link handling: /wallet?purchase=success and /wallet?purchase=cancelled
-- Stripe webhook endpoint: https://cceisywxwhgljdpisjrl.supabase.co/functions/v1/stripe-webhook
+**OG/Early Adopter cutoffs already set in DB — DO NOT re-run.** OG = 2026-07-04T04:00:00Z, Early Adopter = 2026-08-03T04:00:00Z.
 
-### Completed (Phase 5 — Market Resolution)
-- resolve-markets edge function: resolves expired markets, distributes payouts, handles voids
-- Market detail screen: countdown timer, "Resolving...", resolved/voided states
-- Bet blocking: buttons disabled when market.status != 'open' or endAt ≤ 15s away
-- MarketDetail model: resolvedAt (DateTime?), resolutionResult (String?)
-
-### Completed (Post Phase 5 — Public Profile)
-- Public profile screen (/u/:username): avatar, username, bio, category chips, Heat Score badge,
-  Display Score, per-platform stats (Spotify in #1DB954), badges shelf, Promote / Power-Up buttons
-- publicProfileProvider queries public_platform_connections view (migration 023) to avoid RLS block
-- "Preview Profile" and "Promote" buttons on own profile screen
-
-### Completed (Phase 6 — Promotions & Power-Ups)
-- Migration 014: active_boosts table
-- apply-promotion edge function: full catalogue, cooldown checks (via active_boosts query),
-  discount/multiplier computation, promotion_banners for universe/galaxy
-- sync-platform-metrics updated: heat_score = clamp(sum of active boost deltas, 0, 100)
-- Self-boost promotions sheet (Quick Boost 80T/+8/1h, Major Boost 250T/+20/1h, Spotlight Entry 500T/4h)
-- Power-ups sheet: Universe 800T/4h, Galaxy 300T/4h, +Popularity 400T/+12/1h
-- Sabotage sheet: -Popularity 350T/-12/1h, Black Hole 250T, Super Massive Black Hole 800T
-- MM discount (20% off self-boosts when open market exists); 1.5× delta if ≥200T in open bets
-- PromotionFlashBanner overlay (MainShell); HomeTicker with Realtime subscription
-- Realtime on promotion_banners verified working
-
-### Completed (Phase 7 — Challenges & Badges)
-- Migrations 016–018: 21 badges, 19 challenges, user_badges, user_challenge_progress, user_streaks,
-  user_passive_effects view, evaluate_main_character_badge() DB function
-- evaluate-challenges edge function: full condition engine; idempotent
-- BadgesShelf widget (own profile + public profiles)
-- ChallengesScreen: Daily/Weekly/Monthly tabs; challenge cards with progress bars
-- /challenges route added to router
-- Home screen fires daily check-in via _checkInProvider
-- Bet bottom sheet fires bet_placed + bet_placed_unique_mm on successful bet
-- passiveEffectsProvider(userId): reads user_passive_effects view
-- Passive effects applied to feed ranking: Rising, Who's Live, Spotlight
-
-### Completed (Phase 8 — New Scoring System, migration 019)
-- display_score changed from numeric(5,2) → bigint (additive raw points per platform)
-- resolution_score DROPPED — composite display_score is now the resolution metric
-- heat_score baseline reset to 0 (boost-only; active boost deltas are the only driver)
-- previous_follower_count added to platform_metrics for 24h growth delta
-- score_history table created (Robinhood-style dashboard chart)
-- Snapshot trigger fixed: opening_resolution_score now stores composite bigint display_score
-- ScoreDashboard: Robinhood-style line chart with 1D/1W/1M/3M/YTD periods
-
-### Completed (Post-Phase-7 Platform Additions)
-- X (Twitter) OAuth + metrics sync (migration 020; recent_post_views/reposts/likes columns)
-- Spotify OAuth + metrics sync (saved tracks/albums via column reuse of recent_post_views/reposts)
-- public_platform_connections view (migration 023)
-- Beta approval gate (migration 021): is_approved on profiles; approve_beta_user() DB function;
-  /pending-approval route; auto-approve flow for pre-approved waitlist emails
-
-### Completed (Pre-Launch — Cover Screen)
-- Launch screen: full-page countdown to July 4, 2026 00:00:00 UTC, waitlist email signup,
-  consent checkbox, legal footer links
-- waitlist table (migration 022): email UNIQUE, anon INSERT open, no anon SELECT
-- `/` route shows LaunchScreen when app is in pre-launch mode
-
-### OG / Early Adopter Badge Cutoffs — ALREADY SET IN DB
-```sql
--- Already applied — DO NOT re-run
-UPDATE challenge_definitions
-SET condition = jsonb_set(condition, '{before}', '"2026-07-04T04:00:00Z"')
-WHERE slug IN ('earn_og', 'earn_early_adopter');
-```
-OG cutoff = midnight ET July 4, 2026. Early Adopter = '2026-08-03T04:00:00Z'.
-
-### Known Issues / Notes
+### Known Issues
 - YouTube OAuth in Google Testing mode — only whitelisted emails can connect until verified.
-- Google consent screen shows supabase.co domain — expected until custom domain added.
-- Profile pictures deferred: avatar comes from connected social account (not yet built).
-  Currently shows first letter of username. Do not add manual upload.
-- All edge functions must be deployed manually (not auto-deployed from GitHub).
-- TikTok secrets NOT yet in Supabase — do not build until API review completes.
+- Profile pictures deferred — avatar from connected social account (not yet built). No manual upload.
+- All edge functions deployed manually (not auto-deployed from GitHub).
+- TikTok secrets NOT in Supabase — do not build until API review completes.
 - Google Cloud $300 credit is time-limited — needs activation.
 
 ---
@@ -625,20 +473,13 @@ OG cutoff = midnight ET July 4, 2026. Early Adopter = '2026-08-03T04:00:00Z'.
 ## Outstanding Items — Priority Order
 
 ### Must do before launch
-1. **Get Tokens two-step flow** — news-panel "Get Tokens" button needs a first modal:
-   Purchase → existing buy sheet; Earn → 4 options (Arena, Hot Topic, Chicken Run, Ball Bounce — no links yet).
-   Note: affects only the news-panel button, NOT the header "Get Tokens" button.
-2. **Spotify OAuth end-to-end test** — connect from /profile, confirm metrics sync writes display_score and score_history correctly.
-3. **RLS policy audit** — RLS confirmed enabled on all tables; individual policy rules need verification:
-   ```sql
-   SELECT tablename, policyname, cmd, roles, qual, with_check
-   FROM pg_policies WHERE schemaname = 'public' ORDER BY tablename;
-   ```
-4. **Supabase access token rotation** — rotate at supabase.com/dashboard/account/tokens.
-   Always use `! export SUPABASE_ACCESS_TOKEN=...` in Claude Code sessions.
+1. **Get Tokens two-step flow** — news-panel only: Purchase → buy sheet; Earn → 4 options (Arena, Hot Topic, Chicken Run, Ball Bounce). Header button unaffected.
+2. **Spotify OAuth end-to-end test** — confirm metrics sync writes display_score and score_history correctly.
+3. **RLS policy audit** — verify individual policy rules (`pg_policies WHERE schemaname='public'`).
+4. **Supabase access token rotation** — rotate at supabase.com/dashboard/account/tokens; use `! export SUPABASE_ACCESS_TOKEN=...`.
 
 ### High priority
-5. **Onboarding walkthrough** — PageView, 4–5 slides, skippable, re-accessible from Settings. Deferred until UI is stable.
+5. **Onboarding walkthrough** — PageView, 4–5 slides, skippable, re-accessible from Settings.
 6. **UI audit pass** — inconsistencies pass before onboarding is built.
 7. **Profile avatars** — pull from connected platform data; display on profile + circular market cards.
 
@@ -655,18 +496,9 @@ OG cutoff = midnight ET July 4, 2026. Early Adopter = '2026-08-03T04:00:00Z'.
 ## Deferred Features — Do Not Build Until Instructed
 
 ### Arena System (Post-Launch — Major Subsystem)
-A real-time, audience-driven competitive layer. Market Makers compete in scheduled automated
-matches across 3 rounds. Outcomes determined by token flow, Heat Score influence, timed
-power-up interactions, and archetype modifiers. Uses velocity / relative movement — NOT raw
-display_score (prevents large creators auto-winning).
-
-**Match length: 5 minutes, uniform across all rounds.**
-Rationale: shorter matches → more matchups per week → users can participate during a work
-break or downtime. This is a deliberate design choice for participation density.
+Real-time competitive layer. 3 rounds, 5-minute matches, audience-driven. Uses velocity/relative movement — NOT raw display_score (prevents large creators auto-winning).
 
 **Round structure and scheduling windows:**
-Each window contains many more matches now that match duration is 5 minutes (not 1h or 30min).
-
 - Round 1 — Discovery: 7 AM–7 PM daily. Same-category matchups. 1 pt/win.
 - Round 2 — Chaos: 7 PM–7 AM daily. Cross-category matchups. 2 pts/win.
 - Round 3 — Champions: Friday 7 PM → Sunday midnight. Weekly top performers only. 5 pts/win.
@@ -675,11 +507,7 @@ Each window contains many more matches now that match duration is 5 minutes (not
 **ArenaScore formula:**
 `ArenaScore = BaseFlow + HeatInfluence + AbilityImpact + MomentumSpike + MomentumCarry − SuppressionEffects`
 
-Two token actions (see Two-Game Architecture section for authoritative definitions):
-- **Back** — allocate tokens to a side; at-risk; resolves 90% pool share on win or lost on loss.
-- **Trigger** — spend tokens on power-ups or archetype abilities; consumed, never returned.
-
-There is no "Shift" action and no separate bet-on-outcome mechanic. Do not add a third loop.
+Token actions: **Back** (at-risk backing; 90% pool share on win, lost on loss) and **Trigger** (consumed power-ups/abilities; not returned). No Shift action. No third loop. See Two-Game Architecture for canonical definitions.
 
 Existing power-ups reinterpreted (not replaced): +Popularity → HeatInfluence weight;
 Universe → global flow rate; Galaxy → same-category flow rate; −Popularity → opponent efficiency;
@@ -687,41 +515,19 @@ Black Hole → cancels Universe/Galaxy + AbilityImpact suppression; SMBH → vol
 
 Stacking rule: EffectiveMultiplier = Base × (1 + log(1 + n)) — prevents exponential abuse.
 
-**10 Archetypes** (one per primary category): each has 1 Passive, 2 Core abilities (30–60s cooldown),
-1 Signature (2–4min), 1 Ultimate (1/match). Abilities modify only multipliers/windows, never raw scores.
-Subcategories add light ±5–10% modifiers to one stat.
+**10 Archetypes** (one per primary category): 1 Passive, 2 Core (30–60s CD), 1 Signature (2–4min), 1 Ultimate (1/match). Abilities modify multipliers/windows only. Subcategories ±5–10% one stat.
 
 **Spotlight Reset & Momentum Carry (canonical — implement in Phase A):**
-
-Carry mechanism: `momentum_score` column on `platform_metrics`. Decays linearly over 1 week.
-Arena match wins deposit momentum points; losses do not subtract. Cap to be finalized in Phase A spec.
-The MomentumCarry term in ArenaScore reads this column at match start.
-
-Spotlight rotation rule: the Monday after a creator holds a Spotlight slot (Arena Champions),
-their `heat_score` resets to 0 AND their `momentum_score` resets to 0. The Spotlight reward is
-public visibility plus the weekly Arena points already earned — not a compounding advantage.
-This preserves rotation. Non-Spotlight match winners carry their momentum_score into the next week.
+`momentum_score` column on `platform_metrics`; Arena wins deposit (losses don't subtract); linear weekly decay; cap TBD in Phase A. MomentumCarry reads it at match start. Spotlight rotation: the Monday after holding a slot, reset both `heat_score` and `momentum_score` to 0 — reward is visibility + points already earned, not a compounding advantage. Non-Spotlight winners carry `momentum_score` forward.
 
 **New tables needed:** arena_matches, arena_events, arena_state.
 **Build order:** Phase A (DB + cron engine) → Phase B (Flutter UI) → Phase C (Spotlight wiring).
 
-### Games (Separate Project)
-- Flappy Bird–style endless flyer (Ball Bounce)
-- Chicken/Crash–style multiplier risk game (Chicken Run)
-- Dragon/Dinosaur egg hatching idle game
-- Ad-supported token faucet (rewarded ads = 3× base reward)
-- Daily caps: 8 rewarded ads/game, 150 free base tokens across all games
+**Games (Separate Project)**: Ball Bounce (endless flyer), Chicken Run (multiplier risk), Dragon egg idle game. Ad token faucet (3× reward). Daily caps: 8 ads/game, 150 tokens across all games.
 
-### Future Platform Integrations
-- TikTok — submitted for review; do not build until API approved
-- Instagram — blocked on Meta SMS verification
-- Kick — no official API yet
-- X Spaces metrics (if API opens up)
+**Future Platform Integrations**: TikTok (API review, do not build yet), Instagram (blocked on Meta SMS verification), Kick (no API), X Spaces (if API opens).
 
-### Marketing Campaign
-- Dinosaur egg → dragon/phoenix hatching animation on launch day
-- Creature lights rocket engines on countdown page
-- Do not stub or build until assets are provided
+**Marketing Campaign**: launch-day dragon/phoenix hatching animation + rocket engines on countdown page. Do not build until assets provided.
 
 ---
 
@@ -751,7 +557,6 @@ All plain — no code generation.
 - heat_score capped 0–100 always
 - heat_score = what users see (boost-only; baseline 0)
 - display_score = additive bigint raw points (never modified by promotions/power-ups)
-- resolution_score column no longer exists — composite display_score handles resolution
 - 10% betting rake: 5% to platform, 5% to Market Maker pool
 - Integer balances only — no decimals in token_balances
 - Every token movement logged immutably in token_transactions with type + reference_id
@@ -761,9 +566,7 @@ All plain — no code generation.
 
 ## Test Account System
 
-Test accounts are synthetic Market Makers used to seed dev data and validate Arena, markets,
-and other features without polluting real user queries. They are identified by
-`profiles.is_test_account = true` and filtered from all public-facing surfaces.
+Test accounts are synthetic Market Makers (`profiles.is_test_account = true`) used to seed dev data without polluting real user queries. Filtered from all public-facing surfaces.
 
 ### Column additions (migration 025)
 - `profiles.is_test_account` — boolean NOT NULL DEFAULT false. Index on (is_test_account).
@@ -772,53 +575,14 @@ and other features without polluting real user queries. They are identified by
   any connection where this is true.
 
 ### Production filter rule
-**Default: test accounts are EXCLUDED from all user-facing queries.**
-Edge functions check `Deno.env.get('INCLUDE_TEST_ACCOUNTS') === 'true'` to opt in.
-This env var MUST NOT be set in production Supabase secrets. Flutter providers always filter
-`is_test_account = false` unconditionally.
+**Default: test accounts EXCLUDED from all user-facing queries.** Edge functions check `INCLUDE_TEST_ACCOUNTS === 'true'` to opt in — MUST NOT be set in production. Flutter providers always filter `is_test_account = false`.
 
-Surfaces that filter test accounts:
-- `marketMakersProvider` (Flutter) — `.eq('is_test_account', false)` on profiles query
-- `risingCreatorsProvider` (Flutter) — `.eq('is_test_account', false)` on profiles query
-- `compute-spotlight` edge function — `.eq('is_test_account', false)` on profiles query
-- `sync-platform-metrics` edge function — `.eq('is_test_account', false)` on connections query
-- `evaluate-challenges` edge function — early exit if user is a test account
-- `evaluate_main_character_badge()` DB function — excludes test accounts from #1 heat scan
+Surfaces that filter test accounts (`.eq('is_test_account', false)`): `marketMakersProvider`, `risingCreatorsProvider`, `compute-spotlight` (profiles query); `sync-platform-metrics` (connections query); `evaluate-challenges` (early exit); `evaluate_main_character_badge()` (excludes from #1 heat scan).
 
-Surfaces that do NOT filter (by design):
-- `/u/:username` public profile — renders normally so we can QA the page
-- `resolve-markets` — test markets resolve normally; transactions are wiped in teardown
-- `marketDetailProvider` — individual market detail is fine to show
+Do NOT filter (by design): `/u/:username`, `resolve-markets`, `marketDetailProvider`.
 
 ### Seeded test accounts (migration 026, applied)
-20 creators, 2 per primary category, UUIDs `10000000-0000-0000-0000-000000000001` through `…000020`.
-All have `is_market_maker=true`, `pending_opt_out=false`, `is_approved=true`, `is_test_account=true`.
-Emails: `test+<username>@noraplatforms.com`. Token balance: 1000 tokens each.
-Platform connections: one synthetic 'youtube' connection per account, marked `is_test_account=true`,
-never synced. Platform metrics: seeded manually with varied heat_score (5–95) and display_score.
-
-| UUID suffix | Username | Category | Subcategory |
-|---|---|---|---|
-| 001 | test_athlete_basketball_1 | Athlete | Basketball |
-| 002 | test_athlete_football_1 | Athlete | Football |
-| 003 | test_musician_dj_1 | Musician | DJ |
-| 004 | test_musician_singer_1 | Musician | Singer |
-| 005 | test_healthcare_doctor_1 | Healthcare | Doctor General |
-| 006 | test_healthcare_nurse_1 | Healthcare | Nurse |
-| 007 | test_performer_comedian_1 | Performer | Comedian |
-| 008 | test_performer_dancer_1 | Performer | Dancer |
-| 009 | test_gamer_streamer_1 | Gamer | Streamer |
-| 010 | test_gamer_competitive_1 | Gamer | Competitive |
-| 011 | test_influencer_fitness_1 | Influencer | Fitness |
-| 012 | test_influencer_travel_1 | Influencer | Travel |
-| 013 | test_educator_teacher_1 | Educator | Teacher |
-| 014 | test_educator_author_1 | Educator | Author |
-| 015 | test_politician_congress_1 | Politician | Congress |
-| 016 | test_politician_governor_1 | Politician | Governor |
-| 017 | test_religion_pastor_1 | Religion | Pastor |
-| 018 | test_religion_rabbi_1 | Religion | Rabbi |
-| 019 | test_business_startup_1 | Business | Startup |
-| 020 | test_business_nonprofit_1 | Business | Non Profit |
+20 creators, 2 per primary category. UUIDs `10000000-0000-0000-0000-000000000001` through `…000020`. Username pattern: `test_<category>_<subcategory>_1` (e.g. `test_athlete_basketball_1`). All `is_market_maker=true`, `is_test_account=true`, 1000 tokens, one synthetic YouTube connection per account. Full list in migration 026.
 
 ### Teardown (migration 027, committed but NOT applied)
 `027_teardown_test_accounts.sql` deletes all test account rows in FK order, wrapped in a
