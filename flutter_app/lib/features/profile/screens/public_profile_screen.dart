@@ -49,7 +49,7 @@ class PublicProfileScreen extends ConsumerWidget {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () =>
-              context.canPop() ? context.pop() : context.go('/explore'),
+              context.canPop() ? context.pop() : context.go('/home'),
         ),
         actions: [
           IconButton(
@@ -1094,7 +1094,7 @@ class _NotFoundState extends StatelessWidget {
             ),
             const SizedBox(height: 32),
             OutlinedButton(
-              onPressed: () => context.go('/explore'),
+              onPressed: () => context.go('/home'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppTheme.primary,
                 side: const BorderSide(color: AppTheme.primary),

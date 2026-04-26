@@ -16,7 +16,7 @@ class PrivacyPolicyScreen extends StatelessWidget {
             if (context.canPop()) {
               context.pop();
             } else {
-              context.go('/explore');
+              context.go('/home');
             }
           },
         ),

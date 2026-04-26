@@ -83,7 +83,13 @@ class _CelebrityHeatScreenState extends State<CelebrityHeatScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded,
               color: Colors.white, size: 20),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/home');
+            }
+          },
         ),
         title: const Row(
           children: [
@@ -367,7 +373,7 @@ class _MiniCountdownBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: null,
+      onTap: () => context.go('/'),
       child: Container(
         width: double.infinity,
         padding: EdgeInsets.only(

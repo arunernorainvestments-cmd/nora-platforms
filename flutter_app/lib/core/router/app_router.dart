@@ -21,6 +21,7 @@ import '../../features/explore/screens/hot_topic_screen.dart';
 import '../../features/legal/screens/privacy_policy_screen.dart';
 import '../../features/legal/screens/terms_of_service_screen.dart';
 import '../../features/profile/screens/score_dashboard_screen.dart';
+import '../../features/arena/screens/arena_screen.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/home/screens/plan_screen.dart';
 import '../shell/main_shell.dart';
@@ -73,7 +74,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ── Protected routes require authentication ───────────────────────────
       // /home, /news, /explore, /hot-topic are intentionally PUBLIC.
       const protectedRoutes = [
-        '/markets', '/profile', '/wallet', '/mybets',
+        '/markets', '/profile', '/wallet', '/mybets', '/arena',
       ];
       final isProtected = protectedRoutes.contains(loc);
       if (!isLoggedIn && isProtected) {
@@ -219,6 +220,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => WalletScreen(
               purchaseResult: state.uri.queryParameters['purchase'],
             ),
+          ),
+          GoRoute(
+            path: '/arena',
+            builder: (context, state) => const ArenaScreen(),
           ),
         ],
       ),

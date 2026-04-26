@@ -73,7 +73,13 @@ class _MarketDetailScreenState extends ConsumerState<MarketDetailScreen> {
         surfaceTintColor: Colors.transparent,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
-          onPressed: () => context.pop(),
+          onPressed: () {
+            if (context.canPop()) {
+              context.pop();
+            } else {
+              context.go('/markets');
+            }
+          },
         ),
         title: Text(
           title,
