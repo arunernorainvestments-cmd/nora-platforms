@@ -98,6 +98,30 @@ See TODO comment in `lib/features/home/screens/home_screen.dart`.
 
 ---
 
+## Arena Visual Design
+
+Canonical reference: Grok mockups Arena_1–5, April 2026 (not in repo). Base = Arena_5; power-up tracker from Arena_2/3/4.
+
+**Base layout:** two radial-gradient orbs (left/right); center beam (score ratio — leans toward loser); score % above each orb; four corner power-up slots; player name + MM label below. Bg: #0A0A0F → #1A1A2E.
+
+**Pass 1 — ships with Phase A:**
+- Pulsing orbs: AnimationController + ScaleTransition + RadialGradient
+- Center beam: animated Container by score ratio; corner slots (AnimatedOpacity + AnimatedScale); event ticker (ListView + SlideTransition); countdown timer
+- Action buttons: Back P1 | Back P2 | Trigger Ability
+- No particles, waveform, shaders, or BackdropFilter
+
+**Pass 2 (post-Phase A):** particle bursts on Back (CustomPainter ≤100/orb); power-up tracker with timer rings + stack counters; orb glow by heat_influence; beam pulse.
+
+**Pass 3 (post-launch):** waveform (CustomPainter, match data — not audio FFT); lightning arcs on high flow; Ultimate screen flash; per-archetype orb theming.
+
+**Do not attempt:** 3D orb effects; audio FFT; shader glow (static gradients + animated opacity); real-time blur on moving orbs; real particle physics (directional bursts).
+
+**Performance:** lerp ticks (3s, no snap); drive from `arena_state.tick` not local time; cap to one flash + stack counter per tick; pause when tabbed out; BackdropFilter sparingly; test Safari early.
+
+**Animation source-of-truth:** derives from server `arena_state` only. Client never computes ArenaScore or predicts timing.
+
+---
+
 ## Commands
 
 All Flutter commands run from the `flutter_app/` directory:
