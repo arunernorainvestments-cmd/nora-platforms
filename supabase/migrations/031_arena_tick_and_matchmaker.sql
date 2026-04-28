@@ -354,17 +354,18 @@ BEGIN
 END;
 $$;
 
--- Phase A: every 1 minute (pg_cron standard cron minimum).
--- Once pg_cron 1.6+ is confirmed on this project, change to:
---   '10 seconds'  for arena-tick
--- to approach the 3-second target from CLAUDE.md "Arena Visual Design".
+-- Tick: 10 seconds requires pg_cron 1.6+ (SELECT extversion FROM pg_extension WHERE extname='pg_cron').
+-- If the migration fails here, fall back to '* * * * *' (every 1 minute).
+-- To stop the tick at any time: SELECT cron.unschedule('arena-tick');
 SELECT cron.schedule(
   'arena-tick',
-  '* * * * *',
+  '10 seconds',
   'SELECT public.process_arena_tick()'
 );
 
--- Matchmaker runs every 5 minutes to pair available creators.
+-- Matchmaker: runs every 5 minutes to auto-pair test creators.
+-- For manual-only control, comment this out and call arena_matchmake(1) from SQL
+-- or the "Find a Match" button. To stop: SELECT cron.unschedule('arena-matchmaker');
 SELECT cron.schedule(
   'arena-matchmaker',
   '*/5 * * * *',
