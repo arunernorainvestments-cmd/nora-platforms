@@ -22,6 +22,7 @@ import '../../features/legal/screens/privacy_policy_screen.dart';
 import '../../features/legal/screens/terms_of_service_screen.dart';
 import '../../features/profile/screens/score_dashboard_screen.dart';
 import '../../features/arena/screens/arena_screen.dart';
+import '../../features/arena/screens/arena_match_screen.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/home/screens/plan_screen.dart';
 import '../shell/main_shell.dart';
@@ -76,7 +77,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       const protectedRoutes = [
         '/markets', '/profile', '/wallet', '/mybets', '/arena',
       ];
-      final isProtected = protectedRoutes.contains(loc);
+      // /arena/:matchId sub-paths are also protected
+      final isProtected = protectedRoutes.contains(loc) ||
+          loc.startsWith('/arena/');
       if (!isLoggedIn && isProtected) {
         // Store destination in Riverpod — reliable across async redirect re-fires
         ref.read(pendingNavigationProvider.notifier).state = loc;
@@ -224,6 +227,16 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/arena',
             builder: (context, state) => const ArenaScreen(),
+          ),
+          // /arena/:matchId — auth-required, inside ShellRoute for bottom nav.
+          // Direct navigation (refresh at noraplatforms.com/arena/<uuid>) works
+          // because Vercel's catch-all rewrite sends all paths to /index.html and
+          // GoRouter parses the matchId parameter from the URL.
+          GoRoute(
+            path: '/arena/:matchId',
+            builder: (context, state) => ArenaMatchScreen(
+              matchId: state.pathParameters['matchId']!,
+            ),
           ),
         ],
       ),

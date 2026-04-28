@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../providers/arena_providers.dart';
 
 class ArenaScreen extends ConsumerWidget {
   const ArenaScreen({super.key});
@@ -33,7 +35,9 @@ class ArenaScreen extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _HeroBlock(),
-              const SizedBox(height: 36),
+              const SizedBox(height: 20),
+              _FindMatchButton(),
+              const SizedBox(height: 28),
               const _SectionLabel('ROUNDS'),
               const SizedBox(height: 12),
               const _RoundCard(
@@ -114,7 +118,7 @@ class _HeroBlock extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         const Text(
-          'The competitive layer. Coming soon.',
+          'Compete, back creators, and win tokens.',
           textAlign: TextAlign.center,
           style: TextStyle(
             color: AppTheme.textSecondary,
@@ -130,7 +134,7 @@ class _HeroBlock extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
           ),
           child: const Text(
-            'In Development',
+            'Phase A Live',
             style: TextStyle(
               color: AppTheme.primary,
               fontSize: 11,
@@ -302,6 +306,59 @@ class _DetailRow extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Find a Match button ──────────────────────────────────────────────────────
+
+class _FindMatchButton extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final matchState = ref.watch(matchmakingProvider);
+    final isLoading = matchState.isLoading;
+
+    return FilledButton.icon(
+      onPressed: isLoading
+          ? null
+          : () async {
+              final notifier = ref.read(matchmakingProvider.notifier);
+              final matchId = await notifier.findMatch();
+              if (!context.mounted) return;
+              if (matchId != null) {
+                context.push('/arena/$matchId');
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      'No matches available right now — try again in a moment.',
+                    ),
+                    backgroundColor: AppTheme.surface,
+                  ),
+                );
+              }
+            },
+      icon: isLoading
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: AppTheme.textPrimary,
+              ),
+            )
+          : const Icon(Icons.play_arrow_rounded),
+      label: Text(isLoading ? 'Finding match…' : 'Find a Match'),
+      style: FilledButton.styleFrom(
+        backgroundColor: AppTheme.primary,
+        foregroundColor: AppTheme.textPrimary,
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        textStyle: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
     );
   }
 }
