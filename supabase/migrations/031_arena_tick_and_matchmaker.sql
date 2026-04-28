@@ -354,12 +354,14 @@ BEGIN
 END;
 $$;
 
--- Tick: 10 seconds requires pg_cron 1.6+ (SELECT extversion FROM pg_extension WHERE extname='pg_cron').
--- If the migration fails here, fall back to '* * * * *' (every 1 minute).
--- To stop the tick at any time: SELECT cron.unschedule('arena-tick');
+-- Tick: '* * * * *' = every 1 minute — safe for all pg_cron versions including free tier.
+-- To upgrade to 10-second ticks (requires pg_cron 1.6+, Pro/Team plan):
+--   SELECT cron.unschedule('arena-tick');
+--   SELECT cron.schedule('arena-tick', '10 seconds', 'SELECT public.process_arena_tick()');
+-- To stop at any time: SELECT cron.unschedule('arena-tick');
 SELECT cron.schedule(
   'arena-tick',
-  '10 seconds',
+  '* * * * *',
   'SELECT public.process_arena_tick()'
 );
 
