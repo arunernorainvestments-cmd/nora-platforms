@@ -134,7 +134,7 @@ class _HeroBlock extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
           ),
           child: const Text(
-            'Phase A Live',
+            'Phase B Live',
             style: TextStyle(
               color: AppTheme.primary,
               fontSize: 11,

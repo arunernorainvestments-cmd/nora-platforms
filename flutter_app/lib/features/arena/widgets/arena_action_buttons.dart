@@ -1,19 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/arena_match.dart';
+import '../models/active_effect.dart';
+import '../providers/arena_providers.dart';
+import 'ability_picker_widget.dart';
 
-class ArenaActionButtons extends StatelessWidget {
+class ArenaActionButtons extends ConsumerWidget {
   final ArenaMatch match;
   final void Function(String targetId, int amount) onBack;
+  final void Function(String abilityId, String targetId) onTrigger;
+  final List<ActiveEffect> activeEffects;
 
   const ArenaActionButtons({
     super.key,
     required this.match,
     required this.onBack,
+    required this.onTrigger,
+    required this.activeEffects,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final abilitiesAsync = ref.watch(abilityConfigProvider);
+    final cooldownsAsync = ref.watch(abilityCooldownsProvider(match.id));
+
     return Row(
       children: [
         Expanded(
@@ -34,7 +45,18 @@ class ArenaActionButtons extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        _TriggerButton(),
+        _TriggerButton(
+          onTap: abilitiesAsync.hasValue
+              ? () => showAbilityPicker(
+                    context: context,
+                    match: match,
+                    abilities: abilitiesAsync.value!,
+                    cooldowns: cooldownsAsync.valueOrNull ?? {},
+                    activeEffects: activeEffects,
+                    onTrigger: onTrigger,
+                  )
+              : null,
+        ),
       ],
     );
   }
@@ -149,31 +171,38 @@ class _BackButton extends StatelessWidget {
 }
 
 class _TriggerButton extends StatelessWidget {
+  final VoidCallback? onTap;
+  const _TriggerButton({this.onTap});
+
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: 'Abilities coming in Phase B',
-      child: SizedBox(
-        width: 56,
-        child: FilledButton(
-          onPressed: null,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppTheme.cardBorder,
-            foregroundColor: AppTheme.textSecondary,
-            disabledBackgroundColor: AppTheme.cardBorder,
-            disabledForegroundColor: AppTheme.textSecondary,
-            padding: const EdgeInsets.symmetric(vertical: 14),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+    final enabled = onTap != null;
+    return SizedBox(
+      width: 56,
+      child: FilledButton(
+        onPressed: onTap,
+        style: FilledButton.styleFrom(
+          backgroundColor: enabled
+              ? AppTheme.primary.withValues(alpha: 0.18)
+              : AppTheme.cardBorder,
+          foregroundColor: enabled ? AppTheme.primary : AppTheme.textSecondary,
+          disabledBackgroundColor: AppTheme.cardBorder,
+          disabledForegroundColor: AppTheme.textSecondary,
+          side: BorderSide(
+            color: enabled
+                ? AppTheme.primary.withValues(alpha: 0.4)
+                : AppTheme.cardBorder,
           ),
-          child: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.flash_on_outlined, size: 16),
-              SizedBox(height: 2),
-              Text('Ability', style: TextStyle(fontSize: 9)),
-            ],
-          ),
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
+        child: const Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.flash_on, size: 16),
+            SizedBox(height: 2),
+            Text('Ability', style: TextStyle(fontSize: 9)),
+          ],
         ),
       ),
     );

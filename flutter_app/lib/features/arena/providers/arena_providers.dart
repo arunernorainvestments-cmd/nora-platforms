@@ -3,9 +3,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/arena_match.dart';
 import '../models/arena_state_model.dart';
 import '../models/arena_event.dart';
+import '../models/ability_config.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Match detail (one-time fetch — FutureProvider)
+// Match detail (one-time fetch)
 // ─────────────────────────────────────────────────────────────────────────────
 
 final arenaMatchProvider =
@@ -26,7 +27,7 @@ final arenaMatchProvider =
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Live arena state (Realtime stream — updates every tick)
+// Live arena state (Realtime — updates each tick)
 // ─────────────────────────────────────────────────────────────────────────────
 
 final arenaStateProvider =
@@ -41,7 +42,7 @@ final arenaStateProvider =
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Live events (Realtime stream — last 10, newest first)
+// Live events (Realtime — last 10, newest first)
 // ─────────────────────────────────────────────────────────────────────────────
 
 final arenaEventsProvider =
@@ -52,28 +53,73 @@ final arenaEventsProvider =
       .eq('match_id', matchId)
       .order('created_at', ascending: false)
       .limit(10)
-      .map((rows) =>
-          rows.map((r) => ArenaEvent.fromJson(r)).toList());
+      .map((rows) => rows.map(ArenaEvent.fromJson).toList());
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Matchmaking — creates/finds a match for the user to spectate
+// Ability config (all archetypes; cached for session lifetime)
+// ─────────────────────────────────────────────────────────────────────────────
+
+final abilityConfigProvider =
+    FutureProvider<List<AbilityConfig>>((ref) async {
+  final rows = await Supabase.instance.client
+      .from('arena_abilities')
+      .select()
+      .order('archetype')
+      .order('ability_type');
+  return rows.map(AbilityConfig.fromJson).toList();
+});
+
+// Abilities for a specific archetype (filters from above)
+final archetypeAbilitiesProvider =
+    Provider.family<AsyncValue<List<AbilityConfig>>, String>((ref, archetype) {
+  return ref.watch(abilityConfigProvider).whenData(
+    (all) => all.where((a) => a.archetype == archetype).toList(),
+  );
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-match cooldowns for current user (Realtime stream)
+// Returns map of ability_id → last triggered_at
+// ─────────────────────────────────────────────────────────────────────────────
+
+final abilityCooldownsProvider =
+    StreamProvider.family<Map<String, DateTime>, String>((ref, matchId) {
+  final userId = Supabase.instance.client.auth.currentUser?.id;
+  if (userId == null) {
+    return Stream.value({});
+  }
+  // Stream all uses for this match; filter by userId in map (stream builder
+  // only supports a single .eq() filter).
+  return Supabase.instance.client
+      .from('arena_ability_uses')
+      .stream(primaryKey: ['id'])
+      .eq('match_id', matchId)
+      .order('triggered_at', ascending: false)
+      .map((rows) {
+        final Map<String, DateTime> map = {};
+        for (final row in rows) {
+          if (row['user_id'] != userId) continue;
+          final id = row['ability_id'] as String;
+          final at = DateTime.parse(row['triggered_at'] as String);
+          if (!map.containsKey(id)) map[id] = at;
+        }
+        return map;
+      });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Matchmaking
 // ─────────────────────────────────────────────────────────────────────────────
 
 class MatchmakingNotifier extends StateNotifier<AsyncValue<String?>> {
   MatchmakingNotifier() : super(const AsyncData(null));
 
-  // Returns a match_id or null if no match could be created.
-  // Flow:
-  //   1. Call arena_matchmake(1) to create a fresh pair of test creators.
-  //   2. If nothing was created (all creators busy), fall back to any existing
-  //      live or pre_match match the user can spectate.
   Future<String?> findMatch() async {
     state = const AsyncLoading();
     try {
       final client = Supabase.instance.client;
 
-      // Try to create a new match
       final created = await client.rpc(
         'arena_matchmake',
         params: {'p_limit': 1},
@@ -88,7 +134,6 @@ class MatchmakingNotifier extends StateNotifier<AsyncValue<String?>> {
         }
       }
 
-      // Fall back to an existing spectatable match
       final existing = await client
           .from('arena_matches')
           .select('id')

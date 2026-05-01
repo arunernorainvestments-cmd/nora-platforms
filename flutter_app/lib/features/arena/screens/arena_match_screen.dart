@@ -42,7 +42,6 @@ class _ArenaMatchScreenState extends ConsumerState<ArenaMatchScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Pause animations when app is backgrounded (CLAUDE.md: pause when tabbed out)
     setState(() {
       _appInForeground = state == AppLifecycleState.resumed;
     });
@@ -68,23 +67,49 @@ class _ArenaMatchScreenState extends ConsumerState<ArenaMatchScreen>
         'p_amount': amount,
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Backed with $amount tokens'),
-            backgroundColor: AppTheme.success,
-            duration: const Duration(seconds: 2),
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Backed with $amount tokens'),
+          backgroundColor: AppTheme.success,
+          duration: const Duration(seconds: 2),
+        ));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(e.toString().replaceFirst('Exception: ', '')),
-            backgroundColor: AppTheme.danger,
-            duration: const Duration(seconds: 3),
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: AppTheme.danger,
+          duration: const Duration(seconds: 3),
+        ));
+      }
+    }
+  }
+
+  Future<void> _handleTrigger(String abilityId, String targetId) async {
+    if (!mounted) return;
+    try {
+      final result = await Supabase.instance.client
+          .rpc('arena_trigger', params: {
+        'p_match_id': widget.matchId,
+        'p_ability_id': abilityId,
+        'p_target_id': targetId,
+      });
+      if (mounted && result != null) {
+        final newBalance = result['new_balance'] as int?;
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(newBalance != null
+              ? 'Ability triggered! Balance: $newBalance T'
+              : 'Ability triggered!'),
+          backgroundColor: AppTheme.success,
+          duration: const Duration(seconds: 2),
+        ));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(e.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: AppTheme.danger,
+          duration: const Duration(seconds: 3),
+        ));
       }
     }
   }
@@ -116,6 +141,7 @@ class _ArenaMatchScreenState extends ConsumerState<ArenaMatchScreen>
               onStartCountdown: _startCountdown,
               secondsUntilStart: _secondsUntilStart,
               onBack: _handleBack,
+              onTrigger: _handleTrigger,
             ),
           ),
         ),
@@ -133,6 +159,7 @@ class _MatchBody extends ConsumerStatefulWidget {
   final void Function(Duration) onStartCountdown;
   final int secondsUntilStart;
   final void Function(String, int) onBack;
+  final void Function(String, String) onTrigger;
 
   const _MatchBody({
     required this.match,
@@ -141,6 +168,7 @@ class _MatchBody extends ConsumerStatefulWidget {
     required this.onStartCountdown,
     required this.secondsUntilStart,
     required this.onBack,
+    required this.onTrigger,
   });
 
   @override
@@ -160,7 +188,6 @@ class _MatchBodyState extends ConsumerState<_MatchBody> {
         ?? ArenaStateModel.empty(widget.matchId);
     final events = eventsAsync.valueOrNull ?? [];
 
-    // Start countdown for pre_match state
     if (match.isPreMatch && !_countdownStarted) {
       _countdownStarted = true;
       SchedulerBinding.instance.addPostFrameCallback((_) {
@@ -168,9 +195,11 @@ class _MatchBodyState extends ConsumerState<_MatchBody> {
       });
     }
 
+    final effectsP1 = arenaState.effectsForPlayer(1);
+    final effectsP2 = arenaState.effectsForPlayer(2);
+
     return Column(
       children: [
-        // ── Header ──────────────────────────────────────────────────────────
         _MatchHeader(
           match: match,
           arenaState: arenaState,
@@ -179,15 +208,12 @@ class _MatchBodyState extends ConsumerState<_MatchBody> {
 
         const SizedBox(height: 8),
 
-        // ── Pre-match overlay ────────────────────────────────────────────────
         if (match.isPreMatch)
           _PreMatchBanner(secondsUntilStart: widget.secondsUntilStart),
 
-        // ── Resolved overlay ─────────────────────────────────────────────────
         if (match.isResolved)
           _ResolvedBanner(match: match),
 
-        // ── Match arena ──────────────────────────────────────────────────────
         Expanded(
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -202,23 +228,17 @@ class _MatchBodyState extends ConsumerState<_MatchBody> {
 
         const SizedBox(height: 8),
 
-        // ── Power-up slots ────────────────────────────────────────────────────
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              PowerUpSlotWidget(),
-              PowerUpSlotWidget(),
-              PowerUpSlotWidget(),
-              PowerUpSlotWidget(),
-            ],
+        // Active effect slots (2 per player)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: ActiveEffectSlotRow(
+            effectsP1: effectsP1,
+            effectsP2: effectsP2,
           ),
         ),
 
         const SizedBox(height: 8),
 
-        // ── Event ticker ──────────────────────────────────────────────────────
         SizedBox(
           height: 80,
           child: Padding(
@@ -229,13 +249,14 @@ class _MatchBodyState extends ConsumerState<_MatchBody> {
 
         const SizedBox(height: 8),
 
-        // ── Action buttons ────────────────────────────────────────────────────
         if (match.isLive)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: ArenaActionButtons(
               match: match,
               onBack: widget.onBack,
+              onTrigger: widget.onTrigger,
+              activeEffects: arenaState.activeEffects,
             ),
           )
         else
@@ -270,25 +291,18 @@ class _MatchHeader extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: const BoxDecoration(
-        border: Border(
-          bottom: BorderSide(color: AppTheme.cardBorder),
-        ),
+        border: Border(bottom: BorderSide(color: AppTheme.cardBorder)),
       ),
       child: Row(
         children: [
-          // Back button
           GestureDetector(
             onTap: () {
-              if (Navigator.of(context).canPop()) {
-                Navigator.of(context).pop();
-              }
+              if (Navigator.of(context).canPop()) Navigator.of(context).pop();
             },
             child: const Icon(Icons.arrow_back_ios_new,
                 color: AppTheme.textSecondary, size: 18),
           ),
           const SizedBox(width: 12),
-
-          // Round badge
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
@@ -307,10 +321,7 @@ class _MatchHeader extends StatelessWidget {
               ),
             ),
           ),
-
           const Spacer(),
-
-          // Timer / state label
           if (match.isPreMatch)
             Text(
               'Starting in ${secondsUntilStart}s',
@@ -345,10 +356,7 @@ class _MatchHeader extends StatelessWidget {
               'Finished',
               style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
             ),
-
           const SizedBox(width: 12),
-
-          // Pool total
           Text(
             '${arenaState.totalPool.toInt()} T',
             style: const TextStyle(
@@ -384,12 +392,10 @@ class _ArenaArea extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // ── P1 side ───────────────────────────────────────────────────────────
         Expanded(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              // Score %
               TweenAnimationBuilder<double>(
                 tween: Tween(end: state.fractionP1 * 100),
                 duration: const Duration(milliseconds: 3000),
@@ -405,15 +411,14 @@ class _ArenaArea extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              // Orb
               OrbWidget(
                 flowRate: state.flowRateP1,
                 totalFlow: totalFlow,
                 color: AppTheme.primary,
                 paused: !appInForeground,
+                activeEffects: state.effectsForPlayer(1),
               ),
               const SizedBox(height: 10),
-              // Player name
               Text(
                 match.player1Username,
                 style: const TextStyle(
@@ -434,14 +439,12 @@ class _ArenaArea extends StatelessWidget {
           ),
         ),
 
-        // ── Center beam ───────────────────────────────────────────────────────
         CenterBeamWidget(
           state: state,
           colorP1: AppTheme.primary,
           colorP2: AppTheme.secondary,
         ),
 
-        // ── P2 side ───────────────────────────────────────────────────────────
         Expanded(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -466,6 +469,7 @@ class _ArenaArea extends StatelessWidget {
                 totalFlow: totalFlow,
                 color: AppTheme.secondary,
                 paused: !appInForeground,
+                activeEffects: state.effectsForPlayer(2),
               ),
               const SizedBox(height: 10),
               Text(

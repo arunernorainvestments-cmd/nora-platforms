@@ -1,3 +1,5 @@
+import 'active_effect.dart';
+
 class ArenaStateModel {
   final String matchId;
   final int tick;
@@ -11,6 +13,7 @@ class ArenaStateModel {
   final double suppressionP2;
   final double totalPoolP1;
   final double totalPoolP2;
+  final List<ActiveEffect> activeEffects;
   final DateTime updatedAt;
 
   const ArenaStateModel({
@@ -26,20 +29,34 @@ class ArenaStateModel {
     required this.suppressionP2,
     required this.totalPoolP1,
     required this.totalPoolP2,
+    required this.activeEffects,
     required this.updatedAt,
   });
 
   double get totalScore => scoreP1 + scoreP2;
   double get totalPool  => totalPoolP1 + totalPoolP2;
 
-  // Returns 0.5 when both scores are zero to avoid division-by-zero.
   double get fractionP1 => totalScore == 0 ? 0.5 : scoreP1 / totalScore;
   double get fractionP2 => totalScore == 0 ? 0.5 : scoreP2 / totalScore;
 
   int get percentP1 => (fractionP1 * 100).round();
   int get percentP2 => (fractionP2 * 100).round();
 
+  List<ActiveEffect> effectsForPlayer(int player) =>
+      activeEffects.where((e) => e.targetPlayer == player).toList();
+
   factory ArenaStateModel.fromJson(Map<String, dynamic> json) {
+    final rawEffects = json['active_effects'];
+    final List<ActiveEffect> effects;
+    if (rawEffects is List) {
+      effects = rawEffects
+          .whereType<Map<String, dynamic>>()
+          .map(ActiveEffect.fromJson)
+          .toList();
+    } else {
+      effects = [];
+    }
+
     return ArenaStateModel(
       matchId:          json['match_id'] as String,
       tick:             (json['tick'] as num).toInt(),
@@ -53,6 +70,7 @@ class ArenaStateModel {
       suppressionP2:    (json['suppression_p2'] as num?)?.toDouble() ?? 0,
       totalPoolP1:      (json['total_pool_p1'] as num?)?.toDouble() ?? 0,
       totalPoolP2:      (json['total_pool_p2'] as num?)?.toDouble() ?? 0,
+      activeEffects:    effects,
       updatedAt:        DateTime.parse(json['updated_at'] as String),
     );
   }
@@ -70,6 +88,7 @@ class ArenaStateModel {
     suppressionP2:    0,
     totalPoolP1:      0,
     totalPoolP2:      0,
+    activeEffects:    [],
     updatedAt:        DateTime.now().toUtc(),
   );
 }

@@ -44,14 +44,15 @@ class _EventTickerWidgetState extends State<EventTickerWidget> {
         final targetName = isP1
             ? widget.match.player1Username
             : widget.match.player2Username;
-        final accentColor =
-            isP1 ? AppTheme.primary : AppTheme.secondary;
+        final accentColor = isP1 ? AppTheme.primary : AppTheme.secondary;
+        final isNew = _prev.isEmpty ||
+            (i < _prev.length && _prev[i].id != e.id);
 
         return _TickerRow(
           event: e,
           targetName: targetName,
           accentColor: accentColor,
-          isNew: _prev.isEmpty || i < _prev.length && _prev[i].id != e.id,
+          isNew: isNew,
         );
       },
     );
@@ -100,9 +101,20 @@ class _TickerRowState extends State<_TickerRow>
     super.dispose();
   }
 
+  String _label() {
+    if (widget.event.type == 'trigger') {
+      final name = widget.event.abilityDisplayName ?? 'Ability';
+      return '$name → ${widget.targetName}';
+    }
+    final amount = widget.event.value.toInt();
+    return '+$amount → ${widget.targetName}';
+  }
+
+  IconData _icon() =>
+      widget.event.type == 'trigger' ? Icons.flash_on : Icons.bolt;
+
   @override
   Widget build(BuildContext context) {
-    final amount = widget.event.value.toInt();
     return SlideTransition(
       position: _slide,
       child: Container(
@@ -116,11 +128,11 @@ class _TickerRowState extends State<_TickerRow>
         ),
         child: Row(
           children: [
-            Icon(Icons.bolt, color: widget.accentColor, size: 11),
+            Icon(_icon(), color: widget.accentColor, size: 11),
             const SizedBox(width: 4),
             Expanded(
               child: Text(
-                '+$amount → ${widget.targetName}',
+                _label(),
                 style: TextStyle(
                   color: widget.accentColor,
                   fontSize: 10,

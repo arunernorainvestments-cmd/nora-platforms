@@ -5,6 +5,7 @@ class ArenaEvent {
   final String targetId;
   final String type; // 'back' | 'trigger'
   final double value;
+  final Map<String, dynamic> metadata;
   final DateTime createdAt;
 
   const ArenaEvent({
@@ -14,8 +15,12 @@ class ArenaEvent {
     required this.targetId,
     required this.type,
     required this.value,
+    required this.metadata,
     required this.createdAt,
   });
+
+  // For trigger events: the ability display name from metadata
+  String? get abilityDisplayName => metadata['display_name'] as String?;
 
   factory ArenaEvent.fromJson(Map<String, dynamic> json) {
     return ArenaEvent(
@@ -25,6 +30,7 @@ class ArenaEvent {
       targetId:  json['target_id'] as String,
       type:      json['type'] as String,
       value:     (json['value'] as num).toDouble(),
+      metadata:  (json['metadata'] as Map<String, dynamic>?) ?? {},
       createdAt: DateTime.parse(json['created_at'] as String),
     );
   }
