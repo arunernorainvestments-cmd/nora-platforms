@@ -18,6 +18,84 @@ class HomeTokenBalance {
       );
 }
 
+// Phase D: Arena Champions slot (populated from arena_spotlight_assignments)
+class ChampionCreator {
+  final String userId;
+  final String? displayName;
+  final String? username;
+  final String? avatarUrl;
+  final double displayScore;
+  final double heatScore;
+  final int slot;
+
+  const ChampionCreator({
+    required this.userId,
+    this.displayName,
+    this.username,
+    this.avatarUrl,
+    required this.displayScore,
+    required this.heatScore,
+    required this.slot,
+  });
+
+  factory ChampionCreator.fromJson(Map<String, dynamic> json) =>
+      ChampionCreator(
+        userId:       json['user_id'] as String,
+        displayName:  json['display_name'] as String?,
+        username:     json['username'] as String?,
+        avatarUrl:    json['avatar_url'] as String?,
+        displayScore: (json['display_score'] as num?)?.toDouble() ?? 0,
+        heatScore:    (json['heat_score'] as num?)?.toDouble() ?? 0,
+        slot:         (json['slot'] as num?)?.toInt() ?? 0,
+      );
+
+  String get displayLabel => displayName ?? username ?? 'Anonymous';
+  String get initials => displayLabel.isNotEmpty ? displayLabel[0].toUpperCase() : '?';
+}
+
+// Phase D: Top Mover (trailing 7-day display_score growth)
+class TopMoverCreator {
+  final String userId;
+  final String? displayName;
+  final String? username;
+  final String? avatarUrl;
+  final double displayScore;
+  final double weeklyGrowthPct;
+
+  const TopMoverCreator({
+    required this.userId,
+    this.displayName,
+    this.username,
+    this.avatarUrl,
+    required this.displayScore,
+    required this.weeklyGrowthPct,
+  });
+
+  factory TopMoverCreator.fromJson(Map<String, dynamic> json) =>
+      TopMoverCreator(
+        userId:          json['user_id'] as String,
+        displayName:     json['display_name'] as String?,
+        username:        json['username'] as String?,
+        avatarUrl:       json['avatar_url'] as String?,
+        displayScore:    (json['display_score'] as num?)?.toDouble() ?? 0,
+        weeklyGrowthPct: (json['weekly_growth_pct'] as num?)?.toDouble() ?? 0,
+      );
+
+  String get displayLabel => displayName ?? username ?? 'Anonymous';
+  String get initials => displayLabel.isNotEmpty ? displayLabel[0].toUpperCase() : '?';
+}
+
+class DualSpotlightData {
+  final List<ChampionCreator> champions;
+  final List<TopMoverCreator> topMovers;
+
+  const DualSpotlightData({required this.champions, required this.topMovers});
+
+  static const empty = DualSpotlightData(champions: [], topMovers: []);
+}
+
+// Legacy model kept for compatibility with discover/markets/profile providers
+// that still join spotlight_scores. home_screen.dart uses dualSpotlightProvider.
 class SpotlightCreator {
   final String userId;
   final String? displayName;
@@ -36,22 +114,19 @@ class SpotlightCreator {
   });
 
   factory SpotlightCreator.fromJson(Map<String, dynamic> json) {
-    // spotlight_scores row with embedded profiles via FK
     final profile = json['profiles'] as Map<String, dynamic>?;
     return SpotlightCreator(
-      userId: json['user_id'] as String,
+      userId:      json['user_id'] as String,
       displayName: profile?['display_name'] as String?,
-      username: profile?['username'] as String?,
-      avatarUrl: profile?['avatar_url'] as String?,
-      score: (json['score'] as num?)?.toDouble() ?? 0,
-      tier: json['tier'] as String? ?? 'listed',
+      username:    profile?['username'] as String?,
+      avatarUrl:   profile?['avatar_url'] as String?,
+      score:       (json['score'] as num?)?.toDouble() ?? 0,
+      tier:        json['tier'] as String? ?? 'listed',
     );
   }
 
   String get displayLabel => displayName ?? username ?? 'Anonymous';
-
-  String get initials =>
-      displayLabel.isNotEmpty ? displayLabel[0].toUpperCase() : '?';
+  String get initials => displayLabel.isNotEmpty ? displayLabel[0].toUpperCase() : '?';
 }
 
 class HomeFamousCreator {
@@ -68,7 +143,6 @@ class HomeFamousCreator {
   });
 
   factory HomeFamousCreator.fromJson(Map<String, dynamic> json) {
-    // Count non-null platform columns
     final platforms = [
       json['platform_youtube'],
       json['platform_tiktok'],
@@ -79,10 +153,10 @@ class HomeFamousCreator {
     ].where((v) => v != null).length;
 
     return HomeFamousCreator(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      totalFollowers: (json['total_followers'] as num?)?.toInt() ?? 0,
-      platformCount: platforms,
+      id:              json['id'] as String,
+      name:            json['name'] as String,
+      totalFollowers:  (json['total_followers'] as num?)?.toInt() ?? 0,
+      platformCount:   platforms,
     );
   }
 }
@@ -106,12 +180,38 @@ final homeTokenBalanceProvider =
   return HomeTokenBalance.fromJson(data);
 });
 
-/// Top 3 on-fire creators for the Spotlight section.
-/// Ordering: pinned entries (active spotlight_entry boost) first, then by
-/// effective_score = score * (1 + visibility_multiplier) descending.
+// Phase D: Dual spotlight — calls compute-spotlight edge function.
+// Returns both Arena Champions (locked weekly) and Top Movers (dynamic).
+final dualSpotlightProvider =
+    FutureProvider.autoDispose<DualSpotlightData>((ref) async {
+  try {
+    final response = await Supabase.instance.client.functions
+        .invoke('compute-spotlight', method: HttpMethod.get);
+
+    if (response.data == null) return DualSpotlightData.empty;
+    final data = response.data as Map<String, dynamic>;
+
+    final championsList = (data['champions'] as List?)
+        ?.map((e) => ChampionCreator.fromJson(e as Map<String, dynamic>))
+        .toList() ?? [];
+
+    final topMoversList = (data['top_movers'] as List?)
+        ?.map((e) => TopMoverCreator.fromJson(e as Map<String, dynamic>))
+        .toList() ?? [];
+
+    return DualSpotlightData(
+      champions: championsList,
+      topMovers: topMoversList,
+    );
+  } catch (_) {
+    return DualSpotlightData.empty;
+  }
+});
+
+// Legacy: reads from spotlight_scores (no longer updated by compute-spotlight).
+// Kept to avoid breaking other provider chains; returns empty in practice.
 final spotlightCreatorsProvider =
     FutureProvider.autoDispose<List<SpotlightCreator>>((ref) async {
-  // Fetch a larger pool so Dart-side re-sort can surface pinned entries correctly.
   final data = await Supabase.instance.client
       .from('spotlight_scores')
       .select('user_id, score, tier, profiles(display_name, username, avatar_url)')
@@ -119,57 +219,11 @@ final spotlightCreatorsProvider =
       .order('score', ascending: false)
       .limit(15);
 
-  final creators = (data as List)
+  return (data as List)
       .map((e) => SpotlightCreator.fromJson(e as Map<String, dynamic>))
       .toList();
-
-  if (creators.isEmpty) return creators;
-
-  final userIds = creators.map((c) => c.userId).toList();
-  final now = DateTime.now().toUtc().toIso8601String();
-
-  // Fetch passive effects and active spotlight pins in parallel.
-  final results = await Future.wait([
-    Supabase.instance.client
-        .from('user_passive_effects')
-        .select('user_id, visibility_multiplier')
-        .inFilter('user_id', userIds),
-    Supabase.instance.client
-        .from('active_boosts')
-        .select('target_user_id')
-        .eq('boost_type', 'spotlight_entry')
-        .eq('is_cancelled', false)
-        .gt('expires_at', now)
-        .inFilter('target_user_id', userIds),
-  ]);
-
-  final passiveMap = <String, double>{};
-  for (final row in results[0] as List) {
-    passiveMap[row['user_id'] as String] =
-        (row['visibility_multiplier'] as num?)?.toDouble() ?? 0.0;
-  }
-
-  final pinnedIds = (results[1] as List)
-      .map((row) => row['target_user_id'] as String)
-      .toSet();
-
-  creators.sort((a, b) {
-    // Pinned entries sort above organic regardless of score.
-    final aPinned = pinnedIds.contains(a.userId) ? 1 : 0;
-    final bPinned = pinnedIds.contains(b.userId) ? 1 : 0;
-    if (aPinned != bPinned) return bPinned.compareTo(aPinned);
-    // Within same group, sort by effective_score descending.
-    final aEff = a.score * (1 + (passiveMap[a.userId] ?? 0));
-    final bEff = b.score * (1 + (passiveMap[b.userId] ?? 0));
-    return bEff.compareTo(aEff);
-  });
-
-  return creators.take(3).toList();
 });
 
-/// 5 random famous creators for the carousel.
-/// Supabase doesn't support ORDER BY RANDOM() via the client, so we fetch
-/// a small pool and shuffle in Dart.
 final homeFamousCreatorsProvider =
     FutureProvider.autoDispose<List<HomeFamousCreator>>((ref) async {
   final data = await Supabase.instance.client
@@ -185,7 +239,6 @@ final homeFamousCreatorsProvider =
       .map((e) => HomeFamousCreator.fromJson(e as Map<String, dynamic>))
       .toList();
 
-  // Shuffle and take 5 for carousel variety on each visit
   all.shuffle();
   return all.take(5).toList();
 });

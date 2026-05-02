@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../providers/arena_providers.dart';
+import '../../auth/providers/auth_provider.dart';
 
 class ArenaScreen extends ConsumerWidget {
   const ArenaScreen({super.key});
@@ -37,6 +38,8 @@ class ArenaScreen extends ConsumerWidget {
               _HeroBlock(),
               const SizedBox(height: 20),
               _FindMatchButton(),
+              const SizedBox(height: 16),
+              const _Round3ReadinessWidget(),
               const SizedBox(height: 28),
               const _SectionLabel('ROUNDS'),
               const SizedBox(height: 12),
@@ -134,7 +137,7 @@ class _HeroBlock extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
           ),
           child: const Text(
-            'Phase B Live',
+            'Phase D Live',
             style: TextStyle(
               color: AppTheme.primary,
               fontSize: 11,
@@ -358,6 +361,128 @@ class _FindMatchButton extends ConsumerWidget {
           fontSize: 16,
           fontWeight: FontWeight.w700,
         ),
+      ),
+    );
+  }
+}
+
+// ─── Round 3 readiness widget ─────────────────────────────────────────────────
+
+class _Round3ReadinessWidget extends ConsumerWidget {
+  const _Round3ReadinessWidget();
+
+  DateTime _nextFriday7PM() {
+    final now = DateTime.now().toUtc();
+    // Find this Friday at 19:00 UTC
+    final daysUntilFriday = (5 - now.weekday + 7) % 7; // weekday 1=Mon, 5=Fri
+    var friday = DateTime.utc(now.year, now.month, now.day + daysUntilFriday, 19, 0, 0);
+    if (friday.isBefore(now)) friday = friday.add(const Duration(days: 7));
+    return friday;
+  }
+
+  String _fmtCountdown(Duration d) {
+    if (d.isNegative) return 'Now';
+    final days = d.inDays;
+    final hours = d.inHours % 24;
+    final mins = d.inMinutes % 60;
+    if (days > 0) return '${days}d ${hours}h';
+    if (hours > 0) return '${hours}h ${mins}m';
+    return '${mins}m';
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserProvider);
+    if (user == null) return const SizedBox.shrink();
+
+    final pointsAsync = ref.watch(arenaWeeklyPointsProvider);
+    final topPlayersAsync = ref.watch(arenaTopWeeklyPlayersProvider);
+    final bracketAsync = ref.watch(arenaCurrentBracketProvider);
+
+    final myPoints = pointsAsync.valueOrNull ?? 0;
+    final topPlayers = topPlayersAsync.valueOrNull ?? [];
+    final bracket = bracketAsync.valueOrNull;
+
+    final isQualified = topPlayers.contains(user.id);
+    final bracketState = bracket?['state'] as String?;
+    final timeToFriday = _nextFriday7PM().difference(DateTime.now().toUtc());
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFFFFD700).withValues(alpha: 0.3),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 40, height: 40,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFFD700).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: const Icon(Icons.emoji_events_outlined,
+                color: Color(0xFFFFD700), size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(children: [
+                  const Text('Champions Bracket',
+                      style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700)),
+                  const Spacer(),
+                  if (isQualified)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFD700).withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text('Qualified',
+                          style: TextStyle(
+                              color: Color(0xFFFFD700),
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700)),
+                    ),
+                ]),
+                const SizedBox(height: 4),
+                if (bracketState == 'active' || bracketState == 'completed')
+                  Text(
+                    bracketState == 'completed' ? 'Bracket complete — results Monday' : 'Bracket active — Round ${bracket?['current_round']}',
+                    style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                  )
+                else
+                  Row(children: [
+                    const Text(
+                      'Friday 7 PM UTC: ',
+                      style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                    ),
+                    Text(
+                      _fmtCountdown(timeToFriday),
+                      style: const TextStyle(
+                          color: Color(0xFFFFD700),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700),
+                    ),
+                  ]),
+                if (myPoints > 0) ...[
+                  const SizedBox(height: 3),
+                  Text('Your points this week: $myPoints',
+                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+                ],
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

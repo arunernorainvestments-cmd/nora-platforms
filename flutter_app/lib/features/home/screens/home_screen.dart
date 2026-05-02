@@ -48,7 +48,7 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _categoryIndex = 0;
-  int _spotlightSlide = 0;
+  int _championsSlide = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
   @override
@@ -83,13 +83,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   slivers: [
                     SliverToBoxAdapter(
                       child: isWide
-                          ? _WideSpotlightLayout(
-                              slide: _spotlightSlide,
-                              onSlide: (i) => setState(() => _spotlightSlide = i),
+                          ? _WideDualSpotlightLayout(
+                              championsSlide: _championsSlide,
+                              onChampionsSlide: (i) => setState(() => _championsSlide = i),
                             )
-                          : _NarrowSpotlightLayout(
-                              slide: _spotlightSlide,
-                              onSlide: (i) => setState(() => _spotlightSlide = i),
+                          : _NarrowDualSpotlightLayout(
+                              championsSlide: _championsSlide,
+                              onChampionsSlide: (i) => setState(() => _championsSlide = i),
                             ),
                     ),
                     const SliverToBoxAdapter(child: _Divider()),
@@ -108,7 +108,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   Future<void> _refresh() async {
-    ref.invalidate(spotlightCreatorsProvider);
+    ref.invalidate(dualSpotlightProvider);
     ref.invalidate(risingCreatorsProvider);
     ref.invalidate(liveUserIdsProvider);
     ref.invalidate(liveMetricsFeedProvider);
@@ -390,121 +390,42 @@ class _TabButton extends StatelessWidget {
   }
 }
 
-// TODO (post Arena Phase A): Split Weekly Spotlight section into
-// "Arena Champions" (5 slots) and "Top Movers" (5 slots).
-// Champions sourced from previous week's Round 3 winners.
-// Top Movers sourced from trailing 7-day display_score growth.
+// ─── Wide dual-spotlight layout (≥900px) ─────────────────────────────────────
+// Two distinct sections: Arena Champions (weekly locked) + Top Movers (dynamic).
 
-// ─── Wide spotlight layout (≥900px) ──────────────────────────────────────────
+class _WideDualSpotlightLayout extends ConsumerWidget {
+  final int championsSlide;
+  final ValueChanged<int> onChampionsSlide;
 
-class _WideSpotlightLayout extends ConsumerWidget {
-  final int slide;
-  final ValueChanged<int> onSlide;
-  const _WideSpotlightLayout({required this.slide, required this.onSlide});
-
-  Widget _buildRankSidebar(List<SpotlightCreator> creators, int safeSlide) {
-    final others = creators
-        .asMap()
-        .entries
-        .where((e) => e.key != safeSlide)
-        .take(4)
-        .toList();
-    return Column(
-      children: List.generate(4, (i) {
-        final rank = i + 2; // 2nd through 5th
-        if (i < others.length) {
-          final e = others[i];
-          return _RankCard(
-            creator: e.value,
-            rank: e.key + 1,
-            isActive: false,
-            onTap: () => onSlide(e.key),
-          );
-        }
-        return _PlaceholderRankCard(rank: rank);
-      }),
-    );
-  }
+  const _WideDualSpotlightLayout({
+    required this.championsSlide,
+    required this.onChampionsSlide,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final creatorsAsync = ref.watch(spotlightCreatorsProvider);
-    final creators = creatorsAsync.valueOrNull ?? [];
-    final safeSlide = creators.isEmpty ? 0 : slide.clamp(0, creators.length - 1);
+    final spotlightAsync = ref.watch(dualSpotlightProvider);
+    final spotlight = spotlightAsync.valueOrNull ?? DualSpotlightData.empty;
 
     return Padding(
       padding: const EdgeInsets.all(24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Heading — always visible
-          Row(
-            children: [
-              Text(
-                creators.isEmpty ? '1st' : _ordinal(safeSlide),
-                style: const TextStyle(
-                  color: AppTheme.primary,
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(width: 12),
-              const Text(
-                'Weekly Spotlight',
-                style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
+          // ── Arena Champions ──────────────────────────────────────────────
+          _ArenaChampionsSection(
+            champions: spotlight.champions,
+            slide: championsSlide,
+            onSlide: onChampionsSlide,
+            isWide: true,
           ),
-          const SizedBox(height: 16),
-          // 3-column row — always visible, never collapses
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 420),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Main spotlight card — flex 5
-                Expanded(
-                  flex: 5,
-                  child: creators.isEmpty
-                      ? const _SpotlightPlaceholderCard(height: 400)
-                      : _SpotlightCard(
-                          creator: creators[safeSlide],
-                          height: 400,
-                          slide: safeSlide,
-                          total: creators.length,
-                          onPrev: safeSlide > 0
-                              ? () => onSlide(safeSlide - 1)
-                              : null,
-                          onNext: safeSlide < creators.length - 1
-                              ? () => onSlide(safeSlide + 1)
-                              : null,
-                          onDot: onSlide,
-                        ),
-                ),
-                const SizedBox(width: 12),
-                // Rank sidebar — flex 2 — always shows 4 cards
-                Expanded(
-                  flex: 2,
-                  child: _buildRankSidebar(creators, safeSlide),
-                ),
-                const SizedBox(width: 12),
-                // Right column: news + tokens — flex 2 — always visible
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    children: [
-                      _NewsPanel(),
-                      const SizedBox(height: 14),
-                      _GetTokensButton(),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+          const SizedBox(height: 32),
+          Container(height: 1, color: AppTheme.cardBorder),
+          const SizedBox(height: 32),
+          // ── Top Movers ───────────────────────────────────────────────────
+          _TopMoversSection(
+            movers: spotlight.topMovers,
+            isWide: true,
           ),
         ],
       ),
@@ -512,98 +433,224 @@ class _WideSpotlightLayout extends ConsumerWidget {
   }
 }
 
-// ─── Narrow spotlight layout (<900px) ────────────────────────────────────────
+// ─── Narrow dual-spotlight layout (<900px) ────────────────────────────────────
 
-class _NarrowSpotlightLayout extends ConsumerWidget {
-  final int slide;
-  final ValueChanged<int> onSlide;
-  const _NarrowSpotlightLayout({required this.slide, required this.onSlide});
+class _NarrowDualSpotlightLayout extends ConsumerWidget {
+  final int championsSlide;
+  final ValueChanged<int> onChampionsSlide;
+
+  const _NarrowDualSpotlightLayout({
+    required this.championsSlide,
+    required this.onChampionsSlide,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final creatorsAsync = ref.watch(spotlightCreatorsProvider);
-    final creators = creatorsAsync.valueOrNull ?? [];
-    final safeSlide = creators.isEmpty ? 0 : slide.clamp(0, creators.length - 1);
-
-    final others = creators
-        .asMap()
-        .entries
-        .where((e) => e.key != safeSlide)
-        .take(4)
-        .toList();
+    final spotlightAsync = ref.watch(dualSpotlightProvider);
+    final spotlight = spotlightAsync.valueOrNull ?? DualSpotlightData.empty;
 
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minHeight: 420),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Heading — always visible
-            Row(
-              children: [
-                Text(
-                  creators.isEmpty ? '1st' : _ordinal(safeSlide),
-                  style: const TextStyle(
-                      color: AppTheme.primary,
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800),
-                ),
-                const SizedBox(width: 10),
-                const Text('Weekly Spotlight',
-                    style: TextStyle(
-                        color: AppTheme.textPrimary,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700)),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // Carousel — full width, always visible
-            creators.isEmpty
-                ? const _SpotlightPlaceholderCard(height: 300)
-                : _SpotlightCard(
-                    creator: creators[safeSlide],
-                    height: 300,
-                    slide: safeSlide,
-                    total: creators.length,
-                    onPrev: safeSlide > 0
-                        ? () => onSlide(safeSlide - 1)
-                        : null,
-                    onNext: safeSlide < creators.length - 1
-                        ? () => onSlide(safeSlide + 1)
-                        : null,
-                    onDot: onSlide,
-                  ),
-            const SizedBox(height: 12),
-            // Rank cards — always show 4
-            ...List.generate(4, (i) {
-              final rank = i + 2;
-              if (i < others.length) {
-                final e = others[i];
-                return _RankCard(
-                  creator: e.value,
-                  rank: e.key + 1,
-                  isActive: false,
-                  onTap: () => onSlide(e.key),
-                );
-              }
-              return _PlaceholderRankCard(rank: rank);
-            }),
-            const SizedBox(height: 16),
-            _NewsPanel(),
-            const SizedBox(height: 12),
-            _GetTokensButton(),
-          ],
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _ArenaChampionsSection(
+            champions: spotlight.champions,
+            slide: championsSlide,
+            onSlide: onChampionsSlide,
+            isWide: false,
+          ),
+          const SizedBox(height: 24),
+          Container(height: 1, color: AppTheme.cardBorder),
+          const SizedBox(height: 24),
+          _TopMoversSection(movers: spotlight.topMovers, isWide: false),
+        ],
       ),
     );
   }
 }
 
-// ─── Spotlight card ───────────────────────────────────────────────────────────
+// ─── Arena Champions section ──────────────────────────────────────────────────
 
-class _SpotlightCard extends StatelessWidget {
-  final SpotlightCreator creator;
+class _ArenaChampionsSection extends StatelessWidget {
+  final List<ChampionCreator> champions;
+  final int slide;
+  final ValueChanged<int> onSlide;
+  final bool isWide;
+
+  const _ArenaChampionsSection({
+    required this.champions,
+    required this.slide,
+    required this.onSlide,
+    required this.isWide,
+  });
+
+  Widget _buildCarouselCard(BuildContext context) {
+    if (champions.isEmpty) {
+      return _ChampionsEmptyCard(height: isWide ? 400 : 300);
+    }
+    final safeSlide = slide.clamp(0, champions.length - 1);
+    final c = champions[safeSlide];
+    return _ChampionSpotlightCard(
+      champion: c,
+      height: isWide ? 400 : 300,
+      slide: safeSlide,
+      total: champions.length,
+      onPrev: safeSlide > 0 ? () => onSlide(safeSlide - 1) : null,
+      onNext: safeSlide < champions.length - 1 ? () => onSlide(safeSlide + 1) : null,
+      onDot: onSlide,
+    );
+  }
+
+  List<Widget> _buildRankCards(int safeSlide) {
+    final others = champions.asMap().entries.where((e) => e.key != safeSlide).take(4).toList();
+    return List.generate(4, (i) {
+      final rank = i + 2;
+      if (i < others.length) {
+        final e = others[i];
+        return _ChampionRankCard(champion: e.value, rank: e.key + 1, onTap: () => onSlide(e.key));
+      }
+      return _PlaceholderRankCard(rank: rank);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final safeSlide = champions.isEmpty ? 0 : slide.clamp(0, champions.length - 1);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.emoji_events_outlined, color: Color(0xFFFFD700), size: 22),
+            const SizedBox(width: 8),
+            Text(
+              'Arena Champions',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: isWide ? 22 : 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Last week\'s Round 3 winners',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+        ),
+        const SizedBox(height: 16),
+        if (isWide)
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 420),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(flex: 5, child: _buildCarouselCard(context)),
+                const SizedBox(width: 12),
+                Expanded(flex: 2, child: Column(children: _buildRankCards(safeSlide))),
+                const SizedBox(width: 12),
+                Expanded(
+                  flex: 2,
+                  child: Column(children: [
+                    _NewsPanel(),
+                    const SizedBox(height: 14),
+                    _GetTokensButton(),
+                  ]),
+                ),
+              ],
+            ),
+          )
+        else
+          Column(
+            children: [
+              _buildCarouselCard(context),
+              const SizedBox(height: 12),
+              ..._buildRankCards(safeSlide),
+              const SizedBox(height: 16),
+              _NewsPanel(),
+              const SizedBox(height: 12),
+              _GetTokensButton(),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+// ─── Top Movers section ───────────────────────────────────────────────────────
+
+class _TopMoversSection extends StatelessWidget {
+  final List<TopMoverCreator> movers;
+  final bool isWide;
+
+  const _TopMoversSection({required this.movers, required this.isWide});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.trending_up, color: AppTheme.success, size: 22),
+            const SizedBox(width: 8),
+            Text(
+              'Top Movers',
+              style: TextStyle(
+                color: AppTheme.textPrimary,
+                fontSize: isWide ? 22 : 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Biggest weekly growth',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+        ),
+        const SizedBox(height: 16),
+        if (isWide)
+          Row(
+            children: List.generate(5, (i) {
+              if (i < movers.length) {
+                return Expanded(child: Padding(
+                  padding: EdgeInsets.only(right: i < 4 ? 10 : 0),
+                  child: _TopMoverCard(mover: movers[i], rank: i + 1),
+                ));
+              }
+              return Expanded(child: Padding(
+                padding: EdgeInsets.only(right: i < 4 ? 10 : 0),
+                child: _TopMoverPlaceholder(rank: i + 1),
+              ));
+            }),
+          )
+        else
+          Column(
+            children: List.generate(5, (i) {
+              if (i < movers.length) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _TopMoverCard(mover: movers[i], rank: i + 1),
+                );
+              }
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _TopMoverPlaceholder(rank: i + 1),
+              );
+            }),
+          ),
+      ],
+    );
+  }
+}
+
+// ─── Champion spotlight card ──────────────────────────────────────────────────
+
+class _ChampionSpotlightCard extends StatelessWidget {
+  final ChampionCreator champion;
   final int slide;
   final int total;
   final VoidCallback? onPrev;
@@ -611,8 +658,8 @@ class _SpotlightCard extends StatelessWidget {
   final ValueChanged<int> onDot;
   final double height;
 
-  const _SpotlightCard({
-    required this.creator,
+  const _ChampionSpotlightCard({
+    required this.champion,
     required this.slide,
     required this.total,
     required this.onPrev,
@@ -623,42 +670,48 @@ class _SpotlightCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final accent = _paletteColor(creator.displayLabel);
+    final accent = _paletteColor(champion.displayLabel);
     final card = Container(
       height: height,
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
       child: Stack(
         children: [
-          // Layer 1 — full-bleed background image or gradient placeholder
           Positioned.fill(
-            child: creator.avatarUrl != null
-                ? Image.network(
-                    creator.avatarUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => _CardGradient(accent: accent),
-                  )
+            child: champion.avatarUrl != null
+                ? Image.network(champion.avatarUrl!, fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => _CardGradient(accent: accent))
                 : _CardGradient(accent: accent),
           ),
-          // Layer 2 — bottom gradient fade (covers bottom 40%)
           Positioned.fill(
             child: Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
+                  begin: Alignment.topCenter, end: Alignment.bottomCenter,
                   stops: const [0.4, 1.0],
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.75),
-                  ],
+                  colors: [Colors.transparent, Colors.black.withValues(alpha: 0.75)],
                 ),
               ),
             ),
           ),
-          // Layer 3 — score chip (top-right)
+          // Trophy badge top-left
+          Positioned(
+            top: 16, left: 16,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFD700).withValues(alpha: 0.9),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.emoji_events, color: Colors.black87, size: 13),
+                const SizedBox(width: 4),
+                Text(_ordinal(champion.slot - 1),
+                    style: const TextStyle(color: Colors.black87, fontSize: 12, fontWeight: FontWeight.w800)),
+              ]),
+            ),
+          ),
+          // Score chip top-right
           Positioned(
             top: 16, right: 16,
             child: Container(
@@ -667,118 +720,245 @@ class _SpotlightCard extends StatelessWidget {
                 color: const Color(0xFF1A1A2E).withValues(alpha: 0.85),
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.trending_up,
-                      color: Color(0xFF00C896), size: 14),
-                  const SizedBox(width: 5),
-                  Text(
-                    '+${creator.score.toStringAsFixed(0)} pts',
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700),
-                  ),
-                ],
-              ),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.trending_up, color: Color(0xFF00C896), size: 14),
+                const SizedBox(width: 5),
+                Text(
+                  _fmtScore(champion.displayScore),
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.w700),
+                ),
+              ]),
             ),
           ),
-          // Layer 4 — follower count overlay (bottom-left)
-          Positioned(
-            bottom: 60, left: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.70),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('FOLLOWER COUNT',
-                      style: TextStyle(
-                          color: Colors.white54,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.8)),
-                  const SizedBox(height: 4),
-                  Text('Score: +${creator.score.toStringAsFixed(0)}',
-                      style: const TextStyle(
-                          color: Color(0xFF00C896),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-          ),
-          // Layer 5 — creator name + category (bottom-right)
           Positioned(
             bottom: 60, right: 16,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(creator.displayLabel,
-                    style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold)),
-                const SizedBox(height: 3),
-                Text(creator.tier,
-                    style: const TextStyle(
-                        color: Colors.white70, fontSize: 14)),
-              ],
-            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+              Text(champion.displayLabel,
+                  style: const TextStyle(color: Colors.white, fontSize: 22, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 3),
+              Text('🔥 ${champion.heatScore.toStringAsFixed(1)}',
+                  style: const TextStyle(color: Colors.white70, fontSize: 14)),
+            ]),
           ),
-          // Layer 6 — navigation arrows
           if (onPrev != null)
-            Positioned(
-              left: 8, top: 0, bottom: 0,
-              child: Center(
-                  child: _ChevronButton(
-                      icon: Icons.chevron_left, onTap: onPrev!)),
-            ),
+            Positioned(left: 8, top: 0, bottom: 0,
+                child: Center(child: _ChevronButton(icon: Icons.chevron_left, onTap: onPrev!))),
           if (onNext != null)
-            Positioned(
-              right: 8, top: 0, bottom: 0,
-              child: Center(
-                  child: _ChevronButton(
-                      icon: Icons.chevron_right, onTap: onNext!)),
-            ),
+            Positioned(right: 8, top: 0, bottom: 0,
+                child: Center(child: _ChevronButton(icon: Icons.chevron_right, onTap: onNext!))),
         ],
       ),
     );
 
-    // Dots placed below the card, not inside the Stack
     if (total <= 1) return card;
-    return Column(
-      children: [
-        card,
-        const SizedBox(height: 10),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(total, (i) {
-            final active = i == slide;
-            return GestureDetector(
-              onTap: () => onDot(i),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 250),
-                margin: const EdgeInsets.symmetric(horizontal: 3),
-                width: active ? 8 : 6,
-                height: active ? 8 : 6,
-                decoration: BoxDecoration(
-                  color: active
-                      ? const Color(0xFF6C63FF)
-                      : Colors.white30,
-                  shape: BoxShape.circle,
-                ),
+    return Column(children: [
+      card,
+      const SizedBox(height: 10),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: List.generate(total, (i) {
+          final active = i == slide;
+          return GestureDetector(
+            onTap: () => onDot(i),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 250),
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              width: active ? 8 : 6, height: active ? 8 : 6,
+              decoration: BoxDecoration(
+                color: active ? const Color(0xFFFFD700) : Colors.white30,
+                shape: BoxShape.circle,
               ),
-            );
-          }),
+            ),
+          );
+        }),
+      ),
+    ]);
+  }
+}
+
+// ─── Champions empty state card ───────────────────────────────────────────────
+
+class _ChampionsEmptyCard extends StatelessWidget {
+  final double height;
+  const _ChampionsEmptyCard({this.height = 400});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: height,
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
+      child: Stack(children: [
+        Positioned.fill(
+          child: Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter, end: Alignment.bottomCenter,
+                colors: [Color(0xFF1A1A2E), Color(0xFF0A0A0F)],
+              ),
+            ),
+          ),
         ),
-      ],
+        const Center(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.emoji_events_outlined, size: 48, color: Color(0xFFFFD700)),
+            SizedBox(height: 16),
+            Text('Round 3 Champions',
+                style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+            SizedBox(height: 8),
+            Text('return next Monday',
+                style: TextStyle(color: Colors.white60, fontSize: 13)),
+          ]),
+        ),
+      ]),
     );
   }
+}
+
+// ─── Champion rank card ───────────────────────────────────────────────────────
+
+class _ChampionRankCard extends StatelessWidget {
+  final ChampionCreator champion;
+  final int rank;
+  final VoidCallback onTap;
+
+  const _ChampionRankCard({required this.champion, required this.rank, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _paletteColor(champion.displayLabel);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 64,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFF1A1A2E),
+          border: Border.all(color: Colors.white10),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(children: [
+          Text(_ordinal(rank - 1),
+              style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w700)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(champion.displayLabel,
+                  style: const TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold),
+                  overflow: TextOverflow.ellipsis),
+              Text('🔥 ${champion.heatScore.toStringAsFixed(1)}',
+                  style: const TextStyle(color: Colors.white54, fontSize: 11)),
+            ]),
+          ),
+          const SizedBox(width: 8),
+          champion.avatarUrl != null
+              ? CircleAvatar(radius: 17, backgroundImage: NetworkImage(champion.avatarUrl!),
+                  onBackgroundImageError: (_, __) {})
+              : Container(width: 34, height: 34,
+                  decoration: BoxDecoration(color: accent.withValues(alpha: 0.20), shape: BoxShape.circle),
+                  child: Center(child: Text(champion.initials,
+                      style: TextStyle(color: accent, fontSize: 14, fontWeight: FontWeight.w800)))),
+        ]),
+      ),
+    );
+  }
+}
+
+// ─── Top Mover card ───────────────────────────────────────────────────────────
+
+class _TopMoverCard extends StatelessWidget {
+  final TopMoverCreator mover;
+  final int rank;
+  const _TopMoverCard({required this.mover, required this.rank});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = _paletteColor(mover.displayLabel);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        border: Border.all(color: AppTheme.cardBorder),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text(_ordinal(rank - 1),
+              style: const TextStyle(color: AppTheme.primary, fontSize: 10, fontWeight: FontWeight.w700)),
+          const Spacer(),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+            decoration: BoxDecoration(
+              color: AppTheme.success.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Text('+${mover.weeklyGrowthPct.toStringAsFixed(1)}%',
+                style: const TextStyle(color: AppTheme.success, fontSize: 10, fontWeight: FontWeight.w700)),
+          ),
+        ]),
+        const SizedBox(height: 8),
+        Center(
+          child: mover.avatarUrl != null
+              ? CircleAvatar(radius: 22, backgroundImage: NetworkImage(mover.avatarUrl!),
+                  onBackgroundImageError: (_, __) {})
+              : Container(width: 44, height: 44,
+                  decoration: BoxDecoration(color: accent.withValues(alpha: 0.15), shape: BoxShape.circle),
+                  child: Center(child: Text(mover.initials,
+                      style: TextStyle(color: accent, fontSize: 16, fontWeight: FontWeight.w700)))),
+        ),
+        const SizedBox(height: 8),
+        Text(mover.displayLabel,
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: AppTheme.textPrimary, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        Text(_fmtScore(mover.displayScore),
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+      ]),
+    );
+  }
+}
+
+class _TopMoverPlaceholder extends StatelessWidget {
+  final int rank;
+  const _TopMoverPlaceholder({required this.rank});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        border: Border.all(color: AppTheme.cardBorder),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Text(_ordinal(rank - 1),
+              style: TextStyle(color: AppTheme.primary.withValues(alpha: 0.4), fontSize: 10, fontWeight: FontWeight.w700)),
+        ]),
+        const SizedBox(height: 8),
+        const Center(child: SizedBox(width: 44, height: 44,
+            child: DecoratedBox(decoration: BoxDecoration(color: Colors.white12, shape: BoxShape.circle),
+                child: Icon(Icons.person, color: Colors.white24, size: 22)))),
+        const SizedBox(height: 8),
+        const Text('—', textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white38, fontSize: 12, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 4),
+        const Text('No data yet', textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.white24, fontSize: 11)),
+      ]),
+    );
+  }
+}
+
+String _fmtScore(double score) {
+  if (score >= 1000000) return '${(score / 1000000).toStringAsFixed(1)}M';
+  if (score >= 1000) return '${(score / 1000).toStringAsFixed(1)}K';
+  return score.toStringAsFixed(0);
 }
 
 class _CardGradient extends StatelessWidget {
@@ -803,173 +983,6 @@ class _CardGradient extends StatelessWidget {
   }
 }
 
-// ─── Spotlight placeholder card (shown when no data or loading) ───────────────
-
-class _SpotlightPlaceholderCard extends StatelessWidget {
-  final double height;
-  const _SpotlightPlaceholderCard({this.height = 400});
-
-  @override
-  Widget build(BuildContext context) {
-    final card = Container(
-      height: height,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
-      child: Stack(
-        children: [
-          // Dark gradient background
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFF1A1A2E), Color(0xFF0A0A0F)],
-                ),
-              ),
-            ),
-          ),
-          // Bottom fade
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  stops: const [0.4, 1.0],
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.75),
-                  ],
-                ),
-              ),
-            ),
-          ),
-          // Score chip top-right — placeholder
-          Positioned(
-            top: 16, right: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1A1A2E).withValues(alpha: 0.85),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.trending_up, color: Color(0xFF00C896), size: 14),
-                  SizedBox(width: 5),
-                  Text('-- pts',
-                      style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700)),
-                ],
-              ),
-            ),
-          ),
-          // Follower count bottom-left — placeholder
-          Positioned(
-            bottom: 60, left: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.70),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('FOLLOWER COUNT',
-                      style: TextStyle(
-                          color: Colors.white54,
-                          fontSize: 9,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.8)),
-                  SizedBox(height: 4),
-                  Text('—  —  —',
-                      style: TextStyle(
-                          color: Color(0xFF00C896),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600)),
-                ],
-              ),
-            ),
-          ),
-          // Creator name + category bottom-right — placeholder
-          const Positioned(
-            bottom: 60, right: 16,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text('Weekly Spotlight',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold)),
-                SizedBox(height: 3),
-                Text('Connect platforms to appear here',
-                    style: TextStyle(color: Colors.white70, fontSize: 14)),
-              ],
-            ),
-          ),
-          // Left chevron — disabled
-          Positioned(
-            left: 8, top: 0, bottom: 0,
-            child: Center(
-              child: Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.30),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.chevron_left,
-                    color: Colors.white30, size: 24),
-              ),
-            ),
-          ),
-          // Right chevron — disabled
-          Positioned(
-            right: 8, top: 0, bottom: 0,
-            child: Center(
-              child: Container(
-                width: 40, height: 40,
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.30),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.chevron_right,
-                    color: Colors.white30, size: 24),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    // Single dot indicator below
-    return Column(
-      children: [
-        card,
-        const SizedBox(height: 10),
-        const Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 8, height: 8,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Color(0xFF6C63FF),
-                  shape: BoxShape.circle,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
 
 class _ChevronButton extends StatelessWidget {
   final IconData icon;
@@ -992,89 +1005,6 @@ class _ChevronButton extends StatelessWidget {
   }
 }
 
-// ─── Rank card ────────────────────────────────────────────────────────────────
-
-class _RankCard extends StatelessWidget {
-  final SpotlightCreator creator;
-  final int rank;
-  final bool isActive;
-  final VoidCallback onTap;
-  const _RankCard({
-    required this.creator,
-    required this.rank,
-    required this.isActive,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = _paletteColor(creator.displayLabel);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 64,
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A2E),
-          border: Border.all(color: Colors.white10),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(
-          children: [
-            Text(_ordinal(rank - 1),
-                style: const TextStyle(
-                    color: Colors.white54,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700)),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(creator.displayLabel,
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.bold),
-                      overflow: TextOverflow.ellipsis),
-                  Text(creator.tier,
-                      style: const TextStyle(
-                          color: Colors.white54, fontSize: 11)),
-                ],
-              ),
-            ),
-            const SizedBox(width: 8),
-            // Avatar — photo if available, else colored initial
-            creator.avatarUrl != null
-                ? CircleAvatar(
-                    radius: 17,
-                    backgroundImage: NetworkImage(creator.avatarUrl!),
-                    onBackgroundImageError: (_, __) {},
-                  )
-                : Container(
-                    width: 34, height: 34,
-                    decoration: BoxDecoration(
-                      color: accent.withValues(alpha: 0.20),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        creator.initials,
-                        style: TextStyle(
-                            color: accent,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                  ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 // ─── Placeholder rank card (shown when fewer than 4 real creators exist) ──────
 

@@ -159,3 +159,54 @@ final matchmakingProvider =
     StateNotifierProvider.autoDispose<MatchmakingNotifier, AsyncValue<String?>>(
   (ref) => MatchmakingNotifier(),
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase D: Round 3 readiness data
+// ─────────────────────────────────────────────────────────────────────────────
+
+String _getThisMonday() {
+  final now = DateTime.now().toUtc();
+  final daysFromMonday = now.weekday - 1; // weekday: 1=Mon, 7=Sun
+  final monday = now.subtract(Duration(days: daysFromMonday));
+  return '${monday.year}-${monday.month.toString().padLeft(2, '0')}-${monday.day.toString().padLeft(2, '0')}';
+}
+
+// Current user's weekly Arena points
+final arenaWeeklyPointsProvider =
+    FutureProvider.autoDispose<int>((ref) async {
+  final userId = Supabase.instance.client.auth.currentUser?.id;
+  if (userId == null) return 0;
+  final thisMonday = _getThisMonday();
+  final data = await Supabase.instance.client
+      .from('arena_weekly_points')
+      .select('points')
+      .eq('user_id', userId)
+      .eq('week_start', thisMonday)
+      .maybeSingle();
+  return (data?['points'] as num?)?.toInt() ?? 0;
+});
+
+// Top 16 user IDs for this week's bracket qualification
+final arenaTopWeeklyPlayersProvider =
+    FutureProvider.autoDispose<List<String>>((ref) async {
+  final thisMonday = _getThisMonday();
+  final data = await Supabase.instance.client
+      .from('arena_weekly_points')
+      .select('user_id')
+      .eq('week_start', thisMonday)
+      .order('points', ascending: false)
+      .limit(16);
+  return (data as List).map((e) => e['user_id'] as String).toList();
+});
+
+// Current week's Round 3 bracket state (null if not created yet)
+final arenaCurrentBracketProvider =
+    FutureProvider.autoDispose<Map<String, dynamic>?>((ref) async {
+  final thisMonday = _getThisMonday();
+  final data = await Supabase.instance.client
+      .from('arena_round3_brackets')
+      .select('id, state, current_round')
+      .eq('week_start', thisMonday)
+      .maybeSingle();
+  return data;
+});

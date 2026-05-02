@@ -86,6 +86,26 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   const scheduledStart = new Date(Date.now() + 10_000).toISOString(); // 10s from now
 
+  // ── Snapshot momentum scores (Phase D: locked at match creation) ─────────
+  const { data: p1Metrics } = await supabase
+    .from('platform_metrics')
+    .select('momentum_score')
+    .eq('user_id', p1_user_id)
+    .order('momentum_score', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const { data: p2Metrics } = await supabase
+    .from('platform_metrics')
+    .select('momentum_score')
+    .eq('user_id', p2_user_id)
+    .order('momentum_score', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const p1MomentumAtStart = (p1Metrics?.momentum_score as number | null) ?? 0;
+  const p2MomentumAtStart = (p2Metrics?.momentum_score as number | null) ?? 0;
+
   // ── Insert arena_matches ─────────────────────────────────────────────────
   const { data: match, error: matchErr } = await supabase
     .from('arena_matches')
@@ -98,6 +118,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
       player_2_archetype: p2Archetype,
       subcategory_p1: p1.subcategory ?? null,
       subcategory_p2: p2.subcategory ?? null,
+      momentum_score_p1_at_start: p1MomentumAtStart,
+      momentum_score_p2_at_start: p2MomentumAtStart,
       scheduled_start: scheduledStart,
     })
     .select('id')
