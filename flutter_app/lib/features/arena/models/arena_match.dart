@@ -10,6 +10,8 @@ class ArenaMatch {
   final String? player2Category;
   final String player1Archetype;
   final String player2Archetype;
+  final String? player1Subcategory;
+  final String? player2Subcategory;
   final DateTime scheduledStart;
   final DateTime? actualStart;
   final DateTime? actualEnd;
@@ -30,6 +32,8 @@ class ArenaMatch {
     this.player2Category,
     required this.player1Archetype,
     required this.player2Archetype,
+    this.player1Subcategory,
+    this.player2Subcategory,
     required this.scheduledStart,
     this.actualStart,
     this.actualEnd,
@@ -68,6 +72,10 @@ class ArenaMatch {
       player2Category: p2['category_1'] as String?,
       player1Archetype: json['player_1_archetype'] as String,
       player2Archetype: json['player_2_archetype'] as String,
+      player1Subcategory: json['subcategory_p1'] as String? ??
+          p1['subcategory'] as String?,
+      player2Subcategory: json['subcategory_p2'] as String? ??
+          p2['subcategory'] as String?,
       scheduledStart: DateTime.parse(json['scheduled_start'] as String),
       actualStart: json['actual_start'] != null
           ? DateTime.parse(json['actual_start'] as String)

@@ -16,10 +16,11 @@ final arenaMatchProvider =
       .select(
         'id, round, state, player_1_id, player_2_id, '
         'player_1_archetype, player_2_archetype, '
+        'subcategory_p1, subcategory_p2, '
         'scheduled_start, actual_start, actual_end, '
         'winner_id, final_score_p1, final_score_p2, created_at, '
-        'player_1:profiles!player_1_id(username, category_1), '
-        'player_2:profiles!player_2_id(username, category_1)',
+        'player_1:profiles!player_1_id(username, category_1, subcategory), '
+        'player_2:profiles!player_2_id(username, category_1, subcategory)',
       )
       .eq('id', matchId)
       .single();

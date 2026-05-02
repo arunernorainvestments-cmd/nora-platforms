@@ -88,6 +88,8 @@ class _AbilityPickerSheetState extends State<_AbilityPickerSheet> {
       _selectedSide == 1 ? widget.match.player1Archetype : widget.match.player2Archetype;
   String get _selectedUsername =>
       _selectedSide == 1 ? widget.match.player1Username : widget.match.player2Username;
+  String? get _selectedSubcategory =>
+      _selectedSide == 1 ? widget.match.player1Subcategory : widget.match.player2Subcategory;
   Color get _selectedColor =>
       _selectedSide == 1 ? AppTheme.primary : AppTheme.secondary;
 
@@ -227,14 +229,36 @@ class _AbilityPickerSheetState extends State<_AbilityPickerSheet> {
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
             child: Column(
               children: [
-                const Text(
-                  'Trigger Ability',
-                  style: TextStyle(
+                Text(
+                  '${_selectedArchetype[0].toUpperCase()}${_selectedArchetype.substring(1)} Abilities',
+                  style: const TextStyle(
                     color: AppTheme.textPrimary,
                     fontSize: 17,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
+                if (_selectedSubcategory != null) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: _selectedColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(
+                        color: _selectedColor.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Text(
+                      '${_selectedSubcategory!.replaceAll('_', ' ').toUpperCase()} BONUS',
+                      style: TextStyle(
+                        color: _selectedColor,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 12),
                 // Side toggle
                 Row(
