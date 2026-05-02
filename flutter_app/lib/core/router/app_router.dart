@@ -57,6 +57,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (isLoggedIn &&
           isApproved == true &&
           (loc == '/' ||
+              loc.startsWith('/w/') ||
               loc == '/login' ||
               loc == '/signup' ||
               loc == '/forgot-password')) {
@@ -93,6 +94,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/',
         builder: (context, state) => const LaunchScreen(),
+      ),
+
+      // ── Viral waitlist deep-link (/w/:token) ──────────────────────────────
+      // Public route. Logged-in + approved users are redirected to /home above.
+      // Unauthenticated visitors see the waitlist Returning state for that token.
+      GoRoute(
+        path: '/w/:token',
+        builder: (context, state) => LaunchScreen(
+          referralToken: state.pathParameters['token'],
+        ),
       ),
 
       // ── Auth routes ───────────────────────────────────────────────────────
