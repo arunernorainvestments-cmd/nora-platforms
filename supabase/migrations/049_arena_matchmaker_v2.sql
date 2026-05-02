@@ -18,6 +18,11 @@
 --      tick loop reads locked values (not live platform_metrics).
 --   6. Return type extended: adds `round smallint`.
 --      Flutter reads only match_id — no breaking change.
+--
+-- DROP required: PostgreSQL does not allow CREATE OR REPLACE to change the return
+-- type (column list) of an existing function. The v1 signature lacked `round`.
+
+DROP FUNCTION IF EXISTS public.arena_matchmake(integer);
 
 CREATE OR REPLACE FUNCTION public.arena_matchmake(p_limit int DEFAULT 5)
 RETURNS TABLE (
