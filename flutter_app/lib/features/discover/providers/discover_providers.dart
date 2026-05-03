@@ -164,28 +164,53 @@ final liveUserIdsProvider = FutureProvider.autoDispose<Set<String>>((ref) async 
 });
 
 final risingCreatorsProvider = FutureProvider<List<RisingCreator>>((ref) async {
-  final data = await Supabase.instance.client
+  // platform_metrics.user_id FK points to auth.users, not profiles, so PostgREST
+  // cannot resolve an embedded select from profiles. Fetch metrics separately.
+  final profileData = await Supabase.instance.client
       .from('profiles')
       .select('id, display_name, username, avatar_url, popularity_score, '
-          'spotlight_scores(score, tier), token_balances(available_tokens), '
-          'platform_metrics(heat_score, display_score)')
+          'spotlight_scores(score, tier), token_balances(available_tokens)')
       .eq('is_creator', true)
       .eq('is_test_account', false)
       .order('created_at', ascending: false);
 
-  final creators = (data as List)
-      .map((e) => RisingCreator.fromJson(e as Map<String, dynamic>))
+  final profileList = profileData as List;
+  if (profileList.isEmpty) return [];
+
+  final userIds = profileList.map((e) => e['id'] as String).toList();
+
+  final metricsData = await Supabase.instance.client
+      .from('platform_metrics')
+      .select('user_id, heat_score, display_score')
+      .inFilter('user_id', userIds);
+
+  // Group metrics rows by user_id and attach to profile maps
+  final metricsMap = <String, List<Map<String, dynamic>>>{};
+  for (final row in metricsData as List) {
+    final uid = row['user_id'] as String;
+    metricsMap.putIfAbsent(uid, () => []).add(row as Map<String, dynamic>);
+  }
+
+  final enrichedProfiles = profileList.map((e) {
+    final map = Map<String, dynamic>.from(e as Map<String, dynamic>);
+    map['platform_metrics'] = metricsMap[map['id'] as String] ?? [];
+    return map;
+  }).toList();
+
+  final creators = enrichedProfiles
+      .map((e) => RisingCreator.fromJson(e))
       .toList();
 
   if (creators.isEmpty) return creators;
 
+  final userIds2 = creators.map((c) => c.id).toList();
+
   // Apply visibility_multiplier passive effect:
   // effective_score = compositeDisplayScore * (1 + multiplier)
-  final userIds = creators.map((c) => c.id).toList();
   final passiveRes = await Supabase.instance.client
       .from('user_passive_effects')
       .select('user_id, visibility_multiplier')
-      .inFilter('user_id', userIds);
+      .inFilter('user_id', userIds2);
 
   final passiveMap = <String, double>{};
   for (final row in passiveRes as List) {

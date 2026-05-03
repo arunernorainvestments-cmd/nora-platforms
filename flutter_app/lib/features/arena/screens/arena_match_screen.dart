@@ -177,21 +177,42 @@ class _MatchBody extends ConsumerStatefulWidget {
 
 class _MatchBodyState extends ConsumerState<_MatchBody> {
   bool _countdownStarted = false;
+  bool _liveTimerStarted = false;
 
   @override
   Widget build(BuildContext context) {
     final stateAsync  = ref.watch(arenaStateProvider(widget.matchId));
     final eventsAsync = ref.watch(arenaEventsProvider(widget.matchId));
+    final liveData    = ref.watch(arenaMatchLiveProvider(widget.matchId)).valueOrNull;
     final match       = widget.match;
+
+    // Derive mutable match state from the Realtime stream so pre_match → live
+    // → resolved transitions are visible without re-fetching the join data.
+    final matchState  = liveData?['state'] as String? ?? match.state;
+    final isPreMatch  = matchState == 'pre_match';
+    final isLive      = matchState == 'live';
+    final isResolved  = matchState == 'resolved';
+    final liveActualStart = liveData?['actual_start'] != null
+        ? DateTime.tryParse(liveData!['actual_start'] as String)
+        : match.actualStart;
 
     final arenaState = stateAsync.valueOrNull
         ?? ArenaStateModel.empty(widget.matchId);
     final events = eventsAsync.valueOrNull ?? [];
 
-    if (match.isPreMatch && !_countdownStarted) {
+    if (isPreMatch && !_countdownStarted) {
       _countdownStarted = true;
       SchedulerBinding.instance.addPostFrameCallback((_) {
         widget.onStartCountdown(match.timeUntilStart);
+      });
+    }
+
+    // Ensure a per-second timer runs while live so _MatchHeader recomputes
+    // timeRemaining from DateTime.now() each second.
+    if (isLive && !_liveTimerStarted) {
+      _liveTimerStarted = true;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        widget.onStartCountdown(Duration.zero);
       });
     }
 
@@ -204,14 +225,16 @@ class _MatchBodyState extends ConsumerState<_MatchBody> {
           match: match,
           arenaState: arenaState,
           secondsUntilStart: widget.secondsUntilStart,
+          matchState: matchState,
+          liveActualStart: liveActualStart,
         ),
 
         const SizedBox(height: 8),
 
-        if (match.isPreMatch)
+        if (isPreMatch)
           _PreMatchBanner(secondsUntilStart: widget.secondsUntilStart),
 
-        if (match.isResolved)
+        if (isResolved)
           _ResolvedBanner(match: match),
 
         Expanded(
@@ -249,7 +272,7 @@ class _MatchBodyState extends ConsumerState<_MatchBody> {
 
         const SizedBox(height: 8),
 
-        if (match.isLive)
+        if (isLive)
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
             child: ArenaActionButtons(
@@ -272,11 +295,15 @@ class _MatchHeader extends StatelessWidget {
   final ArenaMatch match;
   final ArenaStateModel arenaState;
   final int secondsUntilStart;
+  final String matchState;
+  final DateTime? liveActualStart;
 
   const _MatchHeader({
     required this.match,
     required this.arenaState,
     required this.secondsUntilStart,
+    required this.matchState,
+    this.liveActualStart,
   });
 
   String _formatDuration(Duration d) {
@@ -287,7 +314,10 @@ class _MatchHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final timeRemaining = match.timeRemaining;
+    final start = liveActualStart ?? match.actualStart;
+    final timeRemaining = start != null
+        ? start.add(const Duration(minutes: 5)).difference(DateTime.now())
+        : Duration.zero;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: const BoxDecoration(
@@ -322,13 +352,13 @@ class _MatchHeader extends StatelessWidget {
             ),
           ),
           const Spacer(),
-          if (match.isPreMatch)
+          if (matchState == 'pre_match')
             Text(
               'Starting in ${secondsUntilStart}s',
               style: const TextStyle(
                   color: AppTheme.textSecondary, fontSize: 12),
             )
-          else if (match.isLive)
+          else if (matchState == 'live')
             Row(
               children: [
                 Container(
@@ -351,7 +381,7 @@ class _MatchHeader extends StatelessWidget {
                 ),
               ],
             )
-          else if (match.isResolved)
+          else if (matchState == 'resolved')
             const Text(
               'Finished',
               style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),

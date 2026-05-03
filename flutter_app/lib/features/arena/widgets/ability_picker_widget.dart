@@ -203,7 +203,9 @@ class _AbilityPickerSheetState extends State<_AbilityPickerSheet> {
   @override
   Widget build(BuildContext context) {
     final archetypeAbilities = widget.abilities
-        .where((a) => a.archetype == _selectedArchetype && !a.isPassive)
+        .where((a) =>
+            a.archetype.toLowerCase() == _selectedArchetype.toLowerCase() &&
+            !a.isPassive)
         .toList();
 
     return DraggableScrollableSheet(

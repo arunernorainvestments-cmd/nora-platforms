@@ -335,8 +335,9 @@ class _FindMatchButton extends ConsumerWidget {
                   const SnackBar(
                     content: Text(
                       'No matches available right now — try again in a moment.',
+                      style: TextStyle(color: Colors.white),
                     ),
-                    backgroundColor: AppTheme.surface,
+                    backgroundColor: Color(0xFF2A2A3E),
                   ),
                 );
               }

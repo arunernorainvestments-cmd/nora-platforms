@@ -28,6 +28,21 @@ final arenaMatchProvider =
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Live match state (Realtime — streams mutable arena_matches columns)
+// arena_match provider above is a one-time fetch for join data (player profiles,
+// archetypes). This stream handles state transitions: pre_match → live → resolved.
+// ─────────────────────────────────────────────────────────────────────────────
+
+final arenaMatchLiveProvider =
+    StreamProvider.family<Map<String, dynamic>?, String>((ref, matchId) {
+  return Supabase.instance.client
+      .from('arena_matches')
+      .stream(primaryKey: ['id'])
+      .eq('id', matchId)
+      .map((rows) => rows.isEmpty ? null : rows.first);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Live arena state (Realtime — updates each tick)
 // ─────────────────────────────────────────────────────────────────────────────
 
