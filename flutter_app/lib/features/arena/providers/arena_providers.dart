@@ -154,7 +154,7 @@ class MatchmakingNotifier extends StateNotifier<AsyncValue<String?>> {
           .from('arena_matches')
           .select('id')
           .inFilter('state', ['pre_match', 'live'])
-          .order('scheduled_start', ascending: true)
+          .order('scheduled_start', ascending: false)
           .limit(1)
           .maybeSingle();
 

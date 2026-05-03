@@ -58,6 +58,20 @@ class _ArenaMatchScreenState extends ConsumerState<ArenaMatchScreen>
     });
   }
 
+  bool _isMatchEndedError(Object e) {
+    final msg = e.toString();
+    return msg.contains('not live') || msg.contains('resolved') || msg.contains('already resolved');
+  }
+
+  void _handleMatchEndedError() {
+    ref.invalidate(arenaMatchLiveProvider(widget.matchId));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('Match has ended.'),
+      backgroundColor: AppTheme.danger,
+      duration: Duration(seconds: 2),
+    ));
+  }
+
   Future<void> _handleBack(String targetId, int amount) async {
     if (!mounted) return;
     try {
@@ -74,7 +88,10 @@ class _ArenaMatchScreenState extends ConsumerState<ArenaMatchScreen>
         ));
       }
     } catch (e) {
-      if (mounted) {
+      if (!mounted) return;
+      if (_isMatchEndedError(e)) {
+        _handleMatchEndedError();
+      } else {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(e.toString().replaceFirst('Exception: ', '')),
           backgroundColor: AppTheme.danger,
@@ -104,7 +121,10 @@ class _ArenaMatchScreenState extends ConsumerState<ArenaMatchScreen>
         ));
       }
     } catch (e) {
-      if (mounted) {
+      if (!mounted) return;
+      if (_isMatchEndedError(e)) {
+        _handleMatchEndedError();
+      } else {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text(e.toString().replaceFirst('Exception: ', '')),
           backgroundColor: AppTheme.danger,
