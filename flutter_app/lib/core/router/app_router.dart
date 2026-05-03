@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../features/auth/screens/forgot_password_screen.dart';
@@ -27,18 +28,30 @@ import '../../features/home/screens/home_screen.dart';
 import '../../features/home/screens/plan_screen.dart';
 import '../shell/main_shell.dart';
 
+// Notifier that triggers GoRouter to re-evaluate its redirect without
+// recreating the router instance. ref.listen (not ref.watch) is used so
+// routerProvider itself never rebuilds on auth state changes — only the
+// redirect callback is re-fired. This preserves the navigation stack on
+// page refresh and prevents the "auth state change → new router → back to /"
+// race condition.
+class _RouterNotifier extends ChangeNotifier {
+  void notify() => notifyListeners();
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authStateProvider);
-  final approvalStatus = ref.watch(approvalStatusProvider);
+  final notifier = _RouterNotifier();
+  ref.listen(authStateProvider, (_, __) => notifier.notify());
+  ref.listen(approvalStatusProvider, (_, __) => notifier.notify());
+  ref.onDispose(notifier.dispose);
 
   return GoRouter(
     initialLocation: '/',
+    refreshListenable: notifier,
     redirect: (context, state) {
+      final authState = ref.read(authStateProvider);
+      final approvalStatus = ref.read(approvalStatusProvider);
+
       // ── Do not redirect while auth session is being restored ─────────────
-      // authStateProvider is a StreamProvider — its initial value is
-      // AsyncValue.loading() until the first onAuthStateChange event fires.
-      // Acting on that loading state would redirect every external deep-link
-      // to /login even for users who are already signed in.
       if (authState.isLoading) return null;
 
       final isLoggedIn = authState.value?.session != null;

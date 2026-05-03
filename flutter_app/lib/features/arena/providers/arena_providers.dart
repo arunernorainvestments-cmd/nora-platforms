@@ -77,7 +77,7 @@ final arenaEventsProvider =
 // ─────────────────────────────────────────────────────────────────────────────
 
 final abilityConfigProvider =
-    FutureProvider<List<AbilityConfig>>((ref) async {
+    FutureProvider.autoDispose<List<AbilityConfig>>((ref) async {
   final rows = await Supabase.instance.client
       .from('arena_abilities')
       .select()
