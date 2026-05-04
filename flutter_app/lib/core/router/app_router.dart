@@ -18,7 +18,7 @@ import '../../features/markets/screens/market_detail_screen.dart';
 import '../../features/wallet/screens/wallet_screen.dart';
 import '../../features/launch/screens/launch_screen.dart';
 import '../../features/explore/screens/celebrity_heat_screen.dart';
-import '../../features/explore/screens/hot_topic_screen.dart';
+import '../../features/hot_topic/screens/hot_topic_screen.dart';
 import '../../features/legal/screens/privacy_policy_screen.dart';
 import '../../features/legal/screens/terms_of_service_screen.dart';
 import '../../features/profile/screens/score_dashboard_screen.dart';
@@ -167,12 +167,6 @@ final routerProvider = Provider<GoRouter>((ref) {
         redirect: (context, state) => '/news',
       ),
 
-      // ── Hot Topic placeholder — public, no bottom nav ────────────────────
-      GoRoute(
-        path: '/hot-topic',
-        builder: (context, state) => const HotTopicScreen(),
-      ),
-
       // ── Roadmap / Phase 2 & 3 — public, no bottom nav ────────────────────
       GoRoute(
         path: '/plan',
@@ -261,6 +255,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => ArenaMatchScreen(
               matchId: state.pathParameters['matchId']!,
             ),
+          ),
+          // Hot Topic — public, inside ShellRoute for bottom nav persistence.
+          GoRoute(
+            path: '/hot-topic',
+            builder: (context, state) => const HotTopicScreen(),
           ),
         ],
       ),

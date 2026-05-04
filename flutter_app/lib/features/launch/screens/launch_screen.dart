@@ -502,7 +502,7 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
 
   Widget _buildExploreButton(BuildContext context) {
     return OutlinedButton.icon(
-      onPressed: () => context.push('/news'),
+      onPressed: () => context.push('/hot-topic'),
       icon: const Text('🔥', style: TextStyle(fontSize: 14)),
       label: const Text(
         "SEE WHO'S HOT RIGHT NOW",
