@@ -1,17 +1,21 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
-import '../models/celebrity_data.dart';
+import '../../hot_topic/models/celeb.dart';
+import '../../hot_topic/providers/hot_topic_providers.dart';
 
-class CelebrityHeatScreen extends StatefulWidget {
+class CelebrityHeatScreen extends ConsumerStatefulWidget {
   const CelebrityHeatScreen({super.key});
 
   @override
-  State<CelebrityHeatScreen> createState() => _CelebrityHeatScreenState();
+  ConsumerState<CelebrityHeatScreen> createState() =>
+      _CelebrityHeatScreenState();
 }
 
-class _CelebrityHeatScreenState extends State<CelebrityHeatScreen> {
+class _CelebrityHeatScreenState
+    extends ConsumerState<CelebrityHeatScreen> {
   static final _launchDate = DateTime.utc(2026, 7, 4);
 
   late Timer _countdownTimer;
@@ -20,19 +24,11 @@ class _CelebrityHeatScreenState extends State<CelebrityHeatScreen> {
   final _tickerController = ScrollController();
   Timer? _tickerTimer;
 
-  late final List<(Celebrity, CelebrityEvent)> _feed;
+  int? _expandedIndex;
 
   @override
   void initState() {
     super.initState();
-
-    // Build flat sorted feed
-    _feed = [
-      for (final celeb in kCelebrities)
-        for (final event in celeb.events) (celeb, event),
-    ]..sort((a, b) => a.$2.sortOrder.compareTo(b.$2.sortOrder));
-
-    // Countdown
     _remaining = _launchDate.difference(DateTime.now().toUtc());
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) {
@@ -41,8 +37,6 @@ class _CelebrityHeatScreenState extends State<CelebrityHeatScreen> {
         });
       }
     });
-
-    // Auto-scroll ticker
     WidgetsBinding.instance.addPostFrameCallback((_) => _startTicker());
   }
 
@@ -74,6 +68,9 @@ class _CelebrityHeatScreenState extends State<CelebrityHeatScreen> {
     final hours = r.inHours % 24;
     final minutes = r.inMinutes % 60;
     final seconds = r.inSeconds % 60;
+
+    final scrollerAsync = ref.watch(newsScrollerProvider);
+    final feedAsync = ref.watch(newsfeedProvider);
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -112,6 +109,10 @@ class _CelebrityHeatScreenState extends State<CelebrityHeatScreen> {
         actions: const [
           Padding(
             padding: EdgeInsets.only(right: 16),
+            // TODO: Connect to Supabase Realtime subscription on celeb_score_history
+            // When a new row is inserted (scoring run completes), pulse the badge green
+            // and trigger a ref.refresh(newsfeedProvider) to reload the feed.
+            // Scoring runs twice daily so connection load is minimal.
             child: Text(
               'LIVE',
               style: TextStyle(
@@ -126,14 +127,48 @@ class _CelebrityHeatScreenState extends State<CelebrityHeatScreen> {
       ),
       body: Column(
         children: [
-          _TickerStrip(controller: _tickerController),
+          _TickerStrip(
+            controller: _tickerController,
+            items: scrollerAsync.valueOrNull ?? [],
+          ),
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-              itemCount: _feed.length,
-              itemBuilder: (context, i) {
-                final (celeb, event) = _feed[i];
-                return _EventCard(celebrity: celeb, event: event);
+            child: feedAsync.when(
+              loading: () => const Center(
+                child: CircularProgressIndicator(
+                    color: AppTheme.primary, strokeWidth: 2),
+              ),
+              error: (e, _) => Center(
+                child: Text(
+                  'Unable to load stories',
+                  style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.5),
+                      fontSize: 14),
+                ),
+              ),
+              data: (feed) {
+                if (feed.isEmpty) {
+                  return Center(
+                    child: Text(
+                      'No stories yet — check back soon',
+                      style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.5),
+                          fontSize: 14),
+                    ),
+                  );
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  itemCount: feed.length,
+                  itemBuilder: (context, i) {
+                    return _EventCard(
+                      entry: feed[i],
+                      isExpanded: _expandedIndex == i,
+                      onTap: () => setState(() {
+                        _expandedIndex = _expandedIndex == i ? null : i;
+                      }),
+                    );
+                  },
+                );
               },
             ),
           ),
@@ -155,28 +190,36 @@ class _CelebrityHeatScreenState extends State<CelebrityHeatScreen> {
 
 class _TickerStrip extends StatelessWidget {
   final ScrollController controller;
-  const _TickerStrip({required this.controller});
+  final List<CelebWeeklyScore> items;
+
+  const _TickerStrip({required this.controller, required this.items});
 
   @override
   Widget build(BuildContext context) {
+    final decoration = BoxDecoration(
+      color: AppTheme.surface,
+      border: Border(
+        bottom: BorderSide(
+            color: AppTheme.cardBorder.withValues(alpha: 0.6), width: 1),
+      ),
+    );
+
+    if (items.isEmpty) {
+      return Container(height: 40, decoration: decoration);
+    }
+
     // Duplicate list so the ticker loops smoothly
-    final items = [...kCelebrities, ...kCelebrities];
+    final displayItems = [...items, ...items];
 
     return Container(
       height: 40,
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border(
-          bottom: BorderSide(
-              color: AppTheme.cardBorder.withValues(alpha: 0.6), width: 1),
-        ),
-      ),
+      decoration: decoration,
       child: ListView.separated(
         controller: controller,
         scrollDirection: Axis.horizontal,
         physics: const NeverScrollableScrollPhysics(),
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        itemCount: items.length,
+        itemCount: displayItems.length,
         separatorBuilder: (_, __) => Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
@@ -186,13 +229,19 @@ class _TickerStrip extends StatelessWidget {
           ),
         ),
         itemBuilder: (context, i) {
-          final celeb = items[i];
-          final isPositive = celeb.recentDelta >= 0;
+          final item = displayItems[i];
+          final isPositive = item.lastDelta > 0;
+          final isNegative = item.lastDelta < 0;
+          final deltaColor = isPositive
+              ? AppTheme.success
+              : isNegative
+                  ? AppTheme.danger
+                  : Colors.white.withValues(alpha: 0.35);
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                celeb.name,
+                item.celebName,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 12,
@@ -201,7 +250,7 @@ class _TickerStrip extends StatelessWidget {
               ),
               const SizedBox(width: 4),
               Text(
-                celeb.currentScore.toString(),
+                '${item.points}',
                 style: TextStyle(
                   color: Colors.white.withValues(alpha: 0.5),
                   fontSize: 12,
@@ -209,14 +258,18 @@ class _TickerStrip extends StatelessWidget {
               ),
               const SizedBox(width: 3),
               Icon(
-                isPositive ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                color: isPositive ? AppTheme.success : AppTheme.danger,
+                isPositive
+                    ? Icons.arrow_drop_up
+                    : isNegative
+                        ? Icons.arrow_drop_down
+                        : Icons.remove,
+                color: deltaColor,
                 size: 18,
               ),
               Text(
-                '${isPositive ? '+' : ''}${celeb.recentDelta}',
+                '${isPositive ? '+' : ''}${item.lastDelta}',
                 style: TextStyle(
-                  color: isPositive ? AppTheme.success : AppTheme.danger,
+                  color: deltaColor,
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                 ),
@@ -234,123 +287,218 @@ class _TickerStrip extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _EventCard extends StatelessWidget {
-  final Celebrity celebrity;
-  final CelebrityEvent event;
+  final NewsfeedEntry entry;
+  final bool isExpanded;
+  final VoidCallback onTap;
 
-  const _EventCard({required this.celebrity, required this.event});
+  const _EventCard({
+    required this.entry,
+    required this.isExpanded,
+    required this.onTap,
+  });
+
+  static Color _avatarColor(String name) {
+    const palette = [
+      Color(0xFF00BCD4),
+      Color(0xFF9C27B0),
+      Color(0xFF3F51B5),
+      Color(0xFFF44336),
+      Color(0xFFFF8F00),
+      Color(0xFF8BC34A),
+      Color(0xFF009688),
+      Color(0xFFE91E63),
+      Color(0xFF03A9F4),
+      Color(0xFFFF5722),
+      Color(0xFF607D8B),
+      Color(0xFF795548),
+    ];
+    int hash = 0;
+    for (final ch in name.codeUnits) {
+      hash = (hash * 31 + ch) & 0x7FFFFFFF;
+    }
+    return palette[hash % palette.length];
+  }
+
+  static String _tierLabel(String tier) {
+    const labels = {
+      'Good 4': 'Major moment',
+      'Good 3': 'Strong positive',
+      'Good 2': 'Positive coverage',
+      'Good 1': 'Mild positive',
+      'Neutral': 'Neutral',
+      'Bad 1': 'Mild criticism',
+      'Bad 2': 'Controversy',
+      'Bad 3': 'Serious negative',
+      'Bad 4': 'Major fallout',
+    };
+    return labels[tier] ?? tier;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final isPositive = event.delta >= 0;
-    final deltaColor = isPositive ? AppTheme.success : AppTheme.danger;
+    final avatarColor = _avatarColor(entry.celebName);
+    final deltaColor = entry.isPositive
+        ? AppTheme.success
+        : entry.isNegative
+            ? AppTheme.danger
+            : Colors.white.withValues(alpha: 0.35);
+    final displayText = entry.reasonText?.isNotEmpty == true
+        ? entry.reasonText!
+        : 'No significant news this period';
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: deltaColor.withValues(alpha: 0.2),
-          width: 1,
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Avatar
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: celebrity.avatarColor.withValues(alpha: 0.25),
-              shape: BoxShape.circle,
-              border: Border.all(
-                  color: celebrity.avatarColor.withValues(alpha: 0.5), width: 1.5),
-            ),
-            child: Center(
-              child: Text(
-                celebrity.initials,
-                style: TextStyle(
-                  color: celebrity.avatarColor,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: deltaColor.withValues(alpha: 0.2),
+            width: 1,
           ),
-          const SizedBox(width: 14),
-          // Content
-          Expanded(
-            child: Column(
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      celebrity.name,
-                      style: const TextStyle(
-                        color: Colors.white,
+                // Avatar
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: avatarColor.withValues(alpha: 0.25),
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                        color: avatarColor.withValues(alpha: 0.5), width: 1.5),
+                  ),
+                  child: Center(
+                    child: Text(
+                      entry.celebInitials,
+                      style: TextStyle(
+                        color: avatarColor,
                         fontSize: 14,
-                        fontWeight: FontWeight.w700,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
-                    const Spacer(),
-                    // Delta badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: deltaColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                            color: deltaColor.withValues(alpha: 0.35), width: 1),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                // Content
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
                         children: [
-                          Icon(
-                            isPositive
-                                ? Icons.arrow_drop_up
-                                : Icons.arrow_drop_down,
-                            color: deltaColor,
-                            size: 16,
-                          ),
                           Text(
-                            '${isPositive ? '+' : ''}${event.delta} pts',
-                            style: TextStyle(
-                              color: deltaColor,
-                              fontSize: 12,
+                            entry.celebName,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
                               fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const Spacer(),
+                          // Delta badge
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: deltaColor.withValues(alpha: 0.12),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                  color: deltaColor.withValues(alpha: 0.35),
+                                  width: 1),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  entry.isPositive
+                                      ? Icons.arrow_drop_up
+                                      : entry.isNegative
+                                          ? Icons.arrow_drop_down
+                                          : Icons.remove,
+                                  color: deltaColor,
+                                  size: 16,
+                                ),
+                                Text(
+                                  entry.deltaLabel,
+                                  style: TextStyle(
+                                    color: deltaColor,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  event.headline,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.75),
-                    fontSize: 13,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  event.timeAgo,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.35),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
+                      const SizedBox(height: 6),
+                      Text(
+                        displayText,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.75),
+                          fontSize: 13,
+                          height: 1.5,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        entry.timestampLabel,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.35),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
-          ),
-        ],
+            // Expandable section — height-only transition, no slide/fade on content
+            AnimatedSize(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInOut,
+              child: isExpanded
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 12),
+                        Divider(
+                            color: Colors.white.withValues(alpha: 0.1),
+                            height: 1),
+                        const SizedBox(height: 12),
+                        Text(
+                          displayText,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.75),
+                            fontSize: 13,
+                            height: 1.5,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Based on ${entry.storyVolume} sources · ${_tierLabel(entry.tier)}',
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.4),
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ],
+        ),
       ),
     );
   }

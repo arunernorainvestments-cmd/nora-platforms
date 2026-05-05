@@ -117,3 +117,35 @@ final hotTopicTokenBalanceProvider =
       .maybeSingle();
   return (res?['available_tokens'] as num?)?.toInt() ?? 0;
 });
+
+// Powers the /news feed card list — chronological event log, most recent first.
+final newsfeedProvider =
+    FutureProvider.autoDispose<List<NewsfeedEntry>>((ref) async {
+  final data = await Supabase.instance.client
+      .from('celeb_score_history')
+      .select(
+          'id, celeb_id, scoring_window, score_delta, tier, reason_text, story_volume, scored_at, celebs(name, category)')
+      .order('scored_at', ascending: false)
+      .limit(50);
+
+  return (data as List)
+      .map((e) => NewsfeedEntry.fromJson(e as Map<String, dynamic>))
+      .toList();
+});
+
+// Powers the /news horizontal scroller — current week rankings ordered by rank.
+final newsScrollerProvider =
+    FutureProvider.autoDispose<List<CelebWeeklyScore>>((ref) async {
+  final weekId = ref.watch(currentWeekProvider).weekId;
+
+  final data = await Supabase.instance.client
+      .from('celeb_weekly_scores')
+      .select(
+          'id, week_id, celeb_id, points, rank, story_volume, last_delta, last_tier, reason_text, updated_at, celebs(name, category, image_url)')
+      .eq('week_id', weekId)
+      .order('rank', ascending: true);
+
+  return (data as List)
+      .map((e) => CelebWeeklyScore.fromJson(e as Map<String, dynamic>))
+      .toList();
+});

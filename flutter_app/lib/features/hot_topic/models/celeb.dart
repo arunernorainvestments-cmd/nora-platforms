@@ -122,3 +122,78 @@ class WeeklyBet {
         placedAt: DateTime.parse(json['placed_at'] as String),
       );
 }
+
+class NewsfeedEntry {
+  final String celebName;
+  final String celebInitials; // first letter of each word, max 2 chars
+  final String? category;
+  final String tier; // e.g. 'Good 3', 'Bad 2', 'Neutral'
+  final int delta; // signed int, e.g. +7, -4, 0
+  final String? reasonText; // AI-generated one-sentence summary
+  final int storyVolume; // number of sources used
+  final DateTime scoredAt;
+  final String scoringWindow; // 'AM' or 'PM' extracted from scoring_window field
+
+  const NewsfeedEntry({
+    required this.celebName,
+    required this.celebInitials,
+    this.category,
+    required this.tier,
+    required this.delta,
+    this.reasonText,
+    required this.storyVolume,
+    required this.scoredAt,
+    required this.scoringWindow,
+  });
+
+  factory NewsfeedEntry.fromJson(Map<String, dynamic> json) {
+    final celeb = json['celebs'] as Map<String, dynamic>? ?? {};
+    final name = celeb['name'] as String? ?? '';
+    final words = name.trim().split(RegExp(r'\s+'));
+    final initials = words.length >= 2
+        ? '${words[0][0]}${words[1][0]}'.toUpperCase()
+        : name.isNotEmpty
+            ? name[0].toUpperCase()
+            : '?';
+    final window = json['scoring_window'] as String? ?? '';
+    final scoringWindow = window.endsWith('-AM') ? 'AM' : 'PM';
+    return NewsfeedEntry(
+      celebName: name,
+      celebInitials: initials,
+      category: celeb['category'] as String?,
+      tier: json['tier'] as String? ?? 'Neutral',
+      delta: (json['score_delta'] as num?)?.toInt() ?? 0,
+      reasonText: json['reason_text'] as String?,
+      storyVolume: (json['story_volume'] as num?)?.toInt() ?? 0,
+      scoredAt: DateTime.parse(json['scored_at'] as String),
+      scoringWindow: scoringWindow,
+    );
+  }
+
+  // Same day AM → 'This morning'; same day PM → 'This evening';
+  // previous day AM → 'Yesterday morning'; PM → 'Yesterday evening';
+  // older → 'N days ago'
+  String get timestampLabel {
+    final now = DateTime.now().toUtc();
+    final today = DateTime.utc(now.year, now.month, now.day);
+    final entryDate =
+        DateTime.utc(scoredAt.year, scoredAt.month, scoredAt.day);
+    final diff = today.difference(entryDate).inDays;
+    if (diff == 0) {
+      return scoringWindow == 'AM' ? 'This morning' : 'This evening';
+    } else if (diff == 1) {
+      return scoringWindow == 'AM' ? 'Yesterday morning' : 'Yesterday evening';
+    } else {
+      return '$diff days ago';
+    }
+  }
+
+  String get deltaLabel {
+    if (delta > 0) return '+$delta pts';
+    if (delta < 0) return '$delta pts';
+    return '0 pts';
+  }
+
+  bool get isPositive => delta > 0;
+  bool get isNegative => delta < 0;
+}
