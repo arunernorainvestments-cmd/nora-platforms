@@ -17,6 +17,7 @@ import '../widgets/home_ticker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../wallet/providers/wallet_providers.dart';
 import '../../wallet/widgets/buy_tokens_sheet.dart';
+import '../../hot_topic/providers/hot_topic_providers.dart';
 
 final _checkInProvider = FutureProvider.autoDispose<void>((ref) async {
   final actions = ref.read(challengeActionsProvider);
@@ -554,7 +555,7 @@ class _ArenaChampionsSection extends StatelessWidget {
                 Expanded(
                   flex: 2,
                   child: Column(children: [
-                    _NewsPanel(),
+                    const _NewsPanel(),
                     const SizedBox(height: 14),
                     _GetTokensButton(),
                   ]),
@@ -569,7 +570,7 @@ class _ArenaChampionsSection extends StatelessWidget {
               const SizedBox(height: 12),
               ..._buildRankCards(safeSlide),
               const SizedBox(height: 16),
-              _NewsPanel(),
+              const _NewsPanel(),
               const SizedBox(height: 12),
               _GetTokensButton(),
             ],
@@ -1070,10 +1071,58 @@ class _PlaceholderRankCard extends StatelessWidget {
 
 // ─── News panel ───────────────────────────────────────────────────────────────
 
-// TODO: wire to news API — currently static placeholder headlines
-class _NewsPanel extends StatelessWidget {
+class _NewsPanel extends ConsumerWidget {
+  const _NewsPanel();
+
+  Widget _skeletonRow() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+            height: 12,
+            width: 90,
+            decoration: BoxDecoration(
+                color: AppTheme.cardBorder,
+                borderRadius: BorderRadius.circular(4))),
+        const SizedBox(height: 4),
+        Container(
+            height: 11,
+            width: double.infinity,
+            decoration: BoxDecoration(
+                color: AppTheme.cardBorder,
+                borderRadius: BorderRadius.circular(4))),
+        const SizedBox(height: 4),
+        Container(
+            height: 10,
+            width: 70,
+            decoration: BoxDecoration(
+                color: AppTheme.cardBorder,
+                borderRadius: BorderRadius.circular(4))),
+      ],
+    );
+  }
+
+  Widget _buildSkeleton() {
+    return Shimmer.fromColors(
+      baseColor: AppTheme.surface,
+      highlightColor: AppTheme.cardBorder,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _skeletonRow(),
+          const _NewsDivider(),
+          _skeletonRow(),
+          const _NewsDivider(),
+          _skeletonRow(),
+        ],
+      ),
+    );
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final newsAsync = ref.watch(breakingNewsPreviewProvider);
+
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
@@ -1087,7 +1136,8 @@ class _NewsPanel extends StatelessWidget {
           GestureDetector(
             onTap: () => GoRouter.of(context).go('/news'),
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               decoration: BoxDecoration(
                 color: const Color(0xFFE53935),
                 borderRadius: BorderRadius.circular(999),
@@ -1100,17 +1150,34 @@ class _NewsPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          const _TappableNewsItem(
-              text: 'JordanKicks breaks 1M followers',
-              time: '2m ago'),
-          const _NewsDivider(),
-          const _TappableNewsItem(
-              text: 'New weekly score record set by CreatorKing',
-              time: '14m ago'),
-          const _NewsDivider(),
-          const _TappableNewsItem(
-              text: 'BeatMaster drops surprise album — fans react',
-              time: '1h ago'),
+          newsAsync.when(
+            loading: _buildSkeleton,
+            error: (_, __) => const _TappableNewsItem(
+              text: 'Unable to load stories',
+              time: '',
+            ),
+            data: (entries) {
+              if (entries.isEmpty) {
+                return const _TappableNewsItem(
+                  text: 'Stories update twice daily — check back soon',
+                  time: '',
+                );
+              }
+              final rows = <Widget>[];
+              for (int i = 0; i < entries.length; i++) {
+                final e = entries[i];
+                rows.add(_TappableNewsItem(
+                  name: e.celebName,
+                  text: e.reasonText ?? 'No significant news this period',
+                  time: e.timestampLabel,
+                ));
+                if (i < entries.length - 1) rows.add(const _NewsDivider());
+              }
+              return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: rows);
+            },
+          ),
         ],
       ),
     );
@@ -1118,9 +1185,11 @@ class _NewsPanel extends StatelessWidget {
 }
 
 class _TappableNewsItem extends StatelessWidget {
+  final String? name;
   final String text;
   final String time;
-  const _TappableNewsItem({required this.text, required this.time});
+  const _TappableNewsItem(
+      {required this.text, required this.time, this.name});
 
   @override
   Widget build(BuildContext context) {
@@ -1129,15 +1198,28 @@ class _TappableNewsItem extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (name != null)
+            Text(name!,
+                style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700)),
+          if (name != null) const SizedBox(height: 1),
           Text(text,
-              maxLines: 2,
+              maxLines: name != null ? 1 : 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  color: AppTheme.textPrimary, fontSize: 13, height: 1.5)),
-          const SizedBox(height: 2),
-          Text(time,
-              style: const TextStyle(
-                  color: AppTheme.textSecondary, fontSize: 11)),
+              style: TextStyle(
+                  color: name != null
+                      ? AppTheme.textSecondary
+                      : AppTheme.textPrimary,
+                  fontSize: 13,
+                  height: 1.5)),
+          if (time.isNotEmpty) ...[
+            const SizedBox(height: 2),
+            Text(time,
+                style: const TextStyle(
+                    color: AppTheme.textSecondary, fontSize: 11)),
+          ],
         ],
       ),
     );

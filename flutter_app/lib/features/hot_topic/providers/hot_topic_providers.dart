@@ -118,13 +118,28 @@ final hotTopicTokenBalanceProvider =
   return (res?['available_tokens'] as num?)?.toInt() ?? 0;
 });
 
+// Top 3 most recent entries for the /home Breaking News panel preview.
+final breakingNewsPreviewProvider =
+    FutureProvider.autoDispose<List<NewsfeedEntry>>((ref) async {
+  final data = await Supabase.instance.client
+      .from('celeb_score_history')
+      .select(
+          'id, celeb_id, scoring_window, delta, tier, reason_text, story_volume, scored_at, celebs(name, category)')
+      .order('scored_at', ascending: false)
+      .limit(3);
+
+  return (data as List)
+      .map((e) => NewsfeedEntry.fromJson(e as Map<String, dynamic>))
+      .toList();
+});
+
 // Powers the /news feed card list — chronological event log, most recent first.
 final newsfeedProvider =
     FutureProvider.autoDispose<List<NewsfeedEntry>>((ref) async {
   final data = await Supabase.instance.client
       .from('celeb_score_history')
       .select(
-          'id, celeb_id, scoring_window, score_delta, tier, reason_text, story_volume, scored_at, celebs(name, category)')
+          'id, celeb_id, scoring_window, delta, tier, reason_text, story_volume, scored_at, celebs(name, category)')
       .order('scored_at', ascending: false)
       .limit(50);
 

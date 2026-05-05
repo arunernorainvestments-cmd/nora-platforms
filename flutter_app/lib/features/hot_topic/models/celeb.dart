@@ -162,7 +162,7 @@ class NewsfeedEntry {
       celebInitials: initials,
       category: celeb['category'] as String?,
       tier: json['tier'] as String? ?? 'Neutral',
-      delta: (json['score_delta'] as num?)?.toInt() ?? 0,
+      delta: (json['delta'] as num?)?.toInt() ?? 0,
       reasonText: json['reason_text'] as String?,
       storyVolume: (json['story_volume'] as num?)?.toInt() ?? 0,
       scoredAt: DateTime.parse(json['scored_at'] as String),
