@@ -18,7 +18,7 @@ class BattleGame extends FlameGame {
     _activeCharacter = await _buildCharacter(
       'musician',
       'attack',
-      position: () => Vector2(size.x * 0.20, size.y * 0.65),
+      position: () => Vector2(size.x * 0.455, size.y * 0.68),
     );
     add(_activeCharacter!);
   }
