@@ -15,12 +15,53 @@ class BattleGame extends FlameGame {
   @override
   Future<void> onLoad() async {
     await super.onLoad();
+
+    // Compute where BoxFit.contain places the stage image on this screen so
+    // character positions are expressed as fractions of the stage image's
+    // rendered bounds — not the full canvas. This keeps placement correct on
+    // both desktop (letterbox on sides) and mobile (letterbox top/bottom).
+    final stageRect = await _stageImageRect();
+
     _activeCharacter = await _buildCharacter(
       'musician',
       'attack',
-      position: () => Vector2(size.x * 0.44, size.y * 0.71),
+      // (0.265, 0.71) = left platform center within the stage image.
+      // Adjust these two fractions to fine-tune placement on all screens.
+      position: () => Vector2(
+        stageRect.left + stageRect.width * 0.265,
+        stageRect.top + stageRect.height * 0.71,
+      ),
     );
     add(_activeCharacter!);
+  }
+
+  // Loads the stage background image just to read its native dimensions, then
+  // replicates Flutter's BoxFit.contain math to return the rendered rect.
+  Future<Rect> _stageImageRect() async {
+    final bytes = await rootBundle.load(
+      'assets/battle/backgrounds/stage_01.png',
+    );
+    final codec = await ui.instantiateImageCodec(bytes.buffer.asUint8List());
+    final frame = await codec.getNextFrame();
+    final img = frame.image;
+    final aspect = img.width / img.height;
+    img.dispose();
+    return _containRect(aspect);
+  }
+
+  // Mirrors BoxFit.contain: fits the image inside the canvas, centred,
+  // preserving aspect ratio.
+  Rect _containRect(double imageAspect) {
+    final screenAspect = size.x / size.y;
+    if (screenAspect > imageAspect) {
+      // Screen is wider than image — letterbox on left and right
+      final w = size.y * imageAspect;
+      return Rect.fromLTWH((size.x - w) / 2, 0, w, size.y);
+    } else {
+      // Screen is taller than image — letterbox on top and bottom
+      final h = size.x / imageAspect;
+      return Rect.fromLTWH(0, (size.y - h) / 2, size.x, h);
+    }
   }
 
   Future<SpriteAnimationComponent> _buildCharacter(
