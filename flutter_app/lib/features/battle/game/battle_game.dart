@@ -18,7 +18,7 @@ class BattleGame extends FlameGame {
     _activeCharacter = await _buildCharacter(
       'musician',
       'attack',
-      position: () => Vector2(size.x * 0.455, size.y * 0.68),
+      position: () => Vector2(size.x * 0.44, size.y * 0.71),
     );
     add(_activeCharacter!);
   }
@@ -55,7 +55,7 @@ class BattleGame extends FlameGame {
 
     return SpriteAnimationComponent(
       animation: animation,
-      size: Vector2(200, 200),
+      size: Vector2(250, 250),
       position: position(),
       anchor: Anchor.bottomCenter,
     );
