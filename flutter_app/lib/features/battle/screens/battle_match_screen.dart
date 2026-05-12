@@ -93,7 +93,7 @@ class _BattleMatchScreenState extends State<BattleMatchScreen> {
           Positioned.fill(
             child: Image.asset(
               'assets/battle/backgrounds/stage_01.png',
-              fit: BoxFit.cover,
+              fit: BoxFit.contain,
             ),
           ),
 
