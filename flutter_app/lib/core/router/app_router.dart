@@ -24,6 +24,8 @@ import '../../features/legal/screens/terms_of_service_screen.dart';
 import '../../features/profile/screens/score_dashboard_screen.dart';
 import '../../features/arena/screens/arena_screen.dart';
 import '../../features/arena/screens/arena_match_screen.dart';
+import '../../features/battle/screens/battle_lobby_screen.dart';
+import '../../features/battle/screens/battle_match_screen.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/home/screens/plan_screen.dart';
 import '../shell/main_shell.dart';
@@ -89,11 +91,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ── Protected routes require authentication ───────────────────────────
       // /home, /news, /explore, /hot-topic are intentionally PUBLIC.
       const protectedRoutes = [
-        '/markets', '/profile', '/wallet', '/mybets', '/arena',
+        '/markets', '/profile', '/wallet', '/mybets', '/arena', '/battle',
       ];
-      // /arena/:matchId sub-paths are also protected
+      // /arena/:matchId and /battle/:matchId sub-paths are also protected
       final isProtected = protectedRoutes.contains(loc) ||
-          loc.startsWith('/arena/');
+          loc.startsWith('/arena/') ||
+          loc.startsWith('/battle/');
       if (!isLoggedIn && isProtected) {
         // Store destination in Riverpod — reliable across async redirect re-fires
         ref.read(pendingNavigationProvider.notifier).state = loc;
@@ -260,6 +263,16 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/hot-topic',
             builder: (context, state) => const HotTopicScreen(),
+          ),
+          GoRoute(
+            path: '/battle',
+            builder: (context, state) => const BattleLobbyScreen(),
+          ),
+          GoRoute(
+            path: '/battle/:matchId',
+            builder: (context, state) => BattleMatchScreen(
+              matchId: state.pathParameters['matchId']!,
+            ),
           ),
         ],
       ),

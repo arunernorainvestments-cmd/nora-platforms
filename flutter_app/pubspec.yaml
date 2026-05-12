@@ -26,6 +26,10 @@ dependencies:
   fl_chart: ^0.68.0
   cached_network_image: ^3.3.1
   shimmer: ^3.0.0
+
+  # Battle
+  flame: ^1.18.0
+  lottie: ^3.1.2
   
   # Utils
   flutter_dotenv: ^5.1.0
@@ -48,3 +52,4 @@ flutter:
     - assets/images/launch_bg.png
     - assets/battle/sprites/
     - assets/battle/lottie/
+    - assets/battle/backgrounds/
