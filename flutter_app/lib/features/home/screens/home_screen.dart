@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/n_card.dart';
+import '../../../core/widgets/n_glass_sheet.dart';
 import '../../../core/utils/open_url.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../challenges/providers/challenge_providers.dart';
@@ -675,7 +677,11 @@ class _ChampionSpotlightCard extends StatelessWidget {
     final card = Container(
       height: height,
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accent.withValues(alpha: 0.35), width: 1.5),
+        boxShadow: AppTheme.cardShadow(glow: accent),
+      ),
       child: Stack(
         children: [
           Positioned.fill(
@@ -763,11 +769,13 @@ class _ChampionSpotlightCard extends StatelessWidget {
             onTap: () => onDot(i),
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOutBack,
               margin: const EdgeInsets.symmetric(horizontal: 3),
-              width: active ? 8 : 6, height: active ? 8 : 6,
+              width: active ? 20 : 6,
+              height: 6,
               decoration: BoxDecoration(
                 color: active ? const Color(0xFFFFD700) : Colors.white30,
-                shape: BoxShape.circle,
+                borderRadius: BorderRadius.circular(3),
               ),
             ),
           );
@@ -788,7 +796,12 @@ class _ChampionsEmptyCard extends StatelessWidget {
     return Container(
       height: height,
       clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: const Color(0xFFFFD700).withValues(alpha: 0.25), width: 1.5),
+        boxShadow: AppTheme.cardShadow(glow: const Color(0xFFFFD700)),
+      ),
       child: Stack(children: [
         Positioned.fill(
           child: Container(
@@ -828,18 +841,16 @@ class _ChampionRankCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = _paletteColor(champion.displayLabel);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        height: 64,
-        margin: const EdgeInsets.only(bottom: 8),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: NCard(
+        onTap: onTap,
+        accentColor: accent,
+        radius: 8,
         padding: const EdgeInsets.symmetric(horizontal: 12),
-        decoration: BoxDecoration(
-          color: const Color(0xFF1A1A2E),
-          border: Border.all(color: Colors.white10),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Row(children: [
+        child: SizedBox(
+          height: 64,
+          child: Row(children: [
           Text(_ordinal(rank - 1),
               style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.w700)),
           const SizedBox(width: 10),
@@ -860,7 +871,8 @@ class _ChampionRankCard extends StatelessWidget {
                   decoration: BoxDecoration(color: accent.withValues(alpha: 0.20), shape: BoxShape.circle),
                   child: Center(child: Text(champion.initials,
                       style: TextStyle(color: accent, fontSize: 14, fontWeight: FontWeight.w800)))),
-        ]),
+          ]),
+        ),
       ),
     );
   }
@@ -876,13 +888,10 @@ class _TopMoverCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = _paletteColor(mover.displayLabel);
-    return Container(
+    return NCard(
+      accentColor: accent,
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border.all(color: AppTheme.cardBorder),
-        borderRadius: BorderRadius.circular(12),
-      ),
+      radius: 12,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Text(_ordinal(rank - 1),
@@ -929,13 +938,9 @@ class _TopMoverPlaceholder extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NCard(
       padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border.all(color: AppTheme.cardBorder),
-        borderRadius: BorderRadius.circular(12),
-      ),
+      radius: 12,
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Text(_ordinal(rank - 1),
@@ -1015,22 +1020,20 @@ class _PlaceholderRankCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      height: 64,
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A1A2E),
-        border: Border.all(color: Colors.white10),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Text(_ordinal(rank - 1),
-              style: const TextStyle(
-                  color: AppTheme.primary,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700)),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: NCard(
+        radius: 8,
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: SizedBox(
+          height: 64,
+          child: Row(
+            children: [
+              Text(_ordinal(rank - 1),
+                  style: const TextStyle(
+                      color: AppTheme.primary,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700)),
           const SizedBox(width: 10),
           const Expanded(
             child: Column(
@@ -1063,7 +1066,9 @@ class _PlaceholderRankCard extends StatelessWidget {
                       fontWeight: FontWeight.w700)),
             ),
           ),
-        ],
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1123,13 +1128,10 @@ class _NewsPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final newsAsync = ref.watch(breakingNewsPreviewProvider);
 
-    return Container(
+    return NCard(
+      accentColor: const Color(0xFFE53935),
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border.all(color: AppTheme.cardBorder),
-        borderRadius: BorderRadius.circular(12),
-      ),
+      radius: 12,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1243,10 +1245,7 @@ class _GetTokensButton extends StatelessWidget {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppTheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       builder: (_) => const _GetTokensSheet(),
     );
   }
@@ -1326,16 +1325,7 @@ class _GetTokensSheetState extends State<_GetTokensSheet> {
     }
   }
 
-  Widget _buildDragHandle() => Center(
-        child: Container(
-          width: 40,
-          height: 4,
-          decoration: BoxDecoration(
-            color: AppTheme.cardBorder,
-            borderRadius: BorderRadius.circular(2),
-          ),
-        ),
-      );
+  Widget _buildDragHandle() => const NSheetHandle();
 
   Widget _buildSubViewHeader(String title) => Row(
         children: [
@@ -1444,17 +1434,19 @@ class _GetTokensSheetState extends State<_GetTokensSheet> {
       _GetTokensView.earn     => _earnView(),
     };
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildDragHandle(),
-            const SizedBox(height: 20),
-            ...viewWidgets,
-          ],
+    return NGlassSheet(
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildDragHandle(),
+              const SizedBox(height: 20),
+              ...viewWidgets,
+            ],
+          ),
         ),
       ),
     );
@@ -1489,16 +1481,12 @@ class _OptionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return NCard(
       onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: BoxDecoration(
-          color: AppTheme.surfaceLight,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.cardBorder),
-        ),
-        child: Row(
+      accentColor: iconColor,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      radius: 12,
+      child: Row(
           children: [
             Container(
               width: 44,
@@ -1529,7 +1517,6 @@ class _OptionCard extends StatelessWidget {
             const Icon(Icons.chevron_right, color: AppTheme.textSecondary),
           ],
         ),
-      ),
     );
   }
 }
@@ -1801,19 +1788,15 @@ class _RisingTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = _paletteColor(creator.displayLabel);
-    return Container(
-      width: 110,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border.all(
-            color: isLive
-                ? AppTheme.danger.withValues(alpha: 0.5)
-                : AppTheme.cardBorder),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
+    return Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: SizedBox(
+        width: 110,
+        child: NCard(
+          accentColor: isLive ? AppTheme.danger : color,
+          padding: const EdgeInsets.all(12),
+          radius: 14,
+          child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Stack(
@@ -1864,9 +1847,11 @@ class _RisingTile extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
-        ],
+          ],
+        ),
       ),
-    );
+    ),
+  );
   }
 }
 
@@ -1875,40 +1860,40 @@ class _RisingPlaceholderTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 110,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border.all(color: AppTheme.cardBorder),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: const Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          SizedBox(
-            width: 44, height: 44,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: Colors.white12,
-                shape: BoxShape.circle,
+    return const Padding(
+      padding: EdgeInsets.only(right: 12),
+      child: SizedBox(
+        width: 110,
+        child: NCard(
+          padding: EdgeInsets.all(12),
+          radius: 14,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              SizedBox(
+                width: 44, height: 44,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.white12,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.person, color: Colors.white24, size: 22),
+                ),
               ),
-              child: Icon(Icons.person, color: Colors.white24, size: 22),
-            ),
+              SizedBox(height: 8),
+              Text('Creator',
+                  style: TextStyle(
+                      color: Colors.white38,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600),
+                  textAlign: TextAlign.center),
+              Text('Connect\nplatforms',
+                  style: TextStyle(color: Colors.white24, fontSize: 9),
+                  textAlign: TextAlign.center,
+                  maxLines: 2),
+            ],
           ),
-          SizedBox(height: 8),
-          Text('Creator',
-              style: TextStyle(
-                  color: Colors.white38,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600),
-              textAlign: TextAlign.center),
-          Text('Connect\nplatforms',
-              style: TextStyle(color: Colors.white24, fontSize: 9),
-              textAlign: TextAlign.center,
-              maxLines: 2),
-        ],
+        ),
       ),
     );
   }
@@ -2010,17 +1995,15 @@ class _LiveCard extends StatelessWidget {
     final label = isYT ? 'YT' : 'Twitch';
     final color = isYT ? const Color(0xFFFF4444) : const Color(0xFF9146FF);
 
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        border: Border.all(color: AppTheme.cardBorder),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: NCard(
+        accentColor: color,
+        padding: const EdgeInsets.all(16),
+        radius: 16,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
           Row(
             children: [
               Container(
@@ -2099,7 +2082,8 @@ class _LiveCard extends StatelessWidget {
           ),
         ],
       ),
-    );
+    ),
+  );
   }
 }
 
@@ -2483,28 +2467,18 @@ class _NotificationSheet extends ConsumerWidget {
       initialChildSize: 0.6,
       minChildSize: 0.4,
       maxChildSize: 0.92,
-      builder: (context, sc) => Container(
-        decoration: const BoxDecoration(
-          color: AppTheme.surface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-        ),
+      builder: (context, sc) => NGlassSheet(
         child: Column(
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(24, 12, 24, 0),
               child: Column(
                 children: [
-                  Center(
-                    child: Container(
-                      width: 40, height: 4,
-                      margin: const EdgeInsets.only(bottom: 16),
-                      decoration: BoxDecoration(
-                        color: AppTheme.cardBorder,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
+                  Padding(
+                    padding: EdgeInsets.only(bottom: 16),
+                    child: NSheetHandle(),
                   ),
-                  const Text('Notifications',
+                  Text('Notifications',
                       style: TextStyle(
                           color: AppTheme.textPrimary,
                           fontSize: 17,

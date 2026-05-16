@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/n_glass_sheet.dart';
 import '../providers/promotion_providers.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -12,10 +13,7 @@ void showPromotionsSheet(BuildContext context, {required String targetUserId}) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    backgroundColor: AppTheme.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
+    backgroundColor: Colors.transparent,
     builder: (_) => _PromotionsSheet(targetUserId: targetUserId),
   );
 }
@@ -90,28 +88,19 @@ class _PromotionsSheetState extends ConsumerState<_PromotionsSheet> {
   Widget build(BuildContext context) {
     final contextAsync = ref.watch(promotionContextProvider);
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Handle
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppTheme.cardBorder,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
+    return NGlassSheet(
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const NSheetHandle(),
+              const SizedBox(height: 20),
 
-            // Title
-            const Text(
+              // Title
+              const Text(
               'Promote Yourself',
               style: TextStyle(
                 color: AppTheme.textPrimary,
@@ -196,7 +185,8 @@ class _PromotionsSheetState extends ConsumerState<_PromotionsSheet> {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 }
 

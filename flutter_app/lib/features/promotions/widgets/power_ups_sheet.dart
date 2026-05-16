@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/constants/creator_categories.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/n_glass_sheet.dart';
 import '../models/active_boost.dart';
 import '../providers/promotion_providers.dart';
 
@@ -41,10 +42,7 @@ void _openSheet(
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    backgroundColor: AppTheme.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
+    backgroundColor: Colors.transparent,
     builder: (_) => _PowerUpsSheet(
       targetUserId: targetUserId,
       targetUsername: targetUsername,
@@ -142,23 +140,16 @@ class _PowerUpsSheetState extends ConsumerState<_PowerUpsSheet> {
   Widget build(BuildContext context) {
     final boostsAsync = ref.watch(activeBoostsProvider(widget.targetUserId));
 
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40, height: 4,
-                decoration: BoxDecoration(
-                  color: AppTheme.cardBorder,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
+    return NGlassSheet(
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const NSheetHandle(),
+              const SizedBox(height: 20),
             Text(
               widget.mode == PowerUpMode.boost
                   ? '🚀 Boost @${widget.targetUsername}'
@@ -185,7 +176,8 @@ class _PowerUpsSheetState extends ConsumerState<_PowerUpsSheet> {
               error: (_, __) => _buildCards(activeBoosts: const []),
               data: (boosts) => _buildCards(activeBoosts: boosts),
             ),
-          ],
+            ],
+          ),
         ),
       ),
     );

@@ -184,9 +184,11 @@ class _LeaderboardBody extends ConsumerWidget {
             16,
             12 + MediaQuery.of(context).padding.bottom,
           ),
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             color: AppTheme.surface,
-            border: Border(top: BorderSide(color: AppTheme.cardBorder, width: 1)),
+            border: Border(
+                top: BorderSide(
+                    color: Colors.white.withValues(alpha: 0.08), width: 1)),
           ),
           child: _PlaceBetButton(
             hasWeeklyBet: hasWeeklyBet,

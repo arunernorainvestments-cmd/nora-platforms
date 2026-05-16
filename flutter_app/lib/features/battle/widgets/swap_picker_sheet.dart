@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import '../../../core/widgets/n_card.dart';
+import '../../../core/widgets/n_glass_sheet.dart';
+import '../../../core/widgets/n_tappable.dart';
 import '../models/battle_models.dart';
 
 class SwapPickerSheet extends StatelessWidget {
@@ -13,26 +16,14 @@ class SwapPickerSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: const BoxDecoration(
-        color: Color(0xFF1A1A2E),
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+    return NGlassSheet(
+      topRadius: 16,
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Center(
-            child: Container(
-              width: 36,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.white24,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
+          const NSheetHandle(),
           const SizedBox(height: 16),
           const Text(
             'Call in a teammate',
@@ -71,78 +62,82 @@ class _BenchCard extends StatelessWidget {
             ? Colors.orange
             : const Color(0xFFFF4757);
 
-    return GestureDetector(
-      onTap: character.isKO ? null : onSelect,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 150),
         opacity: character.isKO ? 0.4 : 1.0,
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0A0A0F),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: character.isKO ? Colors.white12 : const Color(0xFF6C63FF).withAlpha(100),
-            ),
-          ),
-          child: Row(
-            children: [
-              // Archetype icon placeholder — replace with sprite thumbnail later
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: const Color(0xFF6C63FF).withAlpha(40),
-                  borderRadius: BorderRadius.circular(8),
+        child: NTappable(
+          onTap: character.isKO ? null : onSelect,
+          child: NCard(
+            accentColor: const Color(0xFF6C63FF),
+            radius: 10,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF6C63FF).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Icon(Icons.person,
+                      color: Color(0xFF6C63FF), size: 24),
                 ),
-                child: const Icon(Icons.person, color: Color(0xFF6C63FF), size: 24),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      character.displayName,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        character.displayName,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(2),
-                            child: LinearProgressIndicator(
-                              value: hpPct.clamp(0.0, 1.0),
-                              backgroundColor: Colors.white12,
-                              valueColor: AlwaysStoppedAnimation(hpColor),
-                              minHeight: 4,
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(2),
+                              child: LinearProgressIndicator(
+                                value: hpPct.clamp(0.0, 1.0),
+                                backgroundColor: Colors.white12,
+                                valueColor:
+                                    AlwaysStoppedAnimation(hpColor),
+                                minHeight: 4,
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '${character.currentHp}/${character.maxHp}',
-                          style: const TextStyle(color: Colors.white54, fontSize: 11),
-                        ),
-                      ],
-                    ),
-                  ],
+                          const SizedBox(width: 8),
+                          Text(
+                            '${character.currentHp}/${character.maxHp}',
+                            style: const TextStyle(
+                                color: Colors.white54, fontSize: 11),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              if (character.isKO)
-                const Padding(
-                  padding: EdgeInsets.only(left: 8),
-                  child: Text('KO', style: TextStyle(color: Color(0xFFFF4757), fontSize: 12, fontWeight: FontWeight.bold)),
-                )
-              else
-                const Icon(Icons.chevron_right, color: Colors.white38, size: 20),
-            ],
+                if (character.isKO)
+                  const Padding(
+                    padding: EdgeInsets.only(left: 8),
+                    child: Text('KO',
+                        style: TextStyle(
+                            color: Color(0xFFFF4757),
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold)),
+                  )
+                else
+                  const Icon(Icons.chevron_right,
+                      color: Colors.white38, size: 20),
+              ],
+            ),
           ),
         ),
       ),

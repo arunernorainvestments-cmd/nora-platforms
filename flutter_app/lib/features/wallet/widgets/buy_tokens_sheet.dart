@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/n_glass_sheet.dart';
 import '../../../core/utils/open_url.dart';
 import '../providers/wallet_providers.dart';
 
@@ -10,10 +11,7 @@ void showBuyTokensSheet(BuildContext context) {
   showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    backgroundColor: AppTheme.surface,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
+    backgroundColor: Colors.transparent,
     builder: (_) => const BuyTokensSheet(),
   );
 }
@@ -63,24 +61,16 @@ class _BuyTokensSheetState extends State<BuyTokensSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: Container(
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppTheme.cardBorder,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 20),
+    return NGlassSheet(
+      child: SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const NSheetHandle(),
+              const SizedBox(height: 20),
             const Text(
               'Buy Tokens',
               style: TextStyle(
@@ -101,7 +91,8 @@ class _BuyTokensSheetState extends State<BuyTokensSheet> {
                   disabled: _loadingId != null && _loadingId != pkg.id,
                   onTap: () => _onPackageTap(pkg),
                 )),
-          ],
+            ],
+          ),
         ),
       ),
     );

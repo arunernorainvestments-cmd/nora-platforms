@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/constants/creator_categories.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/n_tappable.dart';
 import '../../../core/widgets/settings_menu_button.dart';
 import '../providers/markets_providers.dart';
 
@@ -431,7 +432,7 @@ class _CreatorCard extends StatelessWidget {
     final initial =
         maker.username.isNotEmpty ? maker.username[0].toUpperCase() : '?';
 
-    return GestureDetector(
+    return NTappable(
       onTap: () => context.go('/u/${maker.username}'),
       child: SizedBox(
         width: 110,
@@ -541,7 +542,7 @@ class _FilterChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return NTappable(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),

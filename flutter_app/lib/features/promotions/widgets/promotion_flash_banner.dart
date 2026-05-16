@@ -43,7 +43,7 @@ class _PromotionFlashBannerState extends ConsumerState<PromotionFlashBanner>
     _slideAnim = Tween<Offset>(
       begin: const Offset(0, -1),
       end: Offset.zero,
-    ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOut));
+    ).animate(CurvedAnimation(parent: _animController, curve: Curves.easeOutBack));
 
     _subscribeRealtime();
   }

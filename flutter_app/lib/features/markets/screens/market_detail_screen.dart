@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/n_card.dart';
+import '../../../core/widgets/n_tappable.dart';
 import '../providers/markets_providers.dart';
 
 // ───────────────────────────────────────────────────────────────────────��─────
@@ -280,13 +282,9 @@ class _ScoreSection extends StatelessWidget {
         ? market.formattedComposite
         : '--';
 
-    return Container(
+    return NCard(
+      radius: 16,
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.cardBorder),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -482,13 +480,9 @@ class _CountdownTimerState extends State<_CountdownTimer> {
   @override
   Widget build(BuildContext context) {
     final d = _display;
-    return Container(
+    return NCard(
+      radius: 12,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceLight,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.cardBorder),
-      ),
       child: Row(
         children: [
           Icon(d.icon, size: 18, color: d.iconColor),
@@ -527,13 +521,10 @@ class _PoolSection extends StatelessWidget {
     final total = market.totalPool;
     final aboveRatio = total > 0 ? market.yesPool / total : 0.5;
 
-    return Container(
+    return NCard(
+      accentColor: AppTheme.success,
+      radius: 14,
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.cardBorder),
-      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -660,9 +651,11 @@ class _BottomBarState extends State<_BottomBar> {
     final bottomPad = MediaQuery.of(context).padding.bottom;
     final blocked = _isBettingBlocked;
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         color: AppTheme.surface,
-        border: Border(top: BorderSide(color: AppTheme.cardBorder)),
+        border: Border(
+            top: BorderSide(
+                color: Colors.white.withValues(alpha: 0.08), width: 1)),
       ),
       padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + bottomPad),
       child: Column(
@@ -830,9 +823,17 @@ class _BettingDrawerState extends ConsumerState<_BettingDrawer> {
     final bottomPad = MediaQuery.of(context).padding.bottom;
 
     return Container(
-      decoration: const BoxDecoration(
-        color: AppTheme.surface,
-        boxShadow: [
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppTheme.cardGradientTop, AppTheme.cardGradientBottom],
+        ),
+        border: Border(
+          left: BorderSide(
+              color: AppTheme.primary.withValues(alpha: 0.2), width: 1),
+        ),
+        boxShadow: const [
           BoxShadow(
             color: Colors.black45,
             blurRadius: 20,
@@ -892,7 +893,7 @@ class _BettingDrawerState extends ConsumerState<_BettingDrawer> {
               Row(
                 children: [
                   Expanded(
-                    child: GestureDetector(
+                    child: NTappable(
                       onTap: () => widget.onPositionChange('above'),
                       child: _PositionChip(
                         label: '📈 Above',
@@ -903,7 +904,7 @@ class _BettingDrawerState extends ConsumerState<_BettingDrawer> {
                   ),
                   const SizedBox(width: 10),
                   Expanded(
-                    child: GestureDetector(
+                    child: NTappable(
                       onTap: () => widget.onPositionChange('below'),
                       child: _PositionChip(
                         label: '📉 Below',
@@ -1159,13 +1160,9 @@ class _MarketTimeline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return NCard(
+      radius: 10,
       padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppTheme.surfaceLight,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: AppTheme.cardBorder),
-      ),
       child: Column(
         children: [
           Row(

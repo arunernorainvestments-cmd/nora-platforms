@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 class AppTheme {
   // Brand colors
@@ -14,7 +15,45 @@ class AppTheme {
   static const Color textSecondary = Color(0xFF8B8FA8);
   static const Color cardBorder = Color(0xFF2A2A3E);
 
+  // Depth tokens
+  static const Color cardGradientTop = Color(0xFF1E1E34);
+  static const Color cardGradientBottom = Color(0xFF13131F);
+
+  static List<BoxShadow> cardShadow({Color? glow}) => [
+        BoxShadow(
+          color: (glow ?? primary).withValues(alpha: 0.07),
+          blurRadius: 24,
+          offset: const Offset(0, 8),
+          spreadRadius: -4,
+        ),
+        BoxShadow(
+          color: Colors.black.withValues(alpha: 0.3),
+          blurRadius: 12,
+          offset: const Offset(0, 4),
+        ),
+      ];
+
+  static List<BoxShadow> get glowShadow => [
+        BoxShadow(
+          color: primary.withValues(alpha: 0.22),
+          blurRadius: 32,
+          spreadRadius: -4,
+        ),
+      ];
+
   static ThemeData get darkTheme {
+    final textTheme = GoogleFonts.interTextTheme(
+      const TextTheme(
+        displayLarge: TextStyle(color: textPrimary, fontWeight: FontWeight.bold),
+        displayMedium:
+            TextStyle(color: textPrimary, fontWeight: FontWeight.bold),
+        bodyLarge: TextStyle(color: textPrimary),
+        bodyMedium: TextStyle(color: textSecondary),
+        labelLarge:
+            TextStyle(color: textPrimary, fontWeight: FontWeight.w600),
+      ),
+    );
+
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
@@ -25,17 +64,18 @@ class AppTheme {
         surface: surface,
         error: danger,
       ),
-      appBarTheme: const AppBarTheme(
+      textTheme: textTheme,
+      appBarTheme: AppBarTheme(
         backgroundColor: background,
         elevation: 0,
         centerTitle: true,
-        titleTextStyle: TextStyle(
+        titleTextStyle: GoogleFonts.inter(
           color: textPrimary,
           fontSize: 18,
           fontWeight: FontWeight.w600,
-          letterSpacing: 0.5,
+          letterSpacing: 0.3,
         ),
-        iconTheme: IconThemeData(color: textPrimary),
+        iconTheme: const IconThemeData(color: textPrimary),
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: surface,
@@ -45,22 +85,23 @@ class AppTheme {
         elevation: 0,
       ),
       cardTheme: CardThemeData(
-        color: surface,
+        color: cardGradientTop,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: const BorderSide(color: cardBorder, width: 1),
+          side: BorderSide(color: primary.withValues(alpha: 0.15), width: 1),
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: primary,
           foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+          padding:
+              const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          textStyle: const TextStyle(
+          textStyle: GoogleFonts.inter(
             fontSize: 16,
             fontWeight: FontWeight.w600,
           ),
@@ -83,13 +124,6 @@ class AppTheme {
         ),
         labelStyle: const TextStyle(color: textSecondary),
         hintStyle: const TextStyle(color: textSecondary),
-      ),
-      textTheme: const TextTheme(
-        displayLarge: TextStyle(color: textPrimary, fontWeight: FontWeight.bold),
-        displayMedium: TextStyle(color: textPrimary, fontWeight: FontWeight.bold),
-        bodyLarge: TextStyle(color: textPrimary),
-        bodyMedium: TextStyle(color: textSecondary),
-        labelLarge: TextStyle(color: textPrimary, fontWeight: FontWeight.w600),
       ),
     );
   }

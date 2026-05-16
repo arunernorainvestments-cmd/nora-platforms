@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/n_glass_sheet.dart';
 import '../models/celeb.dart';
 import '../providers/hot_topic_providers.dart';
 
@@ -161,28 +162,14 @@ class _HotTopicBetBottomSheetState
     final balanceAsync = ref.watch(hotTopicTokenBalanceProvider);
     final balance = balanceAsync.valueOrNull ?? 0;
 
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
+    return NGlassSheet(
       padding: EdgeInsets.fromLTRB(24, 20, 24, 24 + keyboardPad),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Drag handle
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 16),
-              decoration: BoxDecoration(
-                color: AppTheme.cardBorder,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-          ),
+          const NSheetHandle(),
+          const SizedBox(height: 16),
 
           if (_success)
             _SuccessState(tokensRemaining: _tokensRemaining, onClose: () => Navigator.of(context).pop())

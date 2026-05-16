@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/n_card.dart';
 import '../providers/wallet_providers.dart';
 import '../widgets/buy_tokens_sheet.dart';
 import '../../../core/widgets/settings_menu_button.dart';
@@ -259,13 +260,11 @@ class _TokenActivitySection extends ConsumerWidget {
           ),
           data: (transactions) {
             if (transactions.isEmpty) return const _EmptyActivity();
-            return Container(
-              decoration: BoxDecoration(
-                color: AppTheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppTheme.cardBorder),
-              ),
-              child: ListView.separated(
+            return SizedBox(
+              width: double.infinity,
+              child: NCard(
+                radius: 16,
+                child: ListView.separated(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: transactions.length,
@@ -277,6 +276,7 @@ class _TokenActivitySection extends ConsumerWidget {
                 ),
                 itemBuilder: (context, i) => _TransactionRow(tx: transactions[i]),
               ),
+            ),
             );
           },
         ),
@@ -356,23 +356,21 @@ class _EmptyActivity extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return const SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 36),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.cardBorder),
-      ),
-      child: const Column(
-        children: [
-          Text('🪙', style: TextStyle(fontSize: 32)),
-          SizedBox(height: 12),
-          Text(
-            'No token activity yet',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
-          ),
-        ],
+      child: NCard(
+        radius: 16,
+        padding: EdgeInsets.symmetric(vertical: 36),
+        child: Column(
+          children: [
+            Text('🪙', style: TextStyle(fontSize: 32)),
+            SizedBox(height: 12),
+            Text(
+              'No token activity yet',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -392,15 +390,12 @@ class _CashBalanceSection extends StatelessWidget {
       children: [
         const _SectionHeader(title: 'Cash Balance'),
         const SizedBox(height: 12),
-        Container(
+        SizedBox(
           width: double.infinity,
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppTheme.cardBorder),
-          ),
-          child: Row(
+          child: NCard(
+            radius: 16,
+            padding: const EdgeInsets.all(20),
+            child: Row(
             children: [
               Container(
                 width: 44,
@@ -443,7 +438,8 @@ class _CashBalanceSection extends StatelessWidget {
             ],
           ),
         ),
-      ],
+      ),
+    ],
     );
   }
 }
@@ -475,29 +471,27 @@ class _SectionErrorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return SizedBox(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      decoration: BoxDecoration(
-        color: AppTheme.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppTheme.cardBorder),
-      ),
-      child: Column(
-        children: [
-          const Text(
-            'Could not load data',
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
-          ),
-          const SizedBox(height: 10),
-          TextButton(
-            onPressed: onRetry,
-            child: const Text(
-              'Retry',
-              style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w600),
+      child: NCard(
+        radius: 16,
+        padding: const EdgeInsets.symmetric(vertical: 24),
+        child: Column(
+          children: [
+            const Text(
+              'Could not load data',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
             ),
-          ),
-        ],
+            const SizedBox(height: 10),
+            TextButton(
+              onPressed: onRetry,
+              child: const Text(
+                'Retry',
+                style: TextStyle(color: AppTheme.primary, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
