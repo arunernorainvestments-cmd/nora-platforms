@@ -48,6 +48,7 @@ class _BattleMatchScreenState extends State<BattleMatchScreen> {
   }
 
   void _onChit() {
+    _game.triggerChit();
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
