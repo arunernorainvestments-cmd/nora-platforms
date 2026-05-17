@@ -7,6 +7,7 @@ class CombatMenu extends StatelessWidget {
   final List<AbilityData> abilities;
   final List<BenchCharacter> bench;
   final bool momentumReady;
+  final bool locked;
   final int currentAp;
   final void Function(int slot) onAbility;
   final void Function(BenchCharacter) onSwap;
@@ -21,6 +22,7 @@ class CombatMenu extends StatelessWidget {
     required this.onSwap,
     required this.onChit,
     this.momentumReady = false,
+    this.locked = false,
   });
 
   AbilityData _slot(int n) => abilities.firstWhere((a) => a.slot == n);
@@ -32,7 +34,7 @@ class CombatMenu extends StatelessWidget {
     final s3 = _slot(3);
     final s4 = _slot(4);
     final s5 = _slot(5);
-    final ultimateEnabled = momentumReady && currentAp >= s5.apCost;
+    final ultimateEnabled = !locked && momentumReady && currentAp >= s5.apCost;
 
     return Container(
       color: Colors.black.withValues(alpha: 0.88),
@@ -48,19 +50,21 @@ class CombatMenu extends StatelessWidget {
                 label: 'Swap',
                 icon: Icons.swap_horiz_rounded,
                 color: const Color(0xFF03DAC6),
-                onTap: () => showModalBottomSheet(
-                  context: context,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) =>
-                      SwapPickerSheet(bench: bench, onSelect: onSwap),
-                ),
+                onTap: locked
+                    ? null
+                    : () => showModalBottomSheet(
+                          context: context,
+                          backgroundColor: Colors.transparent,
+                          builder: (_) =>
+                              SwapPickerSheet(bench: bench, onSelect: onSwap),
+                        ),
               ),
               const SizedBox(width: 8),
               _ActionChip(
                 label: 'Chit',
                 icon: Icons.style_rounded,
                 color: const Color(0xFFFFB300),
-                onTap: onChit,
+                onTap: locked ? null : onChit,
               ),
             ],
           ),
@@ -73,7 +77,7 @@ class CombatMenu extends StatelessWidget {
                 Expanded(
                   child: _MoveBtn(
                     ability: s1,
-                    canAfford: currentAp >= s1.apCost,
+                    canAfford: !locked && currentAp >= s1.apCost,
                     onTap: () => onAbility(1),
                   ),
                 ),
@@ -81,7 +85,7 @@ class CombatMenu extends StatelessWidget {
                 Expanded(
                   child: _MoveBtn(
                     ability: s2,
-                    canAfford: currentAp >= s2.apCost,
+                    canAfford: !locked && currentAp >= s2.apCost,
                     onTap: () => onAbility(2),
                   ),
                 ),
@@ -97,7 +101,7 @@ class CombatMenu extends StatelessWidget {
                 Expanded(
                   child: _MoveBtn(
                     ability: s3,
-                    canAfford: currentAp >= s3.apCost,
+                    canAfford: !locked && currentAp >= s3.apCost,
                     onTap: () => onAbility(3),
                   ),
                 ),
@@ -105,7 +109,7 @@ class CombatMenu extends StatelessWidget {
                 Expanded(
                   child: _MoveBtn(
                     ability: s4,
-                    canAfford: currentAp >= s4.apCost,
+                    canAfford: !locked && currentAp >= s4.apCost,
                     onTap: () => onAbility(4),
                   ),
                 ),
@@ -119,6 +123,18 @@ class CombatMenu extends StatelessWidget {
             enabled: ultimateEnabled,
             onTap: () => onAbility(5),
           ),
+          if (locked) ...[
+            const SizedBox(height: 8),
+            const Text(
+              'Move submitted — waiting for opponent…',
+              style: TextStyle(
+                color: Colors.white38,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ],
       ),
     );
@@ -269,7 +285,7 @@ class _ActionChip extends StatelessWidget {
   final String label;
   final IconData icon;
   final Color color;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   const _ActionChip({
     required this.label,
@@ -280,24 +296,25 @@ class _ActionChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final enabled = onTap != null;
     return NTappable(
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
+          color: color.withValues(alpha: enabled ? 0.12 : 0.04),
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.55)),
+          border: Border.all(color: color.withValues(alpha: enabled ? 0.55 : 0.2)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 16),
+            Icon(icon, color: color.withValues(alpha: enabled ? 1.0 : 0.35), size: 16),
             const SizedBox(width: 6),
             Text(
               label,
               style: TextStyle(
-                color: color,
+                color: color.withValues(alpha: enabled ? 1.0 : 0.35),
                 fontSize: 12,
                 fontWeight: FontWeight.bold,
               ),

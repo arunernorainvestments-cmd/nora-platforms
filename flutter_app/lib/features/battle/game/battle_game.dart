@@ -25,8 +25,8 @@ class BattleGame extends FlameGame {
       animation: _playerAnims['idle'],
       size: Vector2(250, 250),
       position: Vector2(
-        stageRect.left + stageRect.width * 0.265,
-        stageRect.top + stageRect.height * 0.71,
+        stageRect.left + stageRect.width * 0.245,
+        stageRect.top + stageRect.height * 0.73,
       ),
       anchor: Anchor.bottomCenter,
     );
@@ -34,10 +34,10 @@ class BattleGame extends FlameGame {
 
     _opponentCharacter = SpriteAnimationComponent(
       animation: await _loadAnimation('musician', 'front', 'idle'),
-      size: Vector2(250, 250),
+      size: Vector2(230, 230),
       position: Vector2(
-        stageRect.left + stageRect.width * 0.735,
-        stageRect.top + stageRect.height * 0.71,
+        stageRect.left + stageRect.width * 0.775,
+        stageRect.top + stageRect.height * 0.83,
       ),
       anchor: Anchor.bottomCenter,
     );
