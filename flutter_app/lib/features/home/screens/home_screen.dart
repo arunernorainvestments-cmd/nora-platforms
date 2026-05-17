@@ -2297,6 +2297,13 @@ class _SideDrawer extends ConsumerWidget {
                         _navTo(context, ref, '/arena', requiresAuth: true),
                   ),
                   _DrawerNavItem(
+                    icon: Icons.sports_kabaddi_outlined,
+                    label: 'Battle',
+                    subtitle: '6-player team battles',
+                    onTap: () =>
+                        _navTo(context, ref, '/battle', requiresAuth: true),
+                  ),
+                  _DrawerNavItem(
                     icon: Icons.local_fire_department_outlined,
                     label: 'Hot Topic',
                     subtitle: 'Trending this week',
@@ -2344,6 +2351,29 @@ class _SideDrawer extends ConsumerWidget {
                 ],
               ),
             ),
+
+            // ── Sign out ─────────────────────────────────────────────────────
+            if (isLoggedIn)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    foregroundColor: AppTheme.danger,
+                    padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                    alignment: Alignment.centerLeft,
+                  ),
+                  icon: const Icon(Icons.logout_rounded, size: 18),
+                  label: const Text(
+                    'Sign Out',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    await ref.read(authActionsProvider).signOut();
+                    if (context.mounted) GoRouter.of(context).go('/');
+                  },
+                ),
+              ),
 
             // ── Footer ──────────────────────────────────────────────────────
             Container(

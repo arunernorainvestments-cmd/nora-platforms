@@ -18,6 +18,7 @@ import '../../features/markets/screens/market_detail_screen.dart';
 import '../../features/wallet/screens/wallet_screen.dart';
 import '../../features/launch/screens/launch_screen.dart';
 import '../../features/explore/screens/celebrity_heat_screen.dart';
+import '../../features/explore/screens/celebrity_profile_screen.dart';
 import '../../features/hot_topic/screens/hot_topic_screen.dart';
 import '../../features/legal/screens/privacy_policy_screen.dart';
 import '../../features/legal/screens/terms_of_service_screen.dart';
@@ -162,6 +163,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/news',
         builder: (context, state) => const CelebrityHeatScreen(),
+        routes: [
+          GoRoute(
+            path: ':celebId',
+            builder: (context, state) => CelebrityProfileScreen(
+              celebId: state.pathParameters['celebId']!,
+            ),
+          ),
+        ],
       ),
 
       // ── /explore redirects to /news for backwards compat ─────────────────

@@ -37,7 +37,7 @@ class BattleGame extends FlameGame {
       size: Vector2(230, 230),
       position: Vector2(
         stageRect.left + stageRect.width * 0.775,
-        stageRect.top + stageRect.height * 0.83,
+        stageRect.top + stageRect.height * 0.67,
       ),
       anchor: Anchor.bottomCenter,
     );

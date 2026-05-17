@@ -148,6 +148,54 @@ final newsfeedProvider =
       .toList();
 });
 
+// Full profile data for a single celebrity — celeb details + this week's score + history.
+final celebProfileProvider =
+    FutureProvider.family.autoDispose<CelebProfileData, String>((ref, celebId) async {
+  final weekId = ref.watch(currentWeekProvider).weekId;
+
+  final celebFuture = Supabase.instance.client
+      .from('celebs')
+      .select('id, name, category, image_url')
+      .eq('id', celebId)
+      .single();
+
+  final weekFuture = Supabase.instance.client
+      .from('celeb_weekly_scores')
+      .select('points, rank, story_volume, last_delta, last_tier, reason_text')
+      .eq('celeb_id', celebId)
+      .eq('week_id', weekId)
+      .maybeSingle();
+
+  final historyFuture = Supabase.instance.client
+      .from('celeb_score_history')
+      .select('id, celeb_id, scoring_window, delta, tier, reason_text, story_volume, scored_at, celebs(name, category)')
+      .eq('celeb_id', celebId)
+      .order('scored_at', ascending: false)
+      .limit(20);
+
+  final results = await Future.wait([celebFuture, weekFuture, historyFuture]);
+
+  final celeb = results[0] as Map<String, dynamic>;
+  final week = results[1] as Map<String, dynamic>?;
+  final historyRows = results[2] as List;
+
+  return CelebProfileData(
+    id: celeb['id'] as String,
+    name: celeb['name'] as String,
+    category: celeb['category'] as String?,
+    imageUrl: celeb['image_url'] as String?,
+    points: (week?['points'] as num?)?.toInt() ?? 1000,
+    rank: (week?['rank'] as num?)?.toInt(),
+    weekStoryVolume: (week?['story_volume'] as num?)?.toInt() ?? 0,
+    lastDelta: (week?['last_delta'] as num?)?.toInt() ?? 0,
+    lastTier: week?['last_tier'] as String?,
+    lastReasonText: week?['reason_text'] as String?,
+    history: historyRows
+        .map((r) => NewsfeedEntry.fromJson(r as Map<String, dynamic>))
+        .toList(),
+  );
+});
+
 // Powers the /news horizontal scroller — current week rankings ordered by rank.
 final newsScrollerProvider =
     FutureProvider.autoDispose<List<CelebWeeklyScore>>((ref) async {

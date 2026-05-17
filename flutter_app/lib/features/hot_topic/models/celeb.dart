@@ -1,4 +1,4 @@
-// Models for Hot Topic feature.
+// Models for Hot Topic and Celebrity profile features.
 // Celebrities here are public figures with no NORA platform_metrics/scores.
 
 class Celeb {
@@ -124,6 +124,7 @@ class WeeklyBet {
 }
 
 class NewsfeedEntry {
+  final String? celebId;
   final String celebName;
   final String celebInitials; // first letter of each word, max 2 chars
   final String? category;
@@ -135,6 +136,7 @@ class NewsfeedEntry {
   final String scoringWindow; // 'AM' or 'PM' extracted from scoring_window field
 
   const NewsfeedEntry({
+    this.celebId,
     required this.celebName,
     required this.celebInitials,
     this.category,
@@ -158,6 +160,7 @@ class NewsfeedEntry {
     final window = json['scoring_window'] as String? ?? '';
     final scoringWindow = window.endsWith('-AM') ? 'AM' : 'PM';
     return NewsfeedEntry(
+      celebId: json['celeb_id'] as String?,
       celebName: name,
       celebInitials: initials,
       category: celeb['category'] as String?,
@@ -196,4 +199,32 @@ class NewsfeedEntry {
 
   bool get isPositive => delta > 0;
   bool get isNegative => delta < 0;
+}
+
+class CelebProfileData {
+  final String id;
+  final String name;
+  final String? category;
+  final String? imageUrl;
+  final int points;
+  final int? rank;
+  final int weekStoryVolume;
+  final int lastDelta;
+  final String? lastTier;
+  final String? lastReasonText;
+  final List<NewsfeedEntry> history;
+
+  const CelebProfileData({
+    required this.id,
+    required this.name,
+    this.category,
+    this.imageUrl,
+    required this.points,
+    this.rank,
+    required this.weekStoryVolume,
+    required this.lastDelta,
+    this.lastTier,
+    this.lastReasonText,
+    required this.history,
+  });
 }

@@ -160,12 +160,19 @@ class _CelebrityHeatScreenState
                   padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
                   itemCount: feed.length,
                   itemBuilder: (context, i) {
+                    final entry = feed[i];
                     return _EventCard(
-                      entry: feed[i],
+                      entry: entry,
                       isExpanded: _expandedIndex == i,
-                      onTap: () => setState(() {
-                        _expandedIndex = _expandedIndex == i ? null : i;
-                      }),
+                      onTap: () {
+                        if (entry.celebId != null) {
+                          context.push('/news/${entry.celebId}');
+                        } else {
+                          setState(() {
+                            _expandedIndex = _expandedIndex == i ? null : i;
+                          });
+                        }
+                      },
                     );
                   },
                 );
