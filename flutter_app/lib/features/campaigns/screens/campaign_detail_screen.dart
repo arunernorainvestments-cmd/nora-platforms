@@ -230,6 +230,52 @@ class _CampaignBody extends ConsumerWidget {
             ),
           ],
 
+          // Governance + updates (funded or active)
+          if (campaign.status == CampaignStatus.funded ||
+              campaign.status == CampaignStatus.active) ...[
+            const SizedBox(height: 16),
+            const Divider(color: AppTheme.cardBorder, height: 1),
+            const SizedBox(height: 16),
+            Row(children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => context.push(
+                    '/campaign/${campaign.id}/proposals',
+                    extra: {
+                      'isCreator': isCreator,
+                      'escrowBalanceCents': campaign.escrowBalanceCents,
+                    },
+                  ),
+                  icon: const Icon(Icons.how_to_vote_outlined, size: 16),
+                  label: const Text('Proposals'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.secondary,
+                    side: const BorderSide(color: AppTheme.secondary),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => context.push(
+                    '/campaign/${campaign.id}/updates',
+                    extra: isCreator,
+                  ),
+                  icon: const Icon(Icons.campaign_outlined, size: 16),
+                  label: const Text('Updates'),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.textSecondary,
+                    side: const BorderSide(color: AppTheme.cardBorder),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+            ]),
+          ],
+
           const SizedBox(height: 40),
         ],
       ),

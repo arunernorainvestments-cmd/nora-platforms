@@ -42,6 +42,7 @@ class Campaign {
   final DateTime? closesAt;
   final DateTime? fundedAt;
   final DateTime createdAt;
+  final int escrowBalanceCents;
 
   const Campaign({
     required this.id,
@@ -62,6 +63,7 @@ class Campaign {
     this.closesAt,
     this.fundedAt,
     required this.createdAt,
+    this.escrowBalanceCents = 0,
   });
 
   double get fundingProgressPct =>
@@ -98,6 +100,7 @@ class Campaign {
           ? DateTime.parse(json['funded_at'] as String)
           : null,
       createdAt: DateTime.parse(json['created_at'] as String),
+      escrowBalanceCents: json['escrow_balance_usd_cents'] as int? ?? 0,
     );
   }
 }
@@ -387,6 +390,254 @@ final myCampaignDistributionsProvider =
       .map((j) => Distribution.fromJson(j as Map<String, dynamic>))
       .toList();
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GOVERNANCE MODELS
+// ─────────────────────────────────────────────────────────────────────────────
+
+enum ProposalStatus {
+  open,
+  approved,
+  rejected,
+  cancelled,
+  executed,
+  expired;
+
+  static ProposalStatus fromString(String s) =>
+      ProposalStatus.values.firstWhere((e) => e.name == s,
+          orElse: () => ProposalStatus.expired);
+
+  bool get isActive => this == open;
+  bool get isSettled =>
+      this == approved || this == rejected || this == executed || this == expired;
+}
+
+class Proposal {
+  final String id;
+  final String campaignId;
+  final String creatorId;
+  final String title;
+  final String description;
+  final int amountRequestedUsdCents;
+  final String purposeCategory;
+  final String recipientDescription;
+  final ProposalStatus status;
+  final DateTime votingOpensAt;
+  final DateTime votingClosesAt;
+  final double totalRoyaltyPctVoted;
+  final double royaltyPctApproved;
+  final double royaltyPctRejected;
+  final double quorumPctRequired;
+  final bool isSimulated;
+  final DateTime? executedAt;
+  final DateTime createdAt;
+
+  const Proposal({
+    required this.id,
+    required this.campaignId,
+    required this.creatorId,
+    required this.title,
+    required this.description,
+    required this.amountRequestedUsdCents,
+    required this.purposeCategory,
+    required this.recipientDescription,
+    required this.status,
+    required this.votingOpensAt,
+    required this.votingClosesAt,
+    required this.totalRoyaltyPctVoted,
+    required this.royaltyPctApproved,
+    required this.royaltyPctRejected,
+    required this.quorumPctRequired,
+    required this.isSimulated,
+    this.executedAt,
+    required this.createdAt,
+  });
+
+  Duration get timeRemaining => votingClosesAt.difference(DateTime.now());
+
+  factory Proposal.fromJson(Map<String, dynamic> json) => Proposal(
+        id: json['id'] as String,
+        campaignId: json['campaign_id'] as String,
+        creatorId: json['creator_id'] as String,
+        title: json['title'] as String,
+        description: json['description'] as String,
+        amountRequestedUsdCents: json['amount_requested_usd_cents'] as int,
+        purposeCategory: json['purpose_category'] as String,
+        recipientDescription: json['recipient_description'] as String,
+        status: ProposalStatus.fromString(json['status'] as String),
+        votingOpensAt: DateTime.parse(json['voting_opens_at'] as String),
+        votingClosesAt: DateTime.parse(json['voting_closes_at'] as String),
+        totalRoyaltyPctVoted:
+            (json['total_royalty_pct_voted'] as num).toDouble(),
+        royaltyPctApproved: (json['royalty_pct_approved'] as num).toDouble(),
+        royaltyPctRejected: (json['royalty_pct_rejected'] as num).toDouble(),
+        quorumPctRequired: (json['quorum_pct_required'] as num).toDouble(),
+        isSimulated: json['is_simulated'] as bool? ?? false,
+        executedAt: json['executed_at'] != null
+            ? DateTime.parse(json['executed_at'] as String)
+            : null,
+        createdAt: DateTime.parse(json['created_at'] as String),
+      );
+}
+
+class CampaignUpdate {
+  final String id;
+  final String campaignId;
+  final String creatorId;
+  final String title;
+  final String body;
+  final String updateType;
+  final String? linkedProposalId;
+  final String? linkedRevenueEventId;
+  final bool isSimulated;
+  final DateTime? publishedAt;
+  final DateTime createdAt;
+
+  const CampaignUpdate({
+    required this.id,
+    required this.campaignId,
+    required this.creatorId,
+    required this.title,
+    required this.body,
+    required this.updateType,
+    this.linkedProposalId,
+    this.linkedRevenueEventId,
+    required this.isSimulated,
+    this.publishedAt,
+    required this.createdAt,
+  });
+
+  factory CampaignUpdate.fromJson(Map<String, dynamic> json) => CampaignUpdate(
+        id: json['id'] as String,
+        campaignId: json['campaign_id'] as String,
+        creatorId: json['creator_id'] as String,
+        title: json['title'] as String,
+        body: json['body'] as String,
+        updateType: json['update_type'] as String,
+        linkedProposalId: json['linked_proposal_id'] as String?,
+        linkedRevenueEventId: json['linked_revenue_event_id'] as String?,
+        isSimulated: json['is_simulated'] as bool? ?? false,
+        publishedAt: json['published_at'] != null
+            ? DateTime.parse(json['published_at'] as String)
+            : null,
+        createdAt: DateTime.parse(json['created_at'] as String),
+      );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GOVERNANCE PROVIDERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// All proposals for a campaign, newest first.
+final campaignProposalsProvider =
+    FutureProvider.autoDispose.family<List<Proposal>, String>(
+        (ref, campaignId) async {
+  final data = await _db
+      .from('campaign_proposals')
+      .select()
+      .eq('campaign_id', campaignId)
+      .order('created_at', ascending: false);
+
+  return (data as List)
+      .map((j) => Proposal.fromJson(j as Map<String, dynamic>))
+      .toList();
+});
+
+// Single proposal by ID.
+final campaignProposalDetailProvider =
+    FutureProvider.autoDispose.family<Proposal, String>((ref, id) async {
+  final data = await _db
+      .from('campaign_proposals')
+      .select()
+      .eq('id', id)
+      .single();
+  return Proposal.fromJson(data);
+});
+
+// Current user's vote on a specific proposal (null = not voted).
+final myVoteProvider =
+    FutureProvider.autoDispose.family<String?, String>((ref, proposalId) async {
+  final userId = _db.auth.currentUser?.id;
+  if (userId == null) return null;
+
+  final data = await _db
+      .from('campaign_votes')
+      .select('vote')
+      .eq('proposal_id', proposalId)
+      .eq('voter_user_id', userId)
+      .maybeSingle();
+
+  return data == null ? null : data['vote'] as String?;
+});
+
+// Published updates for a campaign, newest first.
+final campaignUpdatesProvider =
+    FutureProvider.autoDispose.family<List<CampaignUpdate>, String>(
+        (ref, campaignId) async {
+  final data = await _db
+      .from('campaign_updates')
+      .select()
+      .eq('campaign_id', campaignId)
+      .not('published_at', 'is', null)
+      .order('published_at', ascending: false);
+
+  return (data as List)
+      .map((j) => CampaignUpdate.fromJson(j as Map<String, dynamic>))
+      .toList();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GOVERNANCE ACTIONS
+// ─────────────────────────────────────────────────────────────────────────────
+
+Future<String> createProposal({
+  required String campaignId,
+  required String title,
+  required String description,
+  required int amountRequestedUsdCents,
+  required String purposeCategory,
+  required String recipientDescription,
+}) async {
+  final result = await _db.rpc('campaign_create_proposal', params: {
+    'p_campaign_id': campaignId,
+    'p_title': title,
+    'p_description': description,
+    'p_amount_requested_usd_cents': amountRequestedUsdCents,
+    'p_purpose_category': purposeCategory,
+    'p_recipient_description': recipientDescription,
+  });
+  // Notify backers (best-effort, ignore errors)
+  try {
+    await _db.rpc('campaign_notify_proposal', params: {'p_proposal_id': result});
+  } catch (_) {}
+  return result as String;
+}
+
+Future<void> castVote(String proposalId, String vote) async {
+  await _db.rpc('campaign_cast_vote', params: {
+    'p_proposal_id': proposalId,
+    'p_vote': vote,
+  });
+}
+
+Future<String> postCampaignUpdate({
+  required String campaignId,
+  required String title,
+  required String body,
+  required String updateType,
+  String? linkedProposalId,
+  String? linkedRevenueEventId,
+}) async {
+  final result = await _db.rpc('campaign_post_update', params: {
+    'p_campaign_id': campaignId,
+    'p_title': title,
+    'p_body': body,
+    'p_update_type': updateType,
+    'p_linked_proposal_id': linkedProposalId,
+    'p_linked_revenue_event_id': linkedRevenueEventId,
+  });
+  return result as String;
+}
 
 Future<String> submitRevenueEvent({
   required String campaignId,

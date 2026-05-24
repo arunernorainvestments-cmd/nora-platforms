@@ -34,6 +34,10 @@ import '../../features/campaigns/screens/campaign_detail_screen.dart';
 import '../../features/campaigns/screens/campaign_create_screen.dart';
 import '../../features/campaigns/screens/campaign_revenue_screen.dart';
 import '../../features/campaigns/screens/campaign_earnings_screen.dart';
+import '../../features/campaigns/screens/campaign_proposals_screen.dart';
+import '../../features/campaigns/screens/campaign_proposal_detail_screen.dart';
+import '../../features/campaigns/screens/campaign_proposal_create_screen.dart';
+import '../../features/campaigns/screens/campaign_updates_screen.dart';
 import '../../features/campaigns/providers/campaigns_providers.dart';
 import '../shell/main_shell.dart';
 
@@ -240,6 +244,45 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/campaigns/earnings',
         builder: (context, state) => const CampaignEarningsScreen(),
+      ),
+
+      // ── Campaign proposals list ───────────────────────────────────────────
+      GoRoute(
+        path: '/campaign/:id/proposals',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>?;
+          return CampaignProposalsScreen(
+            campaignId: state.pathParameters['id']!,
+            isCreator: extra?['isCreator'] as bool? ?? false,
+            escrowBalanceCents: extra?['escrowBalanceCents'] as int? ?? 0,
+          );
+        },
+      ),
+
+      // ── Create proposal — creator only ────────────────────────────────────
+      GoRoute(
+        path: '/campaign/:id/proposals/new',
+        builder: (context, state) => CampaignProposalCreateScreen(
+          campaignId: state.pathParameters['id']!,
+          escrowBalanceCents: state.extra as int? ?? 0,
+        ),
+      ),
+
+      // ── Single proposal detail ────────────────────────────────────────────
+      GoRoute(
+        path: '/campaign/:id/proposals/:proposalId',
+        builder: (context, state) => CampaignProposalDetailScreen(
+          proposalId: state.pathParameters['proposalId']!,
+        ),
+      ),
+
+      // ── Campaign updates feed ─────────────────────────────────────────────
+      GoRoute(
+        path: '/campaign/:id/updates',
+        builder: (context, state) => CampaignUpdatesScreen(
+          campaignId: state.pathParameters['id']!,
+          isCreator: state.extra as bool? ?? false,
+        ),
       ),
 
       // ── Public routes (no bottom nav) ─────────────────────────────────────
