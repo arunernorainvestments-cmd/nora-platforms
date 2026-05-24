@@ -98,6 +98,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     const SliverToBoxAdapter(child: _Divider()),
                     const SliverToBoxAdapter(child: _RisingSection()),
                     const SliverToBoxAdapter(child: _WhoIsLiveSection()),
+                    const SliverToBoxAdapter(child: _Phase2BannerCard()),
                     const SliverToBoxAdapter(child: _FooterLinks()),
                     const SliverToBoxAdapter(child: SizedBox(height: 24)),
                   ],
@@ -2316,6 +2317,13 @@ class _SideDrawer extends ConsumerWidget {
                     onTap: () => _navTo(context, ref, '/challenges',
                         requiresAuth: true),
                   ),
+                  _DrawerNavItem(
+                    icon: Icons.attach_money_outlined,
+                    label: 'Phase 2',
+                    subtitle: 'Royalty campaigns (SIM)',
+                    badge: 'New',
+                    onTap: () => _navTo(context, ref, '/plan'),
+                  ),
 
                   const SizedBox(height: 8),
                   const Padding(
@@ -2625,6 +2633,114 @@ class _NotificationSheet extends ConsumerWidget {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Phase 2 banner ───────────────────────────────────────────────────────────
+
+class _Phase2BannerCard extends StatelessWidget {
+  const _Phase2BannerCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+      child: GestureDetector(
+        onTap: () => GoRouter.of(context).go('/plan'),
+        child: Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF1A1050), Color(0xFF0D2A24)],
+            ),
+            border: Border.all(
+              color: AppTheme.primary,
+              width: 1.5,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.secondary,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Text(
+                    'PHASE 2',
+                    style: TextStyle(
+                      color: Colors.black87,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primary.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
+                  ),
+                  child: const Text(
+                    'SIM MODE LIVE',
+                    style: TextStyle(
+                      color: AppTheme.primary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 1,
+                    ),
+                  ),
+                ),
+              ]),
+              const SizedBox(height: 12),
+              const Text(
+                'Royalty Campaigns',
+                style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Back creators directly. Earn a share of their future revenue — music, content, brand deals, and more.',
+                style: TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 13,
+                  height: 1.5,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Text(
+                  'Explore Phase 2 →',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

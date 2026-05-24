@@ -29,6 +29,12 @@ import '../../features/battle/screens/battle_lobby_screen.dart';
 import '../../features/battle/screens/battle_match_screen.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/home/screens/plan_screen.dart';
+import '../../features/campaigns/screens/campaigns_list_screen.dart';
+import '../../features/campaigns/screens/campaign_detail_screen.dart';
+import '../../features/campaigns/screens/campaign_create_screen.dart';
+import '../../features/campaigns/screens/campaign_revenue_screen.dart';
+import '../../features/campaigns/screens/campaign_earnings_screen.dart';
+import '../../features/campaigns/providers/campaigns_providers.dart';
 import '../shell/main_shell.dart';
 
 // Notifier that triggers GoRouter to re-evaluate its redirect without
@@ -93,11 +99,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       // /home, /news, /explore, /hot-topic are intentionally PUBLIC.
       const protectedRoutes = [
         '/markets', '/profile', '/wallet', '/mybets', '/arena', '/battle',
+        '/campaigns',
       ];
-      // /arena/:matchId and /battle/:matchId sub-paths are also protected
+      // sub-paths are also protected
       final isProtected = protectedRoutes.contains(loc) ||
           loc.startsWith('/arena/') ||
-          loc.startsWith('/battle/');
+          loc.startsWith('/battle/') ||
+          loc.startsWith('/campaigns/') ||
+          loc.startsWith('/campaign/') ||
+          loc == '/campaigns/earnings';
       if (!isLoggedIn && isProtected) {
         // Store destination in Riverpod — reliable across async redirect re-fires
         ref.read(pendingNavigationProvider.notifier).state = loc;
@@ -199,6 +209,39 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ScoreDashboardScreen(),
       ),
 
+      // ── Campaign detail — public read, auth required to invest ───────────
+      GoRoute(
+        path: '/campaign/:id',
+        builder: (context, state) => CampaignDetailScreen(
+          campaignId: state.pathParameters['id']!,
+        ),
+      ),
+
+      // ── Campaign create — auth required, no bottom nav ────────────────────
+      GoRoute(
+        path: '/campaigns/new',
+        builder: (context, state) => const CampaignCreateScreen(),
+      ),
+
+      // ── Campaign revenue report — creator only ────────────────────────────
+      GoRoute(
+        path: '/campaign/:id/revenue',
+        builder: (context, state) {
+          final campaign = state.extra as Campaign?;
+          return CampaignRevenueScreen(
+            campaignId: state.pathParameters['id']!,
+            campaignTitle: campaign?.title ?? 'Campaign',
+            isSimulated: campaign?.isSimulated ?? true,
+          );
+        },
+      ),
+
+      // ── Backer earnings dashboard ─────────────────────────────────────────
+      GoRoute(
+        path: '/campaigns/earnings',
+        builder: (context, state) => const CampaignEarningsScreen(),
+      ),
+
       // ── Public routes (no bottom nav) ─────────────────────────────────────
       GoRoute(
         path: '/join',
@@ -282,6 +325,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => BattleMatchScreen(
               matchId: state.pathParameters['matchId']!,
             ),
+          ),
+          GoRoute(
+            path: '/campaigns',
+            builder: (context, state) => const CampaignsListScreen(),
           ),
         ],
       ),
