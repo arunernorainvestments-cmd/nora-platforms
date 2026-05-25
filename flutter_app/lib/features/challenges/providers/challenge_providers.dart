@@ -153,7 +153,40 @@ class ChallengeActions {
       // Fire-and-forget
     }
   }
+
+  /// Record an invite link share. Returns the function response data or null on error.
+  /// Awards 10 tokens if under the 5/day cap.
+  Future<Map<String, dynamic>?> recordInviteSend() async {
+    try {
+      final res = await _client.functions.invoke('record-invite-send', body: {});
+      return res.data as Map<String, dynamic>?;
+    } catch (_) {
+      return null;
+    }
+  }
 }
 
 final challengeActionsProvider =
     Provider<ChallengeActions>((ref) => ChallengeActions());
+
+// ─────────────────────────────────────────────────────────────────────────────
+// todayInviteSendsProvider
+// Count of invite link sends that were rewarded today (UTC day) for the
+// logged-in user. Used to show "X of 5 remaining" in the invite view.
+// ─────────────────────────────────────────────────────────────────────────────
+
+final todayInviteSendsProvider = FutureProvider.autoDispose<int>((ref) async {
+  final userId = Supabase.instance.client.auth.currentUser?.id;
+  if (userId == null) return 0;
+
+  final now = DateTime.now().toUtc();
+  final todayStart = DateTime.utc(now.year, now.month, now.day).toIso8601String();
+
+  final result = await Supabase.instance.client
+      .from('invite_link_sends')
+      .select('id')
+      .eq('user_id', userId)
+      .gte('sent_at', todayStart);
+
+  return (result as List).length;
+});

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
@@ -1239,7 +1240,7 @@ class _NewsDivider extends StatelessWidget {
       );
 }
 
-// ─── Get Tokens button ────────────────────────────────────────────────────────
+// ─── Earn Tokens button ───────────────────────────────────────────────────────
 
 class _GetTokensButton extends StatelessWidget {
   void _open(BuildContext context) {
@@ -1265,7 +1266,7 @@ class _GetTokensButton extends StatelessWidget {
         ),
         child: const Center(
           child: Text(
-            'Get Tokens',
+            'Earn Tokens',
             textAlign: TextAlign.center,
             style: TextStyle(
                 color: Colors.white,
@@ -1280,16 +1281,16 @@ class _GetTokensButton extends StatelessWidget {
 
 // ─── Unified Get Tokens sheet (choose → purchase / earn, all in one modal) ───
 
-enum _GetTokensView { choose, purchase, earn }
+enum _GetTokensView { choose, purchase, earn, invite }
 
-class _GetTokensSheet extends StatefulWidget {
+class _GetTokensSheet extends ConsumerStatefulWidget {
   const _GetTokensSheet();
 
   @override
-  State<_GetTokensSheet> createState() => _GetTokensSheetState();
+  ConsumerState<_GetTokensSheet> createState() => _GetTokensSheetState();
 }
 
-class _GetTokensSheetState extends State<_GetTokensSheet> {
+class _GetTokensSheetState extends ConsumerState<_GetTokensSheet> {
   _GetTokensView _view = _GetTokensView.choose;
   String? _loadingPackageId;
 
@@ -1357,7 +1358,7 @@ class _GetTokensSheetState extends State<_GetTokensSheet> {
 
   List<Widget> _chooseView() => [
         const Text(
-          'Get Tokens',
+          'Earn Tokens',
           style: TextStyle(
             color: Colors.white,
             fontSize: 20,
@@ -1366,7 +1367,7 @@ class _GetTokensSheetState extends State<_GetTokensSheet> {
         ),
         const SizedBox(height: 4),
         const Text(
-          'Choose how you want to get tokens',
+          'Choose how you want to earn tokens',
           style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
         ),
         const SizedBox(height: 20),
@@ -1384,6 +1385,14 @@ class _GetTokensSheetState extends State<_GetTokensSheet> {
           subtitle: 'Play games to earn free tokens',
           iconColor: AppTheme.primary,
           onTap: () => setState(() => _view = _GetTokensView.earn),
+        ),
+        const SizedBox(height: 12),
+        _OptionCard(
+          icon: Icons.people_outline,
+          label: 'Invite a Friend',
+          subtitle: 'Earn tokens by sharing your invite link',
+          iconColor: AppTheme.success,
+          onTap: () => setState(() => _view = _GetTokensView.invite),
         ),
       ];
 
@@ -1427,12 +1436,130 @@ class _GetTokensSheetState extends State<_GetTokensSheet> {
             )),
       ];
 
+  List<Widget> _inviteView() {
+    final profileAsync = ref.watch(userProfileProvider);
+    final sendsAsync   = ref.watch(todayInviteSendsProvider);
+    final sendsToday   = sendsAsync.value ?? 0;
+    final remaining    = (5 - sendsToday).clamp(0, 5);
+    final referralCode = profileAsync.value?.referralCode ?? '';
+    final link         = 'https://noraplatforms.com/join?ref=$referralCode';
+
+    return [
+      _buildSubViewHeader('Invite a Friend'),
+      const SizedBox(height: 4),
+      const Padding(
+        padding: EdgeInsets.only(left: 48),
+        child: Text(
+          'Earn tokens for every friend you bring in',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+        ),
+      ),
+      const SizedBox(height: 20),
+
+      // Reward breakdown
+      const _InviteRewardCard(
+        icon: Icons.link_outlined,
+        iconColor: AppTheme.secondary,
+        title: '+10 tokens when you share',
+        subtitle: 'You earn 10 tokens each time you copy your invite link.\nMax 5 rewarded shares per day.',
+      ),
+      const SizedBox(height: 10),
+      const _InviteRewardCard(
+        icon: Icons.person_add_outlined,
+        iconColor: AppTheme.success,
+        title: '+25 tokens when they sign up',
+        subtitle: 'You earn 25 tokens every time a friend actually joins N.O.R.A. using your link. '
+            'Each signup also counts toward the Recruiter badge.',
+      ),
+      const SizedBox(height: 20),
+
+      // Daily send limit indicator
+      _DailySendLimitBar(sendsToday: sendsToday, maxSends: 5),
+      const SizedBox(height: 16),
+
+      // Link display
+      Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.background,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppTheme.cardBorder),
+        ),
+        child: profileAsync.isLoading
+            ? const Center(
+                child: SizedBox(height: 14, width: 14,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.textSecondary)),
+              )
+            : Text(
+                referralCode.isEmpty ? 'Loading your link...' : link.replaceFirst('https://', ''),
+                style: const TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 12,
+                  fontFamily: 'monospace',
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+      ),
+      const SizedBox(height: 12),
+
+      // Copy & share button
+      SizedBox(
+        width: double.infinity,
+        child: ElevatedButton.icon(
+          onPressed: (referralCode.isEmpty) ? null : () => _onInviteTap(link, remaining),
+          icon: const Icon(Icons.copy_outlined, size: 18),
+          label: Text(remaining == 0 ? 'Link Copied (limit reached today)' : 'Copy Invite Link'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: remaining > 0 ? AppTheme.success : AppTheme.surface,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      ),
+    ];
+  }
+
+  Future<void> _onInviteTap(String link, int remaining) async {
+    // Copy to clipboard immediately
+    await Clipboard.setData(ClipboardData(text: link));
+
+    // Award tokens server-side (enforces daily cap)
+    final actions = ref.read(challengeActionsProvider);
+    final result  = await actions.recordInviteSend();
+
+    if (!mounted) return;
+
+    final awarded = result?['awarded'] as bool? ?? false;
+    final tokens  = result?['tokens_earned'] as int? ?? 0;
+
+    // Refresh the sends count
+    ref.invalidate(todayInviteSendsProvider);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          awarded
+              ? 'Link copied! +$tokens tokens earned.'
+              : 'Link copied! (Daily share limit reached)',
+        ),
+        backgroundColor: awarded ? AppTheme.success : AppTheme.surface,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: awarded ? AppTheme.success : AppTheme.cardBorder),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final viewWidgets = switch (_view) {
       _GetTokensView.choose   => _chooseView(),
       _GetTokensView.purchase => _purchaseView(),
       _GetTokensView.earn     => _earnView(),
+      _GetTokensView.invite   => _inviteView(),
     };
 
     return NGlassSheet(
@@ -2793,6 +2920,118 @@ class _FooterLinks extends StatelessWidget {
           ],
         ),
       );
+}
+
+// ─── Invite reward card ───────────────────────────────────────────────────────
+
+class _InviteRewardCard extends StatelessWidget {
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+
+  const _InviteRewardCard({
+    required this.icon,
+    required this.iconColor,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: iconColor.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: iconColor.withValues(alpha: 0.25)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: iconColor.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, color: iconColor, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                Text(subtitle,
+                    style: const TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 12,
+                        height: 1.45)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Daily send limit progress bar ───────────────────────────────────────────
+
+class _DailySendLimitBar extends StatelessWidget {
+  final int sendsToday;
+  final int maxSends;
+
+  const _DailySendLimitBar({required this.sendsToday, required this.maxSends});
+
+  @override
+  Widget build(BuildContext context) {
+    final remaining = (maxSends - sendsToday).clamp(0, maxSends);
+    final progress  = sendsToday / maxSends;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text('Share rewards today',
+                style: TextStyle(
+                    color: AppTheme.textSecondary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500)),
+            Text(
+              remaining > 0 ? '$remaining of $maxSends remaining' : 'Limit reached — resets tomorrow',
+              style: TextStyle(
+                color: remaining > 0 ? AppTheme.success : AppTheme.textSecondary,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: progress.clamp(0.0, 1.0),
+            minHeight: 6,
+            backgroundColor: AppTheme.cardBorder,
+            valueColor: AlwaysStoppedAnimation<Color>(
+              remaining > 0 ? AppTheme.success : AppTheme.textSecondary,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

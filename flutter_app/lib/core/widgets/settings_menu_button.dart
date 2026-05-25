@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
-import '../utils/open_url.dart';
+import '../../features/settings/widgets/settings_overlay.dart';
+import '../../features/settings/widgets/help_overlay.dart';
 
-/// Gear icon that lives in every authenticated screen's AppBar actions.
-/// Opens a popup menu with app-wide settings and legal links.
+/// Sandwich (hamburger) icon in the AppBar. Opens popups for Settings and Help.
 class SettingsMenuButton extends StatelessWidget {
   const SettingsMenuButton({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return PopupMenuButton<_SettingsItem>(
-      icon: const Icon(Icons.settings_outlined, color: AppTheme.textSecondary),
-      tooltip: 'Settings',
+    return PopupMenuButton<_MenuItem>(
+      icon: const Icon(Icons.menu, color: AppTheme.textSecondary),
+      tooltip: 'Menu',
       color: AppTheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
@@ -19,40 +19,31 @@ class SettingsMenuButton extends StatelessWidget {
       ),
       onSelected: (item) {
         switch (item) {
-          case _SettingsItem.privacyPolicy:
-            openUrlInBrowser('https://noraplatforms.com/privacy');
-          case _SettingsItem.termsOfService:
-            openUrlInBrowser('https://noraplatforms.com/terms');
+          case _MenuItem.settings:
+            showSettingsOverlay(context);
+          case _MenuItem.help:
+            showHelpOverlay(context);
         }
       },
       itemBuilder: (_) => [
-        const PopupMenuItem(
-          value: _SettingsItem.privacyPolicy,
-          child: Row(
-            children: [
-              Icon(Icons.privacy_tip_outlined,
-                  size: 18, color: AppTheme.textSecondary),
-              SizedBox(width: 12),
-              Text('Privacy Policy',
-                  style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
-            ],
-          ),
-        ),
-        const PopupMenuItem(
-          value: _SettingsItem.termsOfService,
-          child: Row(
-            children: [
-              Icon(Icons.description_outlined,
-                  size: 18, color: AppTheme.textSecondary),
-              SizedBox(width: 12),
-              Text('Terms of Service',
-                  style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
-            ],
-          ),
-        ),
+        _menuItem(_MenuItem.settings, Icons.settings_outlined, 'Settings'),
+        _menuItem(_MenuItem.help, Icons.help_outline, 'Help'),
       ],
+    );
+  }
+
+  PopupMenuItem<_MenuItem> _menuItem(_MenuItem value, IconData icon, String label) {
+    return PopupMenuItem(
+      value: value,
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppTheme.textSecondary),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+        ],
+      ),
     );
   }
 }
 
-enum _SettingsItem { privacyPolicy, termsOfService }
+enum _MenuItem { settings, help }

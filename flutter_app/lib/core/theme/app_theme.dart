@@ -41,6 +41,85 @@ class AppTheme {
         ),
       ];
 
+  static ThemeData get lightTheme {
+    final textTheme = GoogleFonts.interTextTheme(
+      const TextTheme(
+        displayLarge: TextStyle(color: Color(0xFF0A0A1F), fontWeight: FontWeight.bold),
+        displayMedium: TextStyle(color: Color(0xFF0A0A1F), fontWeight: FontWeight.bold),
+        bodyLarge: TextStyle(color: Color(0xFF1A1A2E)),
+        bodyMedium: TextStyle(color: Color(0xFF5A5A7A)),
+        labelLarge: TextStyle(color: Color(0xFF1A1A2E), fontWeight: FontWeight.w600),
+      ),
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      scaffoldBackgroundColor: const Color(0xFFF4F4FC),
+      colorScheme: const ColorScheme.light(
+        primary: primary,
+        secondary: secondary,
+        surface: Color(0xFFFFFFFF),
+        error: danger,
+      ),
+      textTheme: textTheme,
+      appBarTheme: AppBarTheme(
+        backgroundColor: const Color(0xFFF4F4FC),
+        elevation: 0,
+        centerTitle: true,
+        titleTextStyle: GoogleFonts.inter(
+          color: const Color(0xFF0A0A1F),
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.3,
+        ),
+        iconTheme: const IconThemeData(color: Color(0xFF1A1A2E)),
+      ),
+      bottomNavigationBarTheme: const BottomNavigationBarThemeData(
+        backgroundColor: Colors.white,
+        selectedItemColor: primary,
+        unselectedItemColor: Color(0xFF8B8FA8),
+        type: BottomNavigationBarType.fixed,
+        elevation: 0,
+      ),
+      cardTheme: CardThemeData(
+        color: Colors.white,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: primary.withValues(alpha: 0.12), width: 1),
+        ),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primary,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          textStyle: GoogleFonts.inter(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: const Color(0xFFF0F0F8),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFD0D0E0)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Color(0xFFD0D0E0)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: primary, width: 2),
+        ),
+        labelStyle: const TextStyle(color: Color(0xFF8B8FA8)),
+        hintStyle: const TextStyle(color: Color(0xFF8B8FA8)),
+      ),
+    );
+  }
+
   static ThemeData get darkTheme {
     final textTheme = GoogleFonts.interTextTheme(
       const TextTheme(

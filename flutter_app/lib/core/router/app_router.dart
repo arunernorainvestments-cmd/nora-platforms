@@ -39,6 +39,8 @@ import '../../features/campaigns/screens/campaign_proposal_detail_screen.dart';
 import '../../features/campaigns/screens/campaign_proposal_create_screen.dart';
 import '../../features/campaigns/screens/campaign_updates_screen.dart';
 import '../../features/campaigns/providers/campaigns_providers.dart';
+import '../../features/settings/screens/support_screen.dart';
+import '../../features/settings/screens/faq_screen.dart';
 import '../shell/main_shell.dart';
 
 // Notifier that triggers GoRouter to re-evaluate its redirect without
@@ -207,6 +209,16 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/terms',
         builder: (context, state) => const TermsOfServiceScreen(),
+      ),
+
+      // ── Help & settings routes (public, no auth) ──────────────────────────
+      GoRoute(
+        path: '/support',
+        builder: (context, state) => const SupportScreen(),
+      ),
+      GoRoute(
+        path: '/faq',
+        builder: (context, state) => const FaqScreen(),
       ),
       GoRoute(
         path: '/dashboard',
