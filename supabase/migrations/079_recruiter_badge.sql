@@ -5,9 +5,9 @@
 -- Recruiter badges (bronze / silver / gold tiers)
 INSERT INTO badge_definitions (slug, name, description, tier, condition_type, pool)
 VALUES
-  ('recruiter_bronze', 'Recruiter',       'Invited your first friend to N.O.R.A.',         'bronze', 'referral_signup', 'all'),
-  ('recruiter_silver', 'Super Recruiter', 'Invited 5 friends who joined N.O.R.A.',         'silver', 'referral_signup', 'all'),
-  ('recruiter_gold',   'Elite Recruiter', 'Invited 10 friends who joined N.O.R.A.',        'gold',   'referral_signup', 'all')
+  ('recruiter_bronze', 'Recruiter',       'Invited your first friend to N.O.R.A.',         'bronze', 'count_threshold', 'all'),
+  ('recruiter_silver', 'Super Recruiter', 'Invited 5 friends who joined N.O.R.A.',         'silver', 'count_threshold', 'all'),
+  ('recruiter_gold',   'Elite Recruiter', 'Invited 10 friends who joined N.O.R.A.',        'gold',   'count_threshold', 'all')
 ON CONFLICT (slug) DO NOTHING;
 
 -- Challenge: first referral signup → bronze Recruiter badge + 25 token bonus
