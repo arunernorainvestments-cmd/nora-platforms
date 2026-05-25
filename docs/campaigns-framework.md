@@ -1,5 +1,5 @@
 # NORA Campaigns — Royalty Crowdfunding Framework
-# Status: Design complete. Build not started. Last updated: 2026-05-23
+# Status: Phases 1–3 live in SIM mode. Phase 4 (secondary market) queued. Last updated: 2026-05-25
 
 ---
 
@@ -499,12 +499,13 @@ CREATE INDEX votes_proposal_idx     ON campaign_votes (proposal_id);
 CREATE INDEX votes_voter_idx        ON campaign_votes (voter_user_id);
 ```
 
-**Governance rules (proposed — confirm before build):**
+**Governance rules (confirmed and implemented — migrations 077–078):**
 - Simple majority: proposal passes if `royalty_pct_approved > royalty_pct_rejected`
 - Quorum required: `total_royalty_pct_voted >= 25%` of outstanding stake
 - Maximum single proposal: 20% of current `escrow_balance_usd_cents`
 - Cooling period: creator cannot re-propose a rejected item for 30 days
 - Voting window: 72 hours from `voting_opens_at`
+- `process_governance_tick()` runs every minute via pg_cron; auto-executes approved sim proposals inline
 
 ---
 
@@ -836,46 +837,46 @@ rate. No floating point anywhere.
 
 ## 14. Build Order
 
-### Phase 1 — Foundation (build first)
-1. `kyc_verifications` table + Stripe Identity integration
-2. `sim_usd_balances` and `sim_usd_transactions` tables
-3. `campaigns` table + campaign creation Flutter screen
-4. Campaign status state machine edge function
-5. `campaign_ownership_ledger` + investment flow (simulated)
-6. Campaign page Flutter screen + Vercel OG edge function
+### Phase 1 — Foundation ✅ DONE (migrations 072–074, Flutter screens)
+1. ✅ `kyc_verifications` table + `kyc_simulate_approve()` RPC (Stripe Identity wired in Phase 5)
+2. ✅ `sim_usd_balances` and `sim_usd_transactions` tables + `sim_seed_balance()` RPC
+3. ✅ `campaigns` table + campaign creation Flutter screen
+4. ✅ Campaign status state machine — `process_campaign_status_tick()` pg_cron (migration 075)
+5. ✅ `campaign_ownership_ledger` + `campaign_invest_simulated()` RPC
+6. ✅ Campaign list + detail Flutter screens (campaigns_list_screen, campaign_detail_screen)
 
-### Phase 2 — Revenue & Distributions
-7. `campaign_revenue_events` table + creator upload UI
-8. Distribution calculation edge function
-9. `campaign_distributions` table + simulated payout flow
-10. Backer dashboard — earnings view
+### Phase 2 — Revenue & Distributions ✅ DONE (migration 076, Flutter screens)
+7. ✅ `campaign_revenue_events` table + `campaign_submit_revenue_event()` RPC + creator upload UI
+8. ✅ `process_campaign_distributions()` — identical math for sim and live
+9. ✅ `campaign_distributions` table + sim payout (instant credit to sim_usd_balances)
+10. ✅ Backer earnings dashboard (campaign_earnings_screen)
 
-### Phase 3 — Governance
-11. `campaign_proposals` + `campaign_votes` tables
-12. Proposal creation + voting Flutter screens
-13. Proposal execution edge function (releases escrow)
-14. `campaign_updates` + notification fan-out
+### Phase 3 — Governance ✅ DONE (migrations 077–078, Flutter screens)
+11. ✅ `campaign_proposals` + `campaign_votes` tables
+12. ✅ Proposal creation + detail + voting Flutter screens
+13. ✅ `process_governance_tick()` pg_cron — auto-executes approved sim proposals
+14. ✅ `campaign_updates` table + `campaign_post_update()` notification fan-out
 
-### Phase 4 — Secondary Market
+### Phase 4 — Secondary Market ⬜ QUEUED
 15. `campaign_stake_listings` + `campaign_stake_sales` tables
 16. Listing creation + browse Flutter screens
 17. Purchase flow (simulated)
 18. Ownership recalculation after transfer
 
-### Phase 5 — Live Mode
+### Phase 5 — Live Mode ⬜ QUEUED (requires regulatory approval + KYC attorney review)
 19. Stripe Connect escrow integration
 20. Real KYC flow (Stripe Identity, full AML)
 21. Reg CF investor limit enforcement
 22. SEC Form C filing workflow
 23. Toggle simulated → live campaigns
 
-### Phase 6 — Revenue API Integrations
+### Phase 6 — Revenue API Integrations ⬜ QUEUED
 24. YouTube Analytics revenue pull (existing OAuth token)
 25. DistroKid CSV parser
 26. Spotify for Artists (requires elevated access / partnership)
 27. Direct data partnership integrations
 
-### Phase 7 — On-Chain (post NORA coin launch)
+### Phase 7 — On-Chain (post NORA coin launch) ⬜ FUTURE
 28. Ownership ledger → token mint migration
 29. Smart contract governance
 30. On-chain distribution settlement

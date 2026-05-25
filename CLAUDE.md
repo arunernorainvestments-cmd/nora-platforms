@@ -1,5 +1,5 @@
 # NORA Platforms — CLAUDE.md
-# Last updated: May 2026
+# Last updated: 2026-05-25
 
 ## Project
 Flutter web prediction market + live battle platform. Three games, one wallet.
@@ -44,17 +44,22 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 ## Games
 - **Markets**: bet on creator Display Score direction. Pool: 90% winners / 5% platform / 5% Market Maker.
 - **Arena**: 5-min live 1v1. ArenaScore in-memory (BaseFlow + HeatInfluence + AbilityImpact − Suppression). Pool: 90% backers / 5% platform / 5% winning creator.
-- **Battle**: 6-player (2 teams of 3), turn-based, Pokémon-style. Phases A+B done, Phase C in progress. See docs/battle-spec.md.
+- **Battle**: 6-player (2 teams of 3), turn-based, Pokémon-style. Phases A+B+C done. Phase D (map buffs, matchmaking queue, balance) queued. See docs/battle-spec.md.
 - **Hot Topic**: celebrity buzz leaderboard, independent of games. 25 celebs, Claude scoring twice daily via Currents API.
+- **Campaigns**: royalty crowdfunding. Creators offer % of future royalties. Phases 1–3 live (SIM mode): KYC, investment, revenue/distributions, governance proposals + voting, campaign updates + notifications. See docs/campaigns-framework.md.
 
 ## Reference Docs
 - Scoring formulas, DB tables, data flows: docs/scoring-and-db-spec.md
 - Battle animation, asset naming, type chart, speed stats: docs/battle-spec.md
 - Edge functions, pg_cron jobs, routing: docs/infra.md
 - Pre-launch reset sequence: docs/pre-launch.md
+- Campaigns architecture, fee model, regulatory framework, build phases: docs/campaigns-framework.md
 
 ## Queued
-- Battle Phase C: Flutter UI + Flame/Lottie integration (assets pending)
+- Campaigns Phase 4 — Secondary market (stake listings, buy/sell, ownership transfer)
+- Campaigns Phase 5 — Live mode (Stripe Connect escrow, real KYC via Stripe Identity, SEC Form C workflow, Reg CF limit enforcement)
+- Campaigns Phase 6 — Revenue API integrations (YouTube Analytics, DistroKid CSV, Spotify for Artists)
+- Campaigns OG meta tags — Vercel edge middleware for rich link previews on /campaign/:id
 - Battle Phase D: map buff wiring, matchmaking queue, balance tuning
 - Battle Chit collectible economy (post-launch)
 - Slice 2: comprehensive is_test_account filter sweep
@@ -62,5 +67,4 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 - Onboarding walkthrough (4-5 slide PageView)
 - Profile avatars from connected platform data
 - Arena Visual Pass 2/3
-- Know Your Customer (KYC) verification — required before any real-money or regulated features go live
 - Marketing campaign and launch-day animation
