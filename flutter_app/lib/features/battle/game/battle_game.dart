@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'audio_interface.dart';
 
@@ -276,7 +277,7 @@ class SineWaveEffect extends PositionComponent {
     canvas.drawPath(path, paint);
     
     // Core white beam
-    paint.color = const ui.Color(0xFFFFFFFF).withOpacity(1.0 - progress);
+    paint.color = const Color(0xFFFFFFFF).withOpacity(1.0 - progress);
     paint.strokeWidth = 2;
     paint.maskFilter = null;
     canvas.drawPath(path, paint);
@@ -317,12 +318,12 @@ class RippleEffect extends PositionComponent {
       ..strokeWidth = isDoubleSize ? 6 : 3
       ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 4);
 
-    canvas.drawCircle(center.toOffset(), currentRadius, paint);
+    canvas.drawCircle(Offset(center.x, center.y), currentRadius, paint);
     
     // Inner pulsing ring
     if (progress > 0.3) {
       paint.color = color.withOpacity((1.0 - progress) * 0.3);
-      canvas.drawCircle(center.toOffset(), currentRadius * 0.6, paint);
+      canvas.drawCircle(Offset(center.x, center.y), currentRadius * 0.6, paint);
     }
   }
 
@@ -350,7 +351,7 @@ class HitMarkerEffect extends PositionComponent {
     final progress = elapsed / duration;
     
     final paint = ui.Paint()
-      ..color = const ui.Color(0xFFFFCC00).withOpacity(1.0 - progress)
+      ..color = const Color(0xFFFFCC00).withOpacity(1.0 - progress)
       ..style = ui.PaintingStyle.stroke
       ..strokeWidth = 4
       ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 3);
@@ -369,7 +370,7 @@ class HitMarkerEffect extends PositionComponent {
       paint,
     );
     
-    paint.color = const ui.Color(0xFFFFFFFF).withOpacity(1.0 - progress);
+    paint.color = const Color(0xFFFFFFFF).withOpacity(1.0 - progress);
     paint.strokeWidth = 2;
     canvas.drawLine(
       Offset(center.x - size * 0.7, center.y - size * 0.7),
@@ -421,7 +422,7 @@ class CrowdHypeEffect extends PositionComponent {
     
     // Draw cheering rave fan silhouettes with glowing sticks
     final paint = ui.Paint()
-      ..color = const ui.Color(0xDD0C0C14)
+      ..color = const Color(0xDD0C0C14)
       ..style = ui.PaintingStyle.fill;
 
     // Draw left crowd
@@ -456,11 +457,11 @@ class CrowdHypeEffect extends PositionComponent {
     final stickR1 = Offset(startR - sizeX * 0.2, sizeY - 120 - bounce);
     final stickR2 = Offset(startR - sizeX * 0.1, sizeY - 95 - bounce);
 
-    stickPaint.color = const ui.Color(0xFF00FFFF);
+    stickPaint.color = const Color(0xFF00FFFF);
     canvas.drawLine(stickL1, Offset(stickL1.dx + 10, stickL1.dy - 30), stickPaint);
     canvas.drawLine(stickR1, Offset(stickR1.dx - 10, stickR1.dy - 30), stickPaint);
 
-    stickPaint.color = const ui.Color(0xFFFF00AA);
+    stickPaint.color = const Color(0xFFFF00AA);
     canvas.drawLine(stickL2, Offset(stickL2.dx - 15, stickL2.dy - 25), stickPaint);
     canvas.drawLine(stickR2, Offset(stickR2.dx + 15, stickR2.dy - 25), stickPaint);
   }
