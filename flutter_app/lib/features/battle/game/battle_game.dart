@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:js' as js;
+import 'dart:js_interop';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/services.dart';
+
+// Safe JS eval binding that compiles on all platforms (Web and Native)
+@JS('eval')
+external void _jsEval(String code);
 
 class BattleGame extends FlameGame {
   SpriteAnimationComponent? _playerCharacter;
@@ -165,8 +169,8 @@ class BattleGame extends FlameGame {
     } else if (slot == 3) {
       // 3. Crowd Hype
       _playOnce('charging');
-      // cheeering rave fans crowd animate
-      add(CrowdHypeEffect());
+      // cheering rave fans crowd animate (passing game size for safety)
+      add(CrowdHypeEffect(size));
     } else if (slot == 4) {
       // 4. Bass Drop
       _playOnce('heavy_attack');
@@ -232,7 +236,7 @@ class BattleGame extends FlameGame {
 
   void _playSynthWhack() {
     try {
-      js.context.callMethod('eval', ["""
+      _jsEval("""
         try {
           const ctx = new (window.AudioContext || window.webkitAudioContext)();
           const osc = ctx.createOscillator();
@@ -250,9 +254,9 @@ class BattleGame extends FlameGame {
           osc.start();
           osc.stop(ctx.currentTime + 0.15);
         } catch (e) {}
-      """]);
+      """);
     } catch (e) {
-      // Fallback if js context is not ready
+      // Fallback on native platforms
     }
   }
 }
@@ -298,7 +302,7 @@ class SineWaveEffect extends PositionComponent {
     canvas.drawPath(path, paint);
     
     // Core white beam
-    paint.color = ui.Color(0xFFFFFFFF).withOpacity((1.0 - progress));
+    paint.color = const ui.Color(0xFFFFFFFF).withOpacity(1.0 - progress);
     paint.strokeWidth = 2;
     paint.maskFilter = null;
     canvas.drawPath(path, paint);
@@ -372,7 +376,7 @@ class HitMarkerEffect extends PositionComponent {
     final progress = elapsed / duration;
     
     final paint = ui.Paint()
-      ..color = const ui.Color(0xFFFFCC00).withOpacity((1.0 - progress))
+      ..color = const ui.Color(0xFFFFCC00).withOpacity(1.0 - progress)
       ..style = ui.PaintingStyle.stroke
       ..strokeWidth = 4
       ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 3);
@@ -417,15 +421,18 @@ class HitMarkerEffect extends PositionComponent {
 
 // ── Rave fans Crowd Hype cheering effect ──────────────────────────────────────
 class CrowdHypeEffect extends PositionComponent {
+  final Vector2 screenSize;
   double elapsed = 0.0;
   final double duration = 2.0;
+
+  CrowdHypeEffect(this.screenSize);
 
   @override
   void render(ui.Canvas canvas) {
     super.render(canvas);
     
-    final sizeX = parent?.size?.x ?? 800.0;
-    final sizeY = parent?.size?.y ?? 600.0;
+    final sizeX = screenSize.x;
+    final sizeY = screenSize.y;
 
     // Slide in from left/right and meet in the center
     // Slide in for 0.5s, stay and bounce for 1.0s, slide out for 0.5s
