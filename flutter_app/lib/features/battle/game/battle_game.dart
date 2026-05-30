@@ -1,15 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:js_interop';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
 import 'package:flutter/services.dart';
-
-// Safe JS eval binding that compiles on all platforms (Web and Native)
-@JS('eval')
-external void _jsEval(String code);
+import 'audio_interface.dart';
 
 class BattleGame extends FlameGame {
   SpriteAnimationComponent? _playerCharacter;
@@ -235,29 +231,7 @@ class BattleGame extends FlameGame {
   }
 
   void _playSynthWhack() {
-    try {
-      _jsEval("""
-        try {
-          const ctx = new (window.AudioContext || window.webkitAudioContext)();
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(140, ctx.currentTime);
-          osc.frequency.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
-          
-          gain.gain.setValueAtTime(0.3, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
-          
-          osc.start();
-          osc.stop(ctx.currentTime + 0.15);
-        } catch (e) {}
-      """);
-    } catch (e) {
-      // Fallback on native platforms
-    }
+    playSynthWhack();
   }
 }
 
