@@ -1,4 +1,4 @@
-import 'dart:async';
+import 'dart:async' as async;
 import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:math' as math;
@@ -218,7 +218,7 @@ class BattleGame extends FlameGame {
 
     // 1. Flash character (blip)
     double elapsed = 0.0;
-    Timer.periodic(const Duration(milliseconds: 50), (t) {
+    async.Timer.periodic(const Duration(milliseconds: 50), (t) {
       elapsed += 0.05;
       target.opacity = target.opacity == 1.0 ? 0.2 : 1.0;
       if (elapsed >= 0.3) {
