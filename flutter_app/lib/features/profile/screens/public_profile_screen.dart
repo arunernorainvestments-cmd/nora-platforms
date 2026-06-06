@@ -14,6 +14,7 @@ import '../models/platform_metric.dart';
 import '../models/public_profile_data.dart';
 import '../providers/public_profile_providers.dart';
 import '../widgets/score_history_chart.dart';
+import '../../battle/providers/battle_providers.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SCREEN
@@ -165,7 +166,13 @@ class _ProfileBody extends StatelessWidget {
             child: _ScoreHistorySection(userId: profile.id),
           ),
 
-        // ── G) Recent Content ────────────────────────────────────────────────
+        // ── G) Stat Sheet (market makers only) ──────────────────────────────
+        if (profile.isMarketMaker)
+          SliverToBoxAdapter(
+            child: _StatSheetCard(userId: profile.id),
+          ),
+
+        // ── H) Recent Content ────────────────────────────────────────────────
         const SliverToBoxAdapter(child: _RecentContentSection()),
 
         const SliverToBoxAdapter(child: SizedBox(height: 48)),
@@ -971,6 +978,165 @@ class _StatItem extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// G) STAT SHEET CARD
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _StatSheetCard extends ConsumerWidget {
+  final String userId;
+  const _StatSheetCard({required this.userId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final sheetAsync = ref.watch(creatorStatSheetProvider(userId));
+
+    return sheetAsync.when(
+      data: (sheet) {
+        if (sheet == null) return const SizedBox.shrink();
+        final hasBoost = sheet.weeklyPollMultiplier > 1.0;
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppTheme.surface,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: hasBoost
+                    ? AppTheme.secondary.withValues(alpha: 0.5)
+                    : AppTheme.cardBorder,
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                  child: Row(
+                    children: [
+                      const Text('Battle Stats',
+                          style: TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15)),
+                      const Spacer(),
+                      if (hasBoost)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: AppTheme.secondary.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '×${sheet.weeklyPollMultiplier.toStringAsFixed(3)} Poll Boost',
+                            style: const TextStyle(
+                                color: AppTheme.secondary,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          _StatRow('Power', sheet.statPower, sheet.effectivePower),
+                          const SizedBox(width: 12),
+                          _StatRow('Charisma', sheet.statCharisma, sheet.effectiveCharisma),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          _StatRow('Resilience', sheet.statResilience, sheet.effectiveResilience),
+                          const SizedBox(width: 12),
+                          _StatRow('Agility', sheet.statAgility, sheet.effectiveAgility),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          _StatRow('Wit', sheet.statWit, sheet.effectiveWit),
+                          const SizedBox(width: 12),
+                          _StatRow('Influence', sheet.statInfluence, sheet.effectiveInfluence),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                  child: OutlinedButton(
+                    onPressed: () => context.push('/marketplace'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.primary,
+                      side: const BorderSide(color: AppTheme.primary),
+                      minimumSize: const Size(double.infinity, 36),
+                    ),
+                    child: const Text('View Likeness Cards'),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+}
+
+class _StatRow extends StatelessWidget {
+  final String label;
+  final int base;
+  final int effective;
+
+  const _StatRow(this.label, this.base, this.effective);
+
+  @override
+  Widget build(BuildContext context) {
+    final boosted = effective > base;
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: const TextStyle(
+                  color: AppTheme.textSecondary, fontSize: 11)),
+          Row(
+            children: [
+              Text('$effective',
+                  style: TextStyle(
+                      color: boosted ? AppTheme.secondary : AppTheme.textPrimary,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 15)),
+              if (boosted) ...[
+                const SizedBox(width: 4),
+                Text('($base)',
+                    style: const TextStyle(
+                        color: AppTheme.textSecondary, fontSize: 11)),
+              ],
+            ],
+          ),
+          LinearProgressIndicator(
+            value: effective / 100.0,
+            backgroundColor: AppTheme.cardBorder,
+            color: boosted ? AppTheme.secondary : AppTheme.primary,
+            minHeight: 4,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ],
+      ),
     );
   }
 }

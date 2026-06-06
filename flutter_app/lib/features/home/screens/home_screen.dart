@@ -21,6 +21,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../wallet/providers/wallet_providers.dart';
 import '../../wallet/widgets/buy_tokens_sheet.dart';
 import '../../hot_topic/providers/hot_topic_providers.dart';
+import '../../polls/providers/poll_providers.dart';
+import '../../polls/models/poll_models.dart';
 
 final _checkInProvider = FutureProvider.autoDispose<void>((ref) async {
   final actions = ref.read(challengeActionsProvider);
@@ -97,6 +99,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             ),
                     ),
                     const SliverToBoxAdapter(child: _Divider()),
+                    const SliverToBoxAdapter(child: _PollLeadersStrip()),
                     const SliverToBoxAdapter(child: _RisingSection()),
                     const SliverToBoxAdapter(child: _WhoIsLiveSection()),
                     const SliverToBoxAdapter(child: _Phase2BannerCard()),
@@ -118,6 +121,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.invalidate(liveUserIdsProvider);
     ref.invalidate(liveMetricsFeedProvider);
     ref.invalidate(homeTokenBalanceProvider);
+    ref.invalidate(pollLeadersProvider);
+    ref.invalidate(currentOpenPollProvider);
   }
 }
 
@@ -2868,6 +2873,139 @@ class _Phase2BannerCard extends StatelessWidget {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Poll leaders strip ───────────────────────────────────────────────────────
+
+class _PollLeadersStrip extends ConsumerWidget {
+  const _PollLeadersStrip();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final leadersAsync = ref.watch(pollLeadersProvider);
+    final pollAsync = ref.watch(currentOpenPollProvider);
+
+    return leadersAsync.when(
+      data: (leaders) {
+        if (leaders.isEmpty) return const SizedBox.shrink();
+        final poll = pollAsync.valueOrNull;
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.how_to_vote, color: AppTheme.secondary, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      poll?.title ?? 'Weekly Poll',
+                      style: const TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (poll != null)
+                    GestureDetector(
+                      onTap: () => context.push('/poll/${poll.id}'),
+                      child: const Text('Vote →',
+                          style: TextStyle(
+                              color: AppTheme.secondary, fontSize: 12)),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                height: 72,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: leaders.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (_, i) => _PollLeaderChip(
+                    option: leaders[i],
+                    rank: i + 1,
+                    pollId: poll?.id ?? '',
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+      loading: () => const SizedBox.shrink(),
+      error: (_, __) => const SizedBox.shrink(),
+    );
+  }
+}
+
+class _PollLeaderChip extends StatelessWidget {
+  final PollOption option;
+  final int rank;
+  final String pollId;
+
+  const _PollLeaderChip({
+    required this.option,
+    required this.rank,
+    required this.pollId,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final rankColor = switch (rank) {
+      1 => const Color(0xFFFFD700),
+      2 => const Color(0xFFC0C0C0),
+      3 => const Color(0xFFCD7F32),
+      _ => AppTheme.textSecondary,
+    };
+
+    return GestureDetector(
+      onTap: () => context.push('/poll/$pollId'),
+      child: Container(
+        width: 120,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: rankColor.withValues(alpha: 0.4)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text('$rank', style: TextStyle(color: rankColor, fontWeight: FontWeight.bold, fontSize: 11)),
+                const SizedBox(width: 4),
+                if (option.imageUrl != null)
+                  CircleAvatar(
+                    radius: 10,
+                    backgroundImage: NetworkImage(option.imageUrl!),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              option.displayName,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600),
+            ),
+            const Spacer(),
+            Text(
+              '${option.rawVoteCount} votes',
+              style: const TextStyle(color: AppTheme.textSecondary, fontSize: 10),
+            ),
+          ],
         ),
       ),
     );

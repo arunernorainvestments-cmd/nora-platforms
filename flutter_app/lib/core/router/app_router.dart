@@ -41,7 +41,7 @@ import '../../features/campaigns/screens/campaign_updates_screen.dart';
 import '../../features/campaigns/providers/campaigns_providers.dart';
 import '../../features/settings/screens/support_screen.dart';
 import '../../features/settings/screens/faq_screen.dart';
-import '../../features/markets/screens/card_marketplace_screen.dart';
+import '../../features/marketplace/screens/marketplace_screen.dart';
 import '../../features/polls/screens/poll_screen.dart';
 import '../shell/main_shell.dart';
 
@@ -323,7 +323,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ── Card Marketplace (Doc 3) ──────────────────────────────────────────
       GoRoute(
         path: '/marketplace',
-        builder: (context, state) => const CardMarketplaceScreen(),
+        builder: (context, state) => const MarketplaceScreen(),
         routes: [
           GoRoute(
             path: 'card/:cardId',
