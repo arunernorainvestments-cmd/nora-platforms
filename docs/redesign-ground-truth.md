@@ -1,5 +1,5 @@
 # NORA Redesign — Ground Truth Reference
-# Last updated: 2026-06-06 (Doc 1 applied)
+# Last updated: 2026-06-06 (Docs 1+2+3 applied)
 
 This file is the authoritative record of what was actually pushed to the remote DB
 during the Redesign sessions. It supersedes the raw `nora_redesign_doc*.md` notes
@@ -114,10 +114,35 @@ to battle-wins leaderboard, and added marketplace/poll route stubs.
 
 ---
 
-## Doc 3 — Marketplace & Polls (pending)
+## Doc 3 — Marketplace & Polls (migration 092, commit e1f25eb, pushed 2026-06-06)
 
-Covers: `celebrity-integration-seed` edge function, poll edge functions,
-marketplace edge functions.
+### Migration
+- `092_restore_process_poll_results.sql`: Restores the real `process_poll_results()` overwritten by the stub in 091. Applies poll multipliers: rank 1 → 1.150×, rank 2 → 1.100×, rank 3 → 1.060×, rank ≤5 → 1.030×, rank ≤10 → 1.010×, else 1.000×. Updates `creator_stat_sheets.effective_*` and `poll_results.stat_multiplier_applied`. Logs zero-amount `token_transactions` with type `poll_boost_applied`.
+
+### Edge Functions (new)
+- `poll-vote/index.ts`: Public (no JWT). IP rate-limit 3/poll (SHA-256 hashed), device fingerprint rate-limit 5/poll. Registered users weight 1.0, anonymous 0.3. Calls `increment_poll_option_votes` RPC.
+- `celebrity-integration-seed/index.ts`: Admin-gated (`x-admin-key` = `ADMIN_SEED_KEY`). Creates Supabase auth users with managed emails, inserts `profiles` rows (`is_celeb=TRUE, managed_by_platform=TRUE`), marks `celebs.is_integrated=TRUE`.
+- `likeness-create-offering/index.ts`: Auth required. Validates `is_market_maker=TRUE, pending_opt_out=FALSE`. Enforces one active offering per creator. Calculates `pct_per_card`.
+- `likeness-purchase-card/index.ts`: Auth required. Sim mode only. Calls `likeness_mint_card` RPC. Notifies buyer + creator.
+- `likeness-list-card/index.ts`: Auth required. Verifies caller owns card. Prevents duplicate active listings.
+- `likeness-buy-listed-card/index.ts`: Auth required. Sim mode only. Calls `card_marketplace_purchase` RPC. Notifies buyer + seller.
+- `chit-marketplace-list/index.ts`: Auth required. Validates `can_buy_in_marketplace=TRUE`. Decrements seller inventory, rolls back on insert failure.
+- `chit-marketplace-buy/index.ts`: Auth required. Deducts tokens from buyer, credits seller via `increment_token_balance` RPC. Logs `chit_purchase` + `chit_sale` in `token_transactions`.
+
+### Flutter Changes
+- `flutter_app/pubspec.yaml`: Added `crypto: ^3.0.3`
+- `flutter_app/lib/core/utils/device_fingerprint.dart` (new): SHA-256 browser signal hash using `package:web`. Returns null on non-web.
+- `flutter_app/lib/features/polls/models/poll_models.dart` (new): `WeeklyPoll`, `PollOption` models.
+- `flutter_app/lib/features/polls/providers/poll_providers.dart` (new): `currentOpenPollProvider`, `pollOptionsStreamProvider` (Realtime), `pollLeadersProvider`, `hasVotedProvider`.
+- `flutter_app/lib/features/polls/screens/poll_screen.dart` (real implementation): Countdown timer, real-time vote stream, weighted vote progress bars, anti-abuse submit via `poll-vote` edge function, share link copy.
+- `flutter_app/lib/features/marketplace/providers/marketplace_providers.dart` (new): 7 providers — offerings, listings, my cards, offering detail, card detail, card transfers, chit listings, chit definitions, my chits.
+- `flutter_app/lib/features/marketplace/screens/marketplace_screen.dart` (new): Two-tab screen (Characters: offerings + secondary + my cards; Chits: Earn/Browse/My sub-tabs). `OfferingDetailScreen`, `CardDetailScreen` with transfer history.
+- `flutter_app/lib/core/router/app_router.dart`: `/marketplace` now uses `MarketplaceScreen` from new path. Old `card_marketplace_screen.dart` stub deleted.
+- `flutter_app/lib/features/home/screens/home_screen.dart`: Added `_PollLeadersStrip` SliverToBoxAdapter after dual-spotlight section (5-chip horizontal scroll of top poll options). `pollLeadersProvider` + `currentOpenPollProvider` invalidated on refresh.
+- `flutter_app/lib/features/profile/screens/public_profile_screen.dart`: Added `_StatSheetCard` section (market makers only) showing 6 stats (base + effective), poll multiplier banner, "View Likeness Cards" CTA.
+
+### Deviations from design doc
+None — all DB work was in migration 085 (Doc 1). Doc 3's DB layer is only the 092 fix.
 
 ---
 
