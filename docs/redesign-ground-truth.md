@@ -69,11 +69,48 @@ first (Doc 3 session).
 
 ---
 
-## Doc 2 — Game Logic (pending)
+## Doc 2 — Game Logic (migration 091, pushed 2026-06-06, commit dbf1f37)
 
-Covers: `sync-platform-metrics`, `resolve-markets`, `process_battle_turn`,
-`battle_start_match`, `arena_monday_rollover`, new `distribute_match_revenue` /
-`battle_use_chit` functions. Hard Rule 21 update (Battle/Arena linkage).
+### What Doc 2 covered
+Wired creator stat sheets into battle damage calculations, added prediction market
+auto-creation at battle start, built the match revenue distribution flow for card
+holders/betters/creators, scaffolded chit usage in Battle, updated Spotlight source
+to battle-wins leaderboard, and added marketplace/poll route stubs.
+
+### Migration 091 inventory
+
+| Change | What it does |
+|--------|-------------|
+| `markets.resolution_type` | 'display_score' (default) or 'battle_outcome'; index on `battle_match_id` |
+| `battle_participants.snap_*` | Six INTEGER snap columns (power/charisma/resilience/agility/wit/influence), DEFAULT 50 |
+| `effect_type` CHECK extended | Added: stat_boost, damage_shield, speed_burst, counter, type_override, aura, disruption |
+| `process_poll_results()` | Stub — no-op until Doc 3 applies full implementation |
+| `distribute_match_revenue()` | 75%→winner betters / 10%→active players / 5%→creators / 5%→card holders / 5% platform |
+| `battle_use_chit()` | Validates ownership, decrements inventory, writes to `battle_participant_status_effects` (not arena_state) |
+| `battle_start_match()` | Format-aware validation (1v1/2v2/3v3), stat snapshot, speed recalc, auto-creates market |
+| `process_battle_turn()` | Stat damage mods (power ±20%, wit ±10%, resilience up to −30%), market settlement on resolve, chit RNG drop |
+| `arena_monday_rollover()` | Spotlight from battle-wins leaderboard (top 5 this week); poll multiplier reset |
+
+### Edge function changes
+- **`sync-platform-metrics`**: calls `calculate_stat_sheets()` RPC after each sync run (before final return)
+- **`resolve-markets`**: `Market` interface gains `resolution_type` + `battle_match_id`; `resolveBattleOutcomeMarket()` added as 24h cron safety net — calls `distribute_match_revenue()` if match is resolved
+
+### Flutter changes
+- `battle_models.dart`: `StatSheet` + `EligibleCharacter` models added
+- `battle_providers.dart`: `eligibleCharactersProvider`, `creatorStatSheetProvider`, `battleArenaMarketProvider` added
+- `app_router.dart`: `/marketplace`, `/marketplace/card/:cardId`, `/marketplace/offering/:offeringId`, `/poll/:pollId`, `/poll/:pollId/embed` routes with stub screens
+
+### Deviations from design doc
+
+1. **`battle_use_chit` → `battle_participant_status_effects`**: Doc 2 specified writing chit effects to `arena_state.active_effects`. Corrected to `battle_participant_status_effects` — `arena_state` is the live Arena game's mutable row; chits are Battle artifacts (Hard Rule #21).
+
+2. **`base_archetype_speed()` → `battle_get_archetype_speed()`**: Doc 2 referenced `base_archetype_speed()` but the existing function from migration 062 is named `battle_get_archetype_speed()`. Used the existing name.
+
+3. **`process_poll_results()` stub**: Doc 2 calls this from `arena_monday_rollover()`; Doc 3 implements the full function. Stub created here to prevent rollover failure. Weekly poll multiplier reset IS live (effective_* restored to stat_* values).
+
+4. **Chit post-launch**: `battle_use_chit` writes effects to DB but `process_battle_turn` does not yet read/apply chit status effects (post-launch). RNG chit drop on win IS live.
+
+5. **`distribute_match_revenue` pool columns**: `yes_pool` maps to team_1 bets, `no_pool` maps to team_2 bets (semantic reuse of existing columns). Bet placement for team_1/team_2 positions needs Flutter UI work (not yet done).
 
 ---
 
