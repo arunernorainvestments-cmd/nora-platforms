@@ -35,3 +35,39 @@ final battleAbilitiesProvider =
       .map((r) => AbilityData.fromJson(r as Map<String, dynamic>))
       .toList();
 });
+
+// All characters the current user can field (self + owned card characters).
+final eligibleCharactersProvider =
+    FutureProvider.autoDispose<List<EligibleCharacter>>((ref) async {
+  final userId = Supabase.instance.client.auth.currentUser?.id;
+  if (userId == null) return [];
+  final data = await Supabase.instance.client
+      .rpc('get_eligible_characters', params: {'p_user_id': userId});
+  return (data as List)
+      .map((r) => EligibleCharacter.fromJson(r as Map<String, dynamic>))
+      .toList();
+});
+
+// Stat sheet for a creator (snap stats + effective stats post-poll).
+final creatorStatSheetProvider =
+    FutureProvider.family.autoDispose<StatSheet?, String>((ref, userId) async {
+  final data = await Supabase.instance.client
+      .from('creator_stat_sheets')
+      .select()
+      .eq('user_id', userId)
+      .maybeSingle();
+  return data == null ? null : StatSheet.fromJson(data);
+});
+
+// Battle-linked prediction market for a match (auto-created at match start).
+final battleArenaMarketProvider =
+    FutureProvider.family.autoDispose<Map<String, dynamic>?, String>(
+        (ref, matchId) async {
+  final data = await Supabase.instance.client
+      .from('markets')
+      .select('id, title, yes_pool, no_pool, status, resolution_type, battle_match_id')
+      .eq('battle_match_id', matchId)
+      .eq('resolution_type', 'battle_outcome')
+      .maybeSingle();
+  return data;
+});

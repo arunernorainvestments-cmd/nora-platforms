@@ -41,6 +41,8 @@ interface Market {
   title: string;
   opening_resolution_score: number | null;
   end_at: string;
+  resolution_type: 'display_score' | 'battle_outcome';
+  battle_match_id: string | null;
 }
 
 interface Bet {
@@ -83,7 +85,7 @@ serve(async (req: Request) => {
     // closes_at column, since migration 009 adds resolution columns only.
     const { data: markets, error: marketsError } = await db
       .from('markets')
-      .select('id, creator_id, opened_by, title, opening_resolution_score, end_at')
+      .select('id, creator_id, opened_by, title, opening_resolution_score, end_at, resolution_type, battle_match_id')
       .lte('end_at', new Date().toISOString())
       .eq('status', 'open');
 
@@ -130,7 +132,15 @@ async function resolveMarket(
   db: ReturnType<typeof createClient>,
   market: Market,
 ): Promise<void> {
-  console.log(`Resolving market ${market.id} (creator: ${market.creator_id})`);
+  console.log(`Resolving market ${market.id} (creator: ${market.creator_id}, type: ${market.resolution_type})`);
+
+  // Battle outcome markets are settled by process_battle_turn() immediately on
+  // match resolve. This cron path is the 24-hour safety net (e.g. if the turn
+  // processor failed to settle). Skip if the match is still in progress.
+  if (market.resolution_type === 'battle_outcome') {
+    await resolveBattleOutcomeMarket(db, market);
+    return;
+  }
 
   // 1. Fetch creator's current composite display_score (sum across all platforms).
   const { data: allMetrics } = await db
@@ -201,6 +211,61 @@ async function resolveMarket(
   } else {
     await processPayout(db, market, bets as Bet[], result, creatorName);
   }
+}
+
+async function resolveBattleOutcomeMarket(
+  db: ReturnType<typeof createClient>,
+  market: Market,
+): Promise<void> {
+  if (!market.battle_match_id) {
+    console.warn(`[resolve-markets] battle market ${market.id} has no battle_match_id — voiding`);
+    await db.from('markets').update({
+      status: 'voided',
+      resolution_result: 'voided',
+      resolved_at: new Date().toISOString(),
+    }).eq('id', market.id);
+    return;
+  }
+
+  // Look up the battle match to find the winner
+  const { data: match, error: matchErr } = await db
+    .from('battle_matches')
+    .select('id, status, winner_team_number')
+    .eq('id', market.battle_match_id)
+    .single();
+
+  if (matchErr || !match) {
+    console.warn(`[resolve-markets] battle match ${market.battle_match_id} not found — voiding market ${market.id}`);
+    await db.from('markets').update({
+      status: 'voided',
+      resolution_result: 'voided',
+      resolved_at: new Date().toISOString(),
+    }).eq('id', market.id);
+    return;
+  }
+
+  // Skip — match still active; the 24h end_at window has passed but match may
+  // just be slow. process_battle_turn will settle when match resolves.
+  if (match.status !== 'resolved' || !match.winner_team_number) {
+    console.log(`[resolve-markets] battle market ${market.id}: match not resolved yet (${match.status}) — skipping`);
+    return;
+  }
+
+  const winnerPos = `team_${match.winner_team_number}`;
+  const loserPos  = `team_${match.winner_team_number === 1 ? 2 : 1}`;
+
+  const { error: distErr } = await db.rpc('distribute_match_revenue', {
+    p_market_id:        market.id,
+    p_battle_match_id:  market.battle_match_id,
+    p_winning_position: winnerPos,
+    p_losing_position:  loserPos,
+  });
+
+  if (distErr) {
+    throw new Error(`distribute_match_revenue failed for market ${market.id}: ${distErr.message}`);
+  }
+
+  console.log(`[resolve-markets] battle market ${market.id} settled via cron fallback (${winnerPos} wins)`);
 }
 
 async function processRefund(

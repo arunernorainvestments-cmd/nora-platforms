@@ -280,6 +280,18 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
   }
 
+  // ── Refresh creator stat sheets (percentile-ranked, poll-multiplier-adjusted) ─
+  try {
+    const { error: statError } = await supabase.rpc('calculate_stat_sheets');
+    if (statError) {
+      console.error('[sync-platform-metrics] calculate_stat_sheets failed:', statError.message);
+    } else {
+      console.log('[sync-platform-metrics] calculate_stat_sheets: OK');
+    }
+  } catch (e) {
+    console.error('[sync-platform-metrics] calculate_stat_sheets threw:', e);
+  }
+
   const synced = results.filter((r) => r.success).length;
   return json({ synced, total: results.length, results }, 200, corsHeaders);
 });

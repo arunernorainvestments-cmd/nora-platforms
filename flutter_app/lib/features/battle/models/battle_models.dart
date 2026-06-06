@@ -75,6 +75,110 @@ class BattleMatch {
       );
 }
 
+class StatSheet {
+  final String userId;
+  final int statPower;
+  final int statCharisma;
+  final int statResilience;
+  final int statAgility;
+  final int statWit;
+  final int statInfluence;
+  final int effectivePower;
+  final int effectiveCharisma;
+  final int effectiveResilience;
+  final int effectiveAgility;
+  final int effectiveWit;
+  final int effectiveInfluence;
+  final double weeklyPollMultiplier;
+
+  const StatSheet({
+    required this.userId,
+    required this.statPower,
+    required this.statCharisma,
+    required this.statResilience,
+    required this.statAgility,
+    required this.statWit,
+    required this.statInfluence,
+    required this.effectivePower,
+    required this.effectiveCharisma,
+    required this.effectiveResilience,
+    required this.effectiveAgility,
+    required this.effectiveWit,
+    required this.effectiveInfluence,
+    required this.weeklyPollMultiplier,
+  });
+
+  factory StatSheet.fromJson(Map<String, dynamic> json) => StatSheet(
+        userId: json['user_id'] as String,
+        statPower: (json['stat_power'] as num?)?.toInt() ?? 50,
+        statCharisma: (json['stat_charisma'] as num?)?.toInt() ?? 50,
+        statResilience: (json['stat_resilience'] as num?)?.toInt() ?? 50,
+        statAgility: (json['stat_agility'] as num?)?.toInt() ?? 50,
+        statWit: (json['stat_wit'] as num?)?.toInt() ?? 50,
+        statInfluence: (json['stat_influence'] as num?)?.toInt() ?? 50,
+        effectivePower: (json['effective_power'] as num?)?.toInt() ?? 50,
+        effectiveCharisma: (json['effective_charisma'] as num?)?.toInt() ?? 50,
+        effectiveResilience: (json['effective_resilience'] as num?)?.toInt() ?? 50,
+        effectiveAgility: (json['effective_agility'] as num?)?.toInt() ?? 50,
+        effectiveWit: (json['effective_wit'] as num?)?.toInt() ?? 50,
+        effectiveInfluence: (json['effective_influence'] as num?)?.toInt() ?? 50,
+        weeklyPollMultiplier:
+            (json['weekly_poll_multiplier'] as num?)?.toDouble() ?? 1.0,
+      );
+}
+
+class EligibleCharacter {
+  final String creatorId;
+  final String characterName;
+  final String archetype;
+  final String? characterImageUrl;
+  final String eligibilityType;
+  final String? cardId;
+  final int? cardNumber;
+  final String? rarity;
+  final int statPower;
+  final int statCharisma;
+  final int statResilience;
+  final int statAgility;
+  final int statWit;
+  final int statInfluence;
+
+  const EligibleCharacter({
+    required this.creatorId,
+    required this.characterName,
+    required this.archetype,
+    this.characterImageUrl,
+    required this.eligibilityType,
+    this.cardId,
+    this.cardNumber,
+    this.rarity,
+    required this.statPower,
+    required this.statCharisma,
+    required this.statResilience,
+    required this.statAgility,
+    required this.statWit,
+    required this.statInfluence,
+  });
+
+  factory EligibleCharacter.fromJson(Map<String, dynamic> json) =>
+      EligibleCharacter(
+        creatorId: json['creator_id'] as String,
+        characterName: json['character_name'] as String,
+        archetype: json['archetype'] as String,
+        characterImageUrl: json['character_image_url'] as String?,
+        eligibilityType: json['eligibility_type'] as String? ?? 'self',
+        cardId: json['card_id'] as String?,
+        cardNumber: (json['card_number'] as num?)?.toInt(),
+        rarity: json['rarity'] as String?,
+        statPower: (json['stat_power'] as num?)?.toInt() ?? 50,
+        statCharisma: (json['stat_charisma'] as num?)?.toInt() ?? 50,
+        statResilience: (json['stat_resilience'] as num?)?.toInt() ?? 50,
+        statAgility: (json['stat_agility'] as num?)?.toInt() ?? 50,
+        statWit: (json['stat_wit'] as num?)?.toInt() ?? 50,
+        statInfluence: (json['stat_influence'] as num?)?.toInt() ?? 50,
+      );
+}
+
 class BattleParticipant {
   final String id;
   final String matchId;

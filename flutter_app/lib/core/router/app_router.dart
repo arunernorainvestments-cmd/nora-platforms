@@ -41,6 +41,8 @@ import '../../features/campaigns/screens/campaign_updates_screen.dart';
 import '../../features/campaigns/providers/campaigns_providers.dart';
 import '../../features/settings/screens/support_screen.dart';
 import '../../features/settings/screens/faq_screen.dart';
+import '../../features/markets/screens/card_marketplace_screen.dart';
+import '../../features/polls/screens/poll_screen.dart';
 import '../shell/main_shell.dart';
 
 // Notifier that triggers GoRouter to re-evaluate its redirect without
@@ -105,7 +107,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // /home, /news, /explore, /hot-topic are intentionally PUBLIC.
       const protectedRoutes = [
         '/markets', '/profile', '/wallet', '/mybets', '/arena', '/battle',
-        '/campaigns',
+        '/campaigns', '/marketplace',
       ];
       // sub-paths are also protected
       final isProtected = protectedRoutes.contains(loc) ||
@@ -113,6 +115,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           loc.startsWith('/battle/') ||
           loc.startsWith('/campaigns/') ||
           loc.startsWith('/campaign/') ||
+          loc.startsWith('/marketplace/') ||
           loc == '/campaigns/earnings';
       if (!isLoggedIn && isProtected) {
         // Store destination in Riverpod — reliable across async redirect re-fires
@@ -315,6 +318,43 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => MarketDetailScreen(
           marketId: state.pathParameters['id']!,
         ),
+      ),
+
+      // ── Card Marketplace (Doc 3) ──────────────────────────────────────────
+      GoRoute(
+        path: '/marketplace',
+        builder: (context, state) => const CardMarketplaceScreen(),
+        routes: [
+          GoRoute(
+            path: 'card/:cardId',
+            builder: (context, state) => CardDetailScreen(
+              cardId: state.pathParameters['cardId']!,
+            ),
+          ),
+          GoRoute(
+            path: 'offering/:offeringId',
+            builder: (context, state) => OfferingDetailScreen(
+              offeringId: state.pathParameters['offeringId']!,
+            ),
+          ),
+        ],
+      ),
+
+      // ── Weekly Polls (Doc 3) — /poll/:pollId/embed is the shareable embed ──
+      GoRoute(
+        path: '/poll/:pollId',
+        builder: (context, state) => PollScreen(
+          pollId: state.pathParameters['pollId']!,
+        ),
+        routes: [
+          GoRoute(
+            path: 'embed',
+            builder: (context, state) => PollScreen(
+              pollId: state.pathParameters['pollId']!,
+              isEmbed: true,
+            ),
+          ),
+        ],
       ),
 
       // ── Authenticated shell routes ─────────────────────────────────────────
