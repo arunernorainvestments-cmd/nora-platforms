@@ -132,9 +132,9 @@ final _db = Supabase.instance.client;
 // Publicly visible campaigns (open, funded, active).
 final campaignsListProvider = FutureProvider.autoDispose<List<Campaign>>((ref) async {
   final data = await _db
-      .from('campaigns')
+      .from('campaigns_archived')
       .select('*, creator:creator_id(username)')
-      .inFilter('status', ['open', 'funded', 'active'])
+      .inFilter('status', ['open', 'funded', 'active', 'closed'])
       .order('created_at', ascending: false);
 
   return (data as List).map((j) => Campaign.fromJson(j as Map<String, dynamic>)).toList();
@@ -144,7 +144,7 @@ final campaignsListProvider = FutureProvider.autoDispose<List<Campaign>>((ref) a
 final campaignDetailProvider =
     FutureProvider.autoDispose.family<Campaign, String>((ref, id) async {
   final data = await _db
-      .from('campaigns')
+      .from('campaigns_archived')
       .select('*, creator:creator_id(username)')
       .eq('id', id)
       .single();
@@ -159,7 +159,7 @@ final myCreatedCampaignsProvider =
   if (userId == null) return [];
 
   final data = await _db
-      .from('campaigns')
+      .from('campaigns_archived')
       .select('*, creator:creator_id(username)')
       .eq('creator_id', userId)
       .order('created_at', ascending: false);
@@ -174,15 +174,15 @@ final myBackedCampaignsProvider =
   if (userId == null) return [];
 
   final data = await _db
-      .from('campaign_ownership_ledger')
-      .select('campaign_id, campaigns(*, creator:creator_id(username))')
+      .from('campaigns_archived_ledger')
+      .select('campaign_id, campaigns_archived(*, creator:creator_id(username))')
       .eq('to_user_id', userId)
       .eq('event_type', 'purchase');
 
   final seen = <String>{};
   final campaigns = <Campaign>[];
   for (final row in data as List) {
-    final c = row['campaigns'] as Map<String, dynamic>?;
+    final c = row['campaigns_archived'] as Map<String, dynamic>?;
     if (c == null) continue;
     final id = c['id'] as String;
     if (seen.add(id)) campaigns.add(Campaign.fromJson(c));
@@ -219,8 +219,13 @@ final kycStatusProvider = FutureProvider.autoDispose<String?>((ref) async {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ACTIONS
+// ACTIONS — campaign writes are deprecated. All RPCs reference renamed tables
+// after migration 089 and would fail with table-not-found errors. Throwing a
+// readable message instead keeps the legacy buttons usable as a tombstone.
 // ─────────────────────────────────────────────────────────────────────────────
+
+const _archivedMessage =
+    'Campaigns have been replaced by Likeness Cards. This screen is read-only.';
 
 Future<void> seedSimBalanceAndKyc() async {
   final userId = _db.auth.currentUser?.id;
@@ -234,16 +239,11 @@ Future<String> investSimulated({
   required double royaltyPct,
   required int usdCents,
 }) async {
-  final result = await _db.rpc('campaign_invest_simulated', params: {
-    'p_campaign_id': campaignId,
-    'p_royalty_pct': royaltyPct,
-    'p_usd_cents': usdCents,
-  });
-  return result as String;
+  throw StateError(_archivedMessage);
 }
 
 Future<void> submitCampaignForReview(String campaignId) async {
-  await _db.rpc('campaign_submit_for_review', params: {'p_campaign_id': campaignId});
+  throw StateError(_archivedMessage);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -345,7 +345,7 @@ final campaignRevenueEventsProvider =
     FutureProvider.autoDispose.family<List<RevenueEvent>, String>(
         (ref, campaignId) async {
   final data = await _db
-      .from('campaign_revenue_events')
+      .from('campaigns_archived_revenue')
       .select()
       .eq('campaign_id', campaignId)
       .order('period_start', ascending: false);
@@ -362,7 +362,7 @@ final myDistributionsProvider =
   if (userId == null) return [];
 
   final data = await _db
-      .from('campaign_distributions')
+      .from('campaigns_archived_distributions')
       .select()
       .eq('backer_user_id', userId)
       .order('created_at', ascending: false);
@@ -380,7 +380,7 @@ final myCampaignDistributionsProvider =
   if (userId == null) return [];
 
   final data = await _db
-      .from('campaign_distributions')
+      .from('campaigns_archived_distributions')
       .select()
       .eq('campaign_id', campaignId)
       .eq('backer_user_id', userId)
@@ -533,7 +533,7 @@ final campaignProposalsProvider =
     FutureProvider.autoDispose.family<List<Proposal>, String>(
         (ref, campaignId) async {
   final data = await _db
-      .from('campaign_proposals')
+      .from('campaigns_archived_proposals')
       .select()
       .eq('campaign_id', campaignId)
       .order('created_at', ascending: false);
@@ -547,7 +547,7 @@ final campaignProposalsProvider =
 final campaignProposalDetailProvider =
     FutureProvider.autoDispose.family<Proposal, String>((ref, id) async {
   final data = await _db
-      .from('campaign_proposals')
+      .from('campaigns_archived_proposals')
       .select()
       .eq('id', id)
       .single();
@@ -561,7 +561,7 @@ final myVoteProvider =
   if (userId == null) return null;
 
   final data = await _db
-      .from('campaign_votes')
+      .from('campaigns_archived_votes')
       .select('vote')
       .eq('proposal_id', proposalId)
       .eq('voter_user_id', userId)
@@ -575,7 +575,7 @@ final campaignUpdatesProvider =
     FutureProvider.autoDispose.family<List<CampaignUpdate>, String>(
         (ref, campaignId) async {
   final data = await _db
-      .from('campaign_updates')
+      .from('campaigns_archived_updates')
       .select()
       .eq('campaign_id', campaignId)
       .not('published_at', 'is', null)
@@ -598,26 +598,11 @@ Future<String> createProposal({
   required String purposeCategory,
   required String recipientDescription,
 }) async {
-  final result = await _db.rpc('campaign_create_proposal', params: {
-    'p_campaign_id': campaignId,
-    'p_title': title,
-    'p_description': description,
-    'p_amount_requested_usd_cents': amountRequestedUsdCents,
-    'p_purpose_category': purposeCategory,
-    'p_recipient_description': recipientDescription,
-  });
-  // Notify backers (best-effort, ignore errors)
-  try {
-    await _db.rpc('campaign_notify_proposal', params: {'p_proposal_id': result});
-  } catch (_) {}
-  return result as String;
+  throw StateError(_archivedMessage);
 }
 
 Future<void> castVote(String proposalId, String vote) async {
-  await _db.rpc('campaign_cast_vote', params: {
-    'p_proposal_id': proposalId,
-    'p_vote': vote,
-  });
+  throw StateError(_archivedMessage);
 }
 
 Future<String> postCampaignUpdate({
@@ -628,15 +613,7 @@ Future<String> postCampaignUpdate({
   String? linkedProposalId,
   String? linkedRevenueEventId,
 }) async {
-  final result = await _db.rpc('campaign_post_update', params: {
-    'p_campaign_id': campaignId,
-    'p_title': title,
-    'p_body': body,
-    'p_update_type': updateType,
-    'p_linked_proposal_id': linkedProposalId,
-    'p_linked_revenue_event_id': linkedRevenueEventId,
-  });
-  return result as String;
+  throw StateError(_archivedMessage);
 }
 
 Future<String> submitRevenueEvent({
@@ -651,17 +628,5 @@ Future<String> submitRevenueEvent({
   int viewCount = 0,
   String? evidenceUrl,
 }) async {
-  final result = await _db.rpc('campaign_submit_revenue_event', params: {
-    'p_campaign_id': campaignId,
-    'p_source': source,
-    'p_period_start': periodStart.toIso8601String().substring(0, 10),
-    'p_period_end': periodEnd.toIso8601String().substring(0, 10),
-    'p_gross_revenue_usd_cents': grossCents,
-    'p_platform_fee_usd_cents': platformFeeCents,
-    'p_net_revenue_usd_cents': netCents,
-    'p_stream_count': streamCount,
-    'p_view_count': viewCount,
-    'p_evidence_url': evidenceUrl,
-  });
-  return result as String;
+  throw StateError(_archivedMessage);
 }
