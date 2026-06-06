@@ -43,6 +43,11 @@ import '../../features/settings/screens/support_screen.dart';
 import '../../features/settings/screens/faq_screen.dart';
 import '../../features/marketplace/screens/marketplace_screen.dart';
 import '../../features/polls/screens/poll_screen.dart';
+import '../../features/emergency_fund/screens/emergency_fund_screen.dart';
+import '../../features/emergency_fund/screens/contribute_screen.dart';
+import '../../features/emergency_fund/screens/request_funds_screen.dart';
+import '../../features/emergency_fund/screens/my_requests_screen.dart';
+import '../../features/emergency_fund/screens/vote_screen.dart';
 import '../shell/main_shell.dart';
 
 // Notifier that triggers GoRouter to re-evaluate its redirect without
@@ -116,7 +121,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           loc.startsWith('/campaigns/') ||
           loc.startsWith('/campaign/') ||
           loc.startsWith('/marketplace/') ||
-          loc == '/campaigns/earnings';
+          loc == '/campaigns/earnings' ||
+          loc == '/emergency-fund/request' ||
+          loc == '/emergency-fund/my-requests' ||
+          loc.startsWith('/emergency-fund/vote/');
       if (!isLoggedIn && isProtected) {
         // Store destination in Riverpod — reliable across async redirect re-fires
         ref.read(pendingNavigationProvider.notifier).state = loc;
@@ -355,6 +363,30 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
         ],
+      ),
+
+      // ── Emergency Fund (Doc 4) ────────────────────────────────────────────
+      GoRoute(
+        path: '/emergency-fund',
+        builder: (context, state) => const EmergencyFundScreen(),
+      ),
+      GoRoute(
+        path: '/emergency-fund/contribute',
+        builder: (context, state) => const ContributeScreen(),
+      ),
+      GoRoute(
+        path: '/emergency-fund/request',
+        builder: (context, state) => const RequestFundsScreen(),
+      ),
+      GoRoute(
+        path: '/emergency-fund/my-requests',
+        builder: (context, state) => const MyRequestsScreen(),
+      ),
+      GoRoute(
+        path: '/emergency-fund/vote/:assignmentId',
+        builder: (context, state) => VoteScreen(
+          assignmentId: state.pathParameters['assignmentId']!,
+        ),
       ),
 
       // ── Authenticated shell routes ─────────────────────────────────────────

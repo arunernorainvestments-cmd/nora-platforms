@@ -1,5 +1,5 @@
 # NORA Platforms — CLAUDE.md
-# Last updated: 2026-05-25
+# Last updated: 2026-06-06
 
 ## Project
 Flutter web prediction market + live battle platform. Three games, one wallet.
@@ -40,6 +40,9 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 20. arena_trigger() writes effects directly to arena_state.active_effects
 21. Battle and Arena are entirely separate — all Battle artifacts prefixed battle_
 22. INCLUDE_TEST_ACCOUNTS filter pass (Slice 2) tracked separately
+23. Emergency Fund AI evaluator facilitates only — never recommends approve/deny (Hard Rule: ubi_*)
+24. ubi-documents Storage bucket has NO client-accessible signed URLs, ever — documents are AI-only
+25. Individual vote values in ubi_panel_votes are forever private — no client SELECT policy, no index on vote column
 
 ## Games
 - **Markets**: bet on creator Display Score direction. Pool: 90% winners / 5% platform / 5% Market Maker.
@@ -47,6 +50,7 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 - **Battle**: 6-player (2 teams of 3), turn-based, Pokémon-style. Phases A+B+C done. Phase D (map buffs, matchmaking queue, balance) queued. See docs/battle-spec.md.
 - **Hot Topic**: celebrity buzz leaderboard, independent of games. 25 celebs, Claude scoring twice daily via Currents API.
 - **Campaigns**: royalty crowdfunding. Creators offer % of future royalties. Phases 1–3 live (SIM mode): KYC, investment, revenue/distributions, governance proposals + voting, campaign updates + notifications. See docs/campaigns-framework.md.
+- **Emergency Fund**: community mutual aid pool at `/emergency-fund`. Anyone can contribute (sim mode — no real money). Contributors vote on payout requests. AI evaluates requests privately; documents never exposed to voters. Stripe Treasury sim-mode until app clears. Migrations 093–097, functions ubi-*.
 
 ## Reference Docs
 - Scoring formulas, DB tables, data flows: docs/scoring-and-db-spec.md
