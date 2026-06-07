@@ -6,6 +6,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/n_tappable.dart';
 import '../../../core/widgets/settings_menu_button.dart';
 import '../providers/markets_providers.dart';
+import '../widgets/battle_bet_sheet.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SCREEN
@@ -255,6 +256,9 @@ class _CategoryContent extends StatelessWidget {
     return CustomScrollView(
       slivers: [
         const SliverToBoxAdapter(child: SizedBox(height: 12)),
+        // Live battle markets (renders nothing until a battle starts one).
+        if (primaryFilter == null)
+          const SliverToBoxAdapter(child: _BattleMarketsSection()),
         for (final section in sections) ...[
           SliverToBoxAdapter(
             child: _SectionHeader(
@@ -322,6 +326,145 @@ class _CategorySection {
     this.subcategory,
     required this.makers,
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// LIVE BATTLE MARKETS — back team 1 or team 2 on an active battle
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _BattleMarketsSection extends ConsumerWidget {
+  const _BattleMarketsSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final battles = ref.watch(battleMarketsProvider).valueOrNull ?? const [];
+    if (battles.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Text(
+            '⚔️ Live Battle Markets',
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        ...battles.map((b) => Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: _BattleMarketCard(
+                market: b,
+                onBetPlaced: () => ref.invalidate(battleMarketsProvider),
+              ),
+            )),
+        const SizedBox(height: 20),
+      ],
+    );
+  }
+}
+
+class _BattleMarketCard extends StatelessWidget {
+  final BattleMarket market;
+  final VoidCallback onBetPlaced;
+
+  const _BattleMarketCard({required this.market, required this.onBetPlaced});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = market.totalPool;
+    final t1Ratio = total > 0 ? market.team1Pool / total : 0.5;
+
+    return NTappable(
+      onTap: () =>
+          showBattleBetSheet(context, market: market, onBetPlaced: onBetPlaced),
+      child: Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppTheme.cardBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${market.team1Label} vs ${market.team2Label}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                Text(
+                  '${total.toStringAsFixed(0)} tokens',
+                  style: const TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 12),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: SizedBox(
+                height: 8,
+                child: Row(children: [
+                  Expanded(
+                      flex: (t1Ratio * 100).round().clamp(1, 100),
+                      child: Container(color: AppTheme.success)),
+                  Expanded(
+                      flex: ((1 - t1Ratio) * 100).round().clamp(1, 100),
+                      child: Container(color: AppTheme.primary)),
+                ]),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(market.team1Label,
+                    style: const TextStyle(
+                        color: AppTheme.success,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600)),
+                Text(market.team2Label,
+                    style: const TextStyle(
+                        color: AppTheme.primary,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600)),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerRight,
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 7),
+                decoration: BoxDecoration(
+                  color: AppTheme.primary,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text('Back a team',
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

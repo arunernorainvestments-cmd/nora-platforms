@@ -130,6 +130,58 @@ class _BattleLobbyScreenState extends ConsumerState<BattleLobbyScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Matchmaking entry — find a 1v1/2v2/3v3 match with your likeness cards.
+          GestureDetector(
+            onTap: () => context.push('/battle/matchmaking'),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(colors: [
+                  const Color(0xFF6C63FF).withValues(alpha: 0.25),
+                  const Color(0xFF03DAC6).withValues(alpha: 0.12),
+                ]),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                    color: const Color(0xFF6C63FF).withValues(alpha: 0.5)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.bolt_rounded,
+                      color: Color(0xFF6C63FF), size: 28),
+                  SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Quick Match',
+                            style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800)),
+                        SizedBox(height: 2),
+                        Text('Auto-match 1v1 / 2v2 / 3v3 with your characters',
+                            style: TextStyle(
+                                color: Colors.white70, fontSize: 12)),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: Colors.white54),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(children: [
+            Expanded(child: Container(height: 1, color: Colors.white12)),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10),
+              child: Text('or play a private lobby',
+                  style: TextStyle(color: Colors.white38, fontSize: 11)),
+            ),
+            Expanded(child: Container(height: 1, color: Colors.white12)),
+          ]),
+          const SizedBox(height: 20),
           const Text(
             'Choose your archetype',
             style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold),

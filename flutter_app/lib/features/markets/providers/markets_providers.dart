@@ -195,6 +195,9 @@ final openMarketsProvider =
           'category_1, category_2, '
           'creator:profiles!creator_id(username, spotlight_scores(tier))')
       .eq('status', 'open')
+      // Creator-direction markets only. Battle-outcome markets have their own
+      // surface (battleMarketsProvider) and may have a null creator_id.
+      .eq('resolution_type', 'display_score')
       .gt('end_at', DateTime.now().toUtc().toIso8601String());
 
   final markets = (data as List)
@@ -204,6 +207,68 @@ final openMarketsProvider =
   // Sort by total pool size descending
   markets.sort((a, b) => b.totalPool.compareTo(a.totalPool));
   return markets;
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BATTLE-OUTCOME MARKETS (team_1 = yes pool, team_2 = no pool)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class BattleMarket {
+  final String id;
+  final String title;
+  final String team1Label;
+  final String team2Label;
+  final double team1Pool; // yes_pool
+  final double team2Pool; // no_pool
+  final DateTime endAt;
+  final String? battleMatchId;
+
+  const BattleMarket({
+    required this.id,
+    required this.title,
+    required this.team1Label,
+    required this.team2Label,
+    required this.team1Pool,
+    required this.team2Pool,
+    required this.endAt,
+    this.battleMatchId,
+  });
+
+  double get totalPool => team1Pool + team2Pool;
+
+  factory BattleMarket.fromJson(Map<String, dynamic> json) {
+    // Title format: "Battle: <team1> vs <team2>"
+    final raw = (json['title'] as String? ?? '').replaceFirst('Battle: ', '');
+    final parts = raw.split(' vs ');
+    return BattleMarket(
+      id: json['id'] as String,
+      title: json['title'] as String? ?? 'Battle',
+      team1Label: parts.isNotEmpty && parts[0].isNotEmpty ? parts[0] : 'Team 1',
+      team2Label: parts.length > 1 && parts[1].isNotEmpty ? parts[1] : 'Team 2',
+      team1Pool: (json['yes_pool'] as num?)?.toDouble() ?? 0,
+      team2Pool: (json['no_pool'] as num?)?.toDouble() ?? 0,
+      endAt: DateTime.parse(json['end_at'] as String),
+      battleMatchId: json['battle_match_id'] as String?,
+    );
+  }
+}
+
+/// Open battle-outcome markets available to back. Empty until a real battle
+/// starts (battle_start_match auto-creates these), so the UI section that
+/// consumes it simply renders nothing when there are none.
+final battleMarketsProvider =
+    FutureProvider.autoDispose<List<BattleMarket>>((ref) async {
+  final data = await Supabase.instance.client
+      .from('markets')
+      .select('id, title, yes_pool, no_pool, end_at, battle_match_id')
+      .eq('status', 'open')
+      .eq('resolution_type', 'battle_outcome')
+      .gt('end_at', DateTime.now().toUtc().toIso8601String())
+      .order('end_at', ascending: true);
+
+  return (data as List)
+      .map((e) => BattleMarket.fromJson(e as Map<String, dynamic>))
+      .toList();
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

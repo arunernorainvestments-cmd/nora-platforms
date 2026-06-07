@@ -13,6 +13,18 @@ final ubiPoolBalanceProvider =
   return UbiPoolBalance.fromJson(data);
 });
 
+// Live pool balance (Realtime stream). Fires whenever
+// increment_ubi_sim_balance / decrement_ubi_sim_balance updates the cache row.
+final ubiPoolBalanceStreamProvider =
+    StreamProvider.autoDispose<UbiPoolBalance?>((ref) {
+  return Supabase.instance.client
+      .from('ubi_pool_balance_cache')
+      .stream(primaryKey: ['id'])
+      .limit(1)
+      .map((rows) =>
+          rows.isEmpty ? null : UbiPoolBalance.fromJson(rows.first));
+});
+
 final ubiPoolConfigProvider =
     FutureProvider.autoDispose<UbiPoolConfig>((ref) async {
   final data = await Supabase.instance.client

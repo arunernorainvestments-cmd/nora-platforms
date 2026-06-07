@@ -59,6 +59,64 @@ final creatorStatSheetProvider =
   return data == null ? null : StatSheet.fromJson(data);
 });
 
+// Current user's most-recent matchmaking queue row. When status flips to
+// 'matched', matched_match_id points at the created battle.
+final myBattleQueueProvider =
+    StreamProvider.autoDispose<Map<String, dynamic>?>((ref) {
+  final userId = Supabase.instance.client.auth.currentUser?.id;
+  if (userId == null) return Stream.value(null);
+  return Supabase.instance.client
+      .from('battle_matchmaking_queue')
+      .stream(primaryKey: ['id'])
+      .eq('user_id', userId)
+      .map((rows) {
+    if (rows.isEmpty) return null;
+    final sorted = [...rows]..sort((a, b) =>
+        (b['enqueued_at'] as String).compareTo(a['enqueued_at'] as String));
+    return sorted.first;
+  });
+});
+
+// Live queue depth per format (for "N waiting" hints on the matchmaking screen).
+final battleQueueCountsProvider =
+    FutureProvider.autoDispose<Map<String, int>>((ref) async {
+  final rows = await Supabase.instance.client
+      .from('battle_matchmaking_queue')
+      .select('format')
+      .eq('status', 'queued');
+  final counts = <String, int>{'1v1': 0, '2v2': 0, '3v3': 0};
+  for (final r in rows as List) {
+    final f = r['format'] as String?;
+    if (f != null && counts.containsKey(f)) counts[f] = counts[f]! + 1;
+  }
+  return counts;
+});
+
+// Battle matchmaking actions.
+class BattleMatchmaking {
+  const BattleMatchmaking();
+
+  /// Joins the queue for [format] fielding [creatorId]. Returns the match id if
+  /// a match formed immediately, otherwise null (still queued).
+  Future<String?> enqueue({
+    required String format,
+    required String creatorId,
+  }) async {
+    final res = await Supabase.instance.client.rpc('battle_enqueue', params: {
+      'p_format': format,
+      'p_creator_id': creatorId,
+    }) as Map<String, dynamic>;
+    return res['match_id'] as String?;
+  }
+
+  Future<void> leave() async {
+    await Supabase.instance.client.rpc('battle_leave_queue');
+  }
+}
+
+final battleMatchmakingProvider =
+    Provider<BattleMatchmaking>((ref) => const BattleMatchmaking());
+
 // Battle-linked prediction market for a match (auto-created at match start).
 final battleArenaMarketProvider =
     FutureProvider.family.autoDispose<Map<String, dynamic>?, String>(

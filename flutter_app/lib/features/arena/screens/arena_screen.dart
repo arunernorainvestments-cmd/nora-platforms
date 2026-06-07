@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../providers/arena_providers.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../markets/providers/markets_providers.dart';
+import '../../markets/widgets/battle_bet_sheet.dart';
 
 class ArenaScreen extends ConsumerWidget {
   const ArenaScreen({super.key});
@@ -39,6 +41,7 @@ class ArenaScreen extends ConsumerWidget {
               const SizedBox(height: 20),
               _FindMatchButton(),
               const SizedBox(height: 16),
+              const _LiveBattlesSection(),
               const _Round3ReadinessWidget(),
               const SizedBox(height: 28),
               const _SectionLabel('ROUNDS'),
@@ -147,6 +150,144 @@ class _HeroBlock extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Live battles (spectator + betting) ──────────────────────────────────────
+
+class _LiveBattlesSection extends ConsumerWidget {
+  const _LiveBattlesSection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final battles = ref.watch(battleMarketsProvider).valueOrNull ?? const [];
+    if (battles.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                  color: Color(0xFFFF4757), shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 8),
+            const Text('LIVE BATTLES',
+                style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.5)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text('Watch live battles and back a team to win tokens.',
+            style: TextStyle(
+                color: AppTheme.textSecondary.withValues(alpha: 0.9),
+                fontSize: 12)),
+        const SizedBox(height: 12),
+        ...battles.map((b) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _LiveBattleCard(
+                market: b,
+                onBetPlaced: () => ref.invalidate(battleMarketsProvider),
+              ),
+            )),
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+}
+
+class _LiveBattleCard extends StatelessWidget {
+  final BattleMarket market;
+  final VoidCallback onBetPlaced;
+
+  const _LiveBattleCard({required this.market, required this.onBetPlaced});
+
+  @override
+  Widget build(BuildContext context) {
+    final total = market.totalPool;
+    final t1Ratio = total > 0 ? market.team1Pool / total : 0.5;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFF4757).withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text('${market.team1Label} vs ${market.team2Label}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700)),
+              ),
+              Text('${total.toStringAsFixed(0)} tokens',
+                  style: const TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: SizedBox(
+              height: 8,
+              child: Row(children: [
+                Expanded(
+                    flex: (t1Ratio * 100).round().clamp(1, 100),
+                    child: Container(color: AppTheme.success)),
+                Expanded(
+                    flex: ((1 - t1Ratio) * 100).round().clamp(1, 100),
+                    child: Container(color: AppTheme.primary)),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              if (market.battleMatchId != null)
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () =>
+                        context.push('/battle/${market.battleMatchId}'),
+                    icon: const Icon(Icons.visibility_outlined, size: 16),
+                    label: const Text('Watch'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.textPrimary,
+                      side: const BorderSide(color: AppTheme.cardBorder),
+                    ),
+                  ),
+                ),
+              if (market.battleMatchId != null) const SizedBox(width: 10),
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: () => showBattleBetSheet(context,
+                      market: market, onBetPlaced: onBetPlaced),
+                  icon: const Icon(Icons.shield_outlined, size: 16),
+                  label: const Text('Back a team'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.primary,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }

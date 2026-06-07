@@ -23,6 +23,9 @@ import '../../wallet/widgets/buy_tokens_sheet.dart';
 import '../../hot_topic/providers/hot_topic_providers.dart';
 import '../../polls/providers/poll_providers.dart';
 import '../../polls/models/poll_models.dart';
+import '../../marketplace/providers/marketplace_providers.dart';
+import '../../emergency_fund/providers/ubi_providers.dart';
+import '../../emergency_fund/models/ubi_models.dart';
 
 final _checkInProvider = FutureProvider.autoDispose<void>((ref) async {
   final actions = ref.read(challengeActionsProvider);
@@ -100,6 +103,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     ),
                     const SliverToBoxAdapter(child: _Divider()),
                     const SliverToBoxAdapter(child: _PollLeadersStrip()),
+                    const SliverToBoxAdapter(child: _CommunitySection()),
                     const SliverToBoxAdapter(child: _RisingSection()),
                     const SliverToBoxAdapter(child: _WhoIsLiveSection()),
                     const SliverToBoxAdapter(child: _Phase2BannerCard()),
@@ -123,6 +127,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     ref.invalidate(homeTokenBalanceProvider);
     ref.invalidate(pollLeadersProvider);
     ref.invalidate(currentOpenPollProvider);
+    ref.invalidate(activeOfferingsCountProvider);
   }
 }
 
@@ -3007,6 +3012,186 @@ class _PollLeaderChip extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ─── Community section (Marketplace + Emergency Fund entry points) ────────────
+
+class _CommunitySection extends StatelessWidget {
+  const _CommunitySection();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.diversity_3, color: AppTheme.primary, size: 16),
+              SizedBox(width: 6),
+              Text(
+                'Community',
+                style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14),
+              ),
+            ],
+          ),
+          SizedBox(height: 8),
+          _MarketplaceCard(),
+          SizedBox(height: 8),
+          _EmergencyFundCard(),
+        ],
+      ),
+    );
+  }
+}
+
+class _CommunityCard extends StatelessWidget {
+  final IconData icon;
+  final Color accent;
+  final String title;
+  final String subtitle;
+  final Widget trailing;
+  final VoidCallback onTap;
+
+  const _CommunityCard({
+    required this.icon,
+    required this.accent,
+    required this.title,
+    required this.subtitle,
+    required this.trailing,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return NCard(
+      onTap: onTap,
+      accentColor: accent,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+      radius: 12,
+      child: Row(
+        children: [
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(icon, color: accent, size: 22),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                        color: AppTheme.textSecondary, fontSize: 12)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          trailing,
+          const SizedBox(width: 4),
+          const Icon(Icons.chevron_right,
+              color: AppTheme.textSecondary, size: 20),
+        ],
+      ),
+    );
+  }
+}
+
+class _MarketplaceCard extends ConsumerWidget {
+  const _MarketplaceCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final count = ref.watch(activeOfferingsCountProvider).valueOrNull;
+
+    return _CommunityCard(
+      icon: Icons.style_outlined,
+      accent: AppTheme.secondary,
+      title: 'Likeness Cards',
+      subtitle: 'Buy, sell, and collect creator cards',
+      onTap: () => context.push('/marketplace'),
+      trailing: (count != null && count > 0)
+          ? Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppTheme.secondary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: Text(
+                count == 1 ? '1 live' : '$count live',
+                style: const TextStyle(
+                    color: AppTheme.secondary,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700),
+              ),
+            )
+          : const SizedBox.shrink(),
+    );
+  }
+}
+
+class _EmergencyFundCard extends ConsumerWidget {
+  const _EmergencyFundCard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final balance = ref.watch(ubiPoolBalanceStreamProvider).valueOrNull;
+    final UbiPoolConfig? config = ref.watch(ubiPoolConfigProvider).valueOrNull;
+    final isSimulated = config?.isSimulated ?? true;
+
+    final int? cents = balance == null
+        ? null
+        : (isSimulated ? balance.simBalanceCents : balance.liveBalanceCents);
+
+    return _CommunityCard(
+      icon: Icons.volunteer_activism,
+      accent: AppTheme.success,
+      title: 'Emergency Fund',
+      subtitle: 'Community mutual aid pool',
+      onTap: () => context.push('/emergency-fund'),
+      trailing: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          AnimatedSwitcher(
+            duration: const Duration(milliseconds: 350),
+            transitionBuilder: (child, anim) =>
+                FadeTransition(opacity: anim, child: child),
+            child: Text(
+              cents == null ? '—' : '\$${(cents / 100).toStringAsFixed(0)}',
+              key: ValueKey<int?>(cents),
+              style: const TextStyle(
+                  color: AppTheme.success,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800),
+            ),
+          ),
+          if (isSimulated)
+            const Text('Simulated',
+                style:
+                    TextStyle(color: AppTheme.textSecondary, fontSize: 9)),
+        ],
       ),
     );
   }

@@ -146,8 +146,103 @@ None — all DB work was in migration 085 (Doc 1). Doc 3's DB layer is only the 
 
 ---
 
-## Doc 4 — Emergency Fund (pending)
+## Doc 4 — Emergency Fund (migrations 093–097, applied)
 
 Covers: `ubi_*` tables. Hard rules: AI never recommends, docs private forever,
 votes private forever, Stripe Treasury sim-mode until app clears.
 See memory: project_emergency_fund_hard_rules.md.
+
+---
+
+## Post-Doc-4 session (2026-06-07)
+
+### Home Community Cards (Flutter only)
+- `home_screen.dart`: new `_CommunitySection` after the Poll Leaders strip —
+  `_MarketplaceCard` (→/marketplace, live active-offering count badge) and
+  `_EmergencyFundCard` (→/emergency-fund, live pool balance via stream +
+  AnimatedSwitcher + "Simulated" badge).
+- `ubi_providers.dart`: `ubiPoolBalanceStreamProvider` (StreamProvider.autoDispose
+  on `ubi_pool_balance_cache`). `emergency_fund_screen.dart` switched to it.
+- `marketplace_providers.dart`: `activeOfferingsCountProvider`
+  (`count(CountOption.exact)` on `likeness_offerings` where status='active').
+
+### Migration 098 — `ubi_pool_balance_realtime.sql` (applied)
+Adds `ubi_pool_balance_cache` to the `supabase_realtime` publication so the
+Flutter `.stream()` on the pool balance delivers live updates (not just a
+snapshot). Idempotent DO-block, matches the 054 idiom.
+
+### Migration 099 — `fix_battle_market_timeframe.sql` (applied)
+Bug fix: `battle_start_match()` (091) inserted the auto-created battle market
+without `timeframe`, which is NOT NULL with no default → every real match start
+raised a NOT NULL violation (masked because the battle screen uses a `test-match`
+placeholder that never calls the RPC). Now sets `timeframe='24h'`,
+`duration_label='1day'`. Body otherwise verbatim from 091.
+
+### Battle-market bet UI (Flutter, Doc 2 deviation #5 closed)
+- `markets_providers.dart`: `openMarketsProvider` now filters
+  `resolution_type='display_score'` (battle markets no longer leak into the
+  creator list / can't crash on a null creator_id). Added `BattleMarket` model +
+  `battleMarketsProvider` (open battle_outcome markets).
+- `markets/widgets/battle_bet_sheet.dart` (new): `showBattleBetSheet` — pick
+  team 1 (yes pool) / team 2 (no pool) → amount → confirm; inserts a `bets` row
+  (existing trigger handles pools/tokens/notify). Team labels parsed from the
+  "Battle: X vs Y" title.
+- `markets_screen.dart`: `_BattleMarketsSection` sliver on the "All" view —
+  renders nothing until a real battle market exists, then lists them with a
+  "Back a team" CTA.
+- NOTE: battle markets can't be exercised end-to-end yet because the battle
+  combat screen is still a `test-match` placeholder (Phase C/D). The bet UI is
+  ready and correct for when real matches run.
+
+### Deliberately NOT done
+- **Chit status-effect application** in `process_battle_turn` — Doc 2 deviation
+  #4 marks this post-launch; left untouched (core turn logic, Hard Rule #21).
+- **Campaigns removal** — user chose "keep as-is" (already archived + read-only).
+
+---
+
+## Battle end-to-end: matchmaking + Arena spectating + market (2026-06-07)
+
+Goal: matchmaking (1v1/2v2/3v3), battle auto-goes-live to Arena spectators/bettors,
+prediction market opens at go-live, likeness cards field characters.
+
+### Migration 100 — `battle_bet_pool_mapping.sql` (applied)
+`handle_bet_pool_update` (trigger from 004) now maps `team_1→yes_pool`,
+`team_2→no_pool` (in addition to yes/no). Battle bets previously never
+accumulated into a pool → markets always voided. `distribute_match_revenue`
+already pays `WHERE position='team_1'/'team_2'` (confirmed: `process_battle_turn`
+091 line 968 passes `'team_'||winner`). Bet sheet now inserts `team_1`/`team_2`.
+
+### Migration 101 — `battle_matchmaking.sql` (applied + smoke-tested)
+- Refactor: `battle_start_match` → host-checked wrapper + `battle_start_match_internal`
+  (no auth check) so matchmaking can auto-start.
+- `battle_matchmaking_queue` table (user, format, creator_id, likeness_card_id,
+  archetype, character_name, status, matched_match_id) + realtime publication +
+  public-read RLS (writes via SECURITY DEFINER RPCs only).
+- `battle_enqueue(format, creator_id)` — validates via `check_battle_eligibility`,
+  resolves archetype/name (self=profile, owner=card's offering), queues, tries match.
+- `battle_try_matchmake(format)` — when `slots*2` queued, creates match, assigns
+  teams (first half→team1), inserts participants with creator_id+likeness_card_id,
+  calls `_internal` start (snap stats + opens market).
+- `battle_leave_queue()`.
+- SMOKE TEST (rolled back via RAISE): 2 queued → match + 1 participant/team +
+  market "Battle: Alpha vs Bravo". Chain verified at DB level.
+
+### Flutter
+- `battle_providers.dart`: `myBattleQueueProvider` (stream, watch for matched),
+  `battleQueueCountsProvider`, `battleMatchmakingProvider` (enqueue/leave).
+- `battle_matchmaking_screen.dart` (new) at `/battle/matchmaking` — format cards
+  w/ live queue counts + eligible character picker (`eligibleCharactersProvider`,
+  empty-state → marketplace) + searching state; navigates to `/battle/:id` on match.
+- `battle_lobby_screen.dart`: "Quick Match" entry card → matchmaking.
+- `arena_screen.dart`: `_LiveBattlesSection` — lists open battle markets (live
+  battles) with Watch (→/battle/:id) + Back a team (battle_bet_sheet). This is the
+  "battle goes live in Arena for spectators/bettors" surface.
+
+### Still placeholder / next
+- Battle **combat screen** (`battle_match_screen.dart`) is still `test-match`
+  placeholder — spectator "Watch" navigates there but it isn't a real live view yet.
+- No **bot-fill**: matchmaking needs real players to queue for each format
+  (1v1=2, 2v2=4, 3v3=6). Solo testing needs N browser sessions.
+- Legacy `battle_spectator_bets`/`spectator_pool` (062) still exists, unused by
+  the redesign market path — candidate for later cleanup.

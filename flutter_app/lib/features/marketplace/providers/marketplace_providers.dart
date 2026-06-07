@@ -1,6 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+// Count of active primary-market offerings (home Community card badge)
+final activeOfferingsCountProvider =
+    FutureProvider.autoDispose<int>((ref) async {
+  return Supabase.instance.client
+      .from('likeness_offerings')
+      .count(CountOption.exact)
+      .eq('status', 'active');
+});
+
 // Active likeness offerings (primary market — cards being minted for first time)
 final likenessOfferingsProvider =
     FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) async {

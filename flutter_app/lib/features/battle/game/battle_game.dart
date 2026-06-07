@@ -5,7 +5,6 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flame/components.dart';
 import 'package:flame/game.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 // Wasm-compatible safe JS eval binding
@@ -278,7 +277,7 @@ class SineWaveEffect extends PositionComponent {
 
     final progress = (elapsed / duration).clamp(0.0, 1.0);
     final paint = ui.Paint()
-      ..color = color.withOpacity((1.0 - progress) * 0.8)
+      ..color = color.withValues(alpha: (1.0 - progress) * 0.8)
       ..style = ui.PaintingStyle.stroke
       ..strokeWidth = 5
       ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 5);
@@ -303,7 +302,7 @@ class SineWaveEffect extends PositionComponent {
     canvas.drawPath(path, paint);
     
     // Core white beam
-    paint.color = const Color(0xFFFFFFFF).withOpacity(1.0 - progress);
+    paint.color = const Color(0xFFFFFFFF).withValues(alpha: 1.0 - progress);
     paint.strokeWidth = 2;
     paint.maskFilter = null;
     canvas.drawPath(path, paint);
@@ -323,6 +322,7 @@ class SineWaveEffect extends PositionComponent {
 
 // ── Rippling soundwave visual effect ──────────────────────────────────────────
 class RippleEffect extends PositionComponent {
+  @override
   final Vector2 center;
   final Color color;
   final bool isDoubleSize;
@@ -339,7 +339,7 @@ class RippleEffect extends PositionComponent {
     final currentRadius = maxRadius * progress;
     
     final paint = ui.Paint()
-      ..color = color.withOpacity((1.0 - progress) * 0.6)
+      ..color = color.withValues(alpha: (1.0 - progress) * 0.6)
       ..style = ui.PaintingStyle.stroke
       ..strokeWidth = isDoubleSize ? 6 : 3
       ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 4);
@@ -348,7 +348,7 @@ class RippleEffect extends PositionComponent {
     
     // Inner pulsing ring
     if (progress > 0.3) {
-      paint.color = color.withOpacity((1.0 - progress) * 0.3);
+      paint.color = color.withValues(alpha: (1.0 - progress) * 0.3);
       canvas.drawCircle(Offset(center.x, center.y), currentRadius * 0.6, paint);
     }
   }
@@ -365,6 +365,7 @@ class RippleEffect extends PositionComponent {
 
 // ── Starburst Hit Marker visual effect ────────────────────────────────────────
 class HitMarkerEffect extends PositionComponent {
+  @override
   final Vector2 center;
   double elapsed = 0.0;
   final double duration = 0.25;
@@ -377,7 +378,7 @@ class HitMarkerEffect extends PositionComponent {
     final progress = elapsed / duration;
     
     final paint = ui.Paint()
-      ..color = const Color(0xFFFFCC00).withOpacity(1.0 - progress)
+      ..color = const Color(0xFFFFCC00).withValues(alpha: 1.0 - progress)
       ..style = ui.PaintingStyle.stroke
       ..strokeWidth = 4
       ..maskFilter = const ui.MaskFilter.blur(ui.BlurStyle.normal, 3);
@@ -396,7 +397,7 @@ class HitMarkerEffect extends PositionComponent {
       paint,
     );
     
-    paint.color = const Color(0xFFFFFFFF).withOpacity(1.0 - progress);
+    paint.color = const Color(0xFFFFFFFF).withValues(alpha: 1.0 - progress);
     paint.strokeWidth = 2;
     canvas.drawLine(
       Offset(center.x - size * 0.7, center.y - size * 0.7),

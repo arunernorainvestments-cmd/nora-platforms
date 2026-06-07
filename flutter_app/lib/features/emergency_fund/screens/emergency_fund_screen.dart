@@ -11,7 +11,7 @@ class EmergencyFundScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final balanceAsync = ref.watch(ubiPoolBalanceProvider);
+    final balanceAsync = ref.watch(ubiPoolBalanceStreamProvider);
     final configAsync = ref.watch(ubiPoolConfigProvider);
     final disbursementsAsync = ref.watch(ubiPublicDisbursementsProvider);
     final isLoggedIn = Supabase.instance.client.auth.currentUser != null;
@@ -36,7 +36,8 @@ class EmergencyFundScreen extends ConsumerWidget {
         color: AppTheme.primary,
         backgroundColor: AppTheme.surface,
         onRefresh: () async {
-          ref.invalidate(ubiPoolBalanceProvider);
+          // Balance streams live; refresh config + impact log.
+          ref.invalidate(ubiPoolConfigProvider);
           ref.invalidate(ubiPublicDisbursementsProvider);
         },
         child: ListView(
@@ -49,15 +50,17 @@ class EmergencyFundScreen extends ConsumerWidget {
 
             // ── Pool balance card ─────────────────────────────────────────────
             balanceAsync.when(
-              data: (balance) => configAsync.when(
-                data: (config) => _PoolBalanceCard(
-                  balance: balance,
-                  config: config,
-                  isLoggedIn: isLoggedIn,
-                ),
-                loading: () => const _LoadingCard(),
-                error: (e, _) => const SizedBox.shrink(),
-              ),
+              data: (balance) => balance == null
+                  ? const _LoadingCard()
+                  : configAsync.when(
+                      data: (config) => _PoolBalanceCard(
+                        balance: balance,
+                        config: config,
+                        isLoggedIn: isLoggedIn,
+                      ),
+                      loading: () => const _LoadingCard(),
+                      error: (e, _) => const SizedBox.shrink(),
+                    ),
               loading: () => const _LoadingCard(),
               error: (e, _) => const SizedBox.shrink(),
             ),

@@ -27,6 +27,7 @@ import '../../features/arena/screens/arena_screen.dart';
 import '../../features/arena/screens/arena_match_screen.dart';
 import '../../features/battle/screens/battle_lobby_screen.dart';
 import '../../features/battle/screens/battle_match_screen.dart';
+import '../../features/battle/screens/battle_matchmaking_screen.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/home/screens/plan_screen.dart';
 import '../../features/campaigns/screens/campaigns_list_screen.dart';
@@ -446,6 +447,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/battle',
             builder: (context, state) => const BattleLobbyScreen(),
+          ),
+          GoRoute(
+            // Must precede '/battle/:matchId' so it isn't captured as a matchId.
+            path: '/battle/matchmaking',
+            builder: (context, state) => const BattleMatchmakingScreen(),
           ),
           GoRoute(
             path: '/battle/:matchId',
