@@ -314,8 +314,19 @@ market opens parallel to live match · live bet → pool · combatant bet blocke
 applied + ledger + event · per-turn cap · arena backer≠trigger · identity_hash unique ·
 KYC staking gate · **match resolution → market settled (winner paid, loser settled)**.
 
+### Migration 106 + stripe-webhook — deferred items closed (APPLIED 2026-06-09)
+- **106** `battle_chit_combat_hooks.sql`: `process_battle_turn` + `battle_use_chit`
+  re-pulled via `pg_get_functiondef` and edited surgically (no hand-reproduction).
+  Adds the three previously-inert chit hooks: `type_override` (floor type mult at 1.0),
+  `damage_shield` (absorb up to N, carry remainder; now stored under its own type, not
+  `save_state`), `counter` (reflect dealt damage to attacker + attacker faint/forced
+  swap). Validated in a rolled-back turn; full pipeline smoke test still 9/9 after push.
+- **stripe-webhook** (deployed `--no-verify-jwt`): new `identity.verification_session.verified`
+  branch → SHA-256(name+DOB) into `kyc_verifications.identity_hash`; 23505 collision →
+  account `rejected`. Inert until the client creates VerificationSessions (live mode).
+
 ### Status / not yet done
-- **`flutter analyze`: clean** (No issues found, 2026-06-08).
-- **Migrations 102–105 pushed** to remote and **smoke-tested green** (2026-06-09).
-- `counter`/`type_override` combat hooks + true `damage_shield` absorb (spec §6).
-- Stripe Identity webhook must populate `identity_hash` in live mode.
+- **`flutter analyze`: clean** (No issues found, 2026-06-08; no Dart changed since).
+- **Migrations 102–106 pushed** + smoke-tested green; stripe-webhook deployed (2026-06-09).
+- Remaining (spec §6): client KYC VerificationSession flow, `aura` on charisma/influence,
+  live combat screen, acquisition flows (challenge/pack/gift), bench/target UX wiring.

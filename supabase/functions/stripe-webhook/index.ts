@@ -64,6 +64,112 @@ async function verifyStripeSignature(
   }
 }
 
+async function sha256Hex(input: string): Promise<string> {
+  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(bytes)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function jsonResponse(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+  });
+}
+
+// Stripe Identity → kyc_verifications.identity_hash (the sybil anchor, migration 102).
+// On a verified session we derive a stable identity hash (normalized name + DOB —
+// Stripe Identity does not expose raw document numbers) and write it to the user's KYC
+// row. The partial-UNIQUE index on identity_hash enforces one verified human → one
+// staking account: a second account verifying the SAME identity hits a 23505 here and
+// is marked rejected. Raw identity documents are never stored.
+async function handleIdentityVerified(event: Record<string, unknown>): Promise<Response> {
+  const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error('identity webhook: missing SUPABASE_URL / SERVICE_ROLE_KEY');
+    return jsonResponse({ error: 'Server misconfigured' }, 500);
+  }
+  const sb = createClient(supabaseUrl, serviceRoleKey);
+
+  const session = (event['data'] as Record<string, unknown>)['object'] as Record<string, unknown>;
+  const sessionId = session['id'] as string;
+  const metadata = (session['metadata'] ?? {}) as Record<string, string>;
+  const userId = metadata['user_id'];
+  if (!userId) {
+    console.error('identity webhook: no user_id in session metadata', sessionId);
+    return jsonResponse({ error: 'Missing user_id metadata' }, 400);
+  }
+
+  // verified_outputs may be absent on the event payload — retrieve it with expand.
+  let outputs = (session['verified_outputs'] ?? null) as Record<string, unknown> | null;
+  if (!outputs) {
+    const secret = Deno.env.get('STRIPE_SECRET_KEY') ?? '';
+    if (secret) {
+      const r = await fetch(
+        `https://api.stripe.com/v1/identity/verification_sessions/${sessionId}?expand[]=verified_outputs`,
+        { headers: { Authorization: `Bearer ${secret}` } },
+      );
+      if (r.ok) {
+        outputs = ((await r.json())['verified_outputs'] ?? null) as Record<string, unknown> | null;
+      } else {
+        console.error('identity webhook: session retrieve failed', await r.text());
+      }
+    }
+  }
+  if (!outputs) {
+    console.error('identity webhook: no verified_outputs for', sessionId);
+    return jsonResponse({ received: true, note: 'no verified_outputs' }, 200);
+  }
+
+  const first = String(outputs['first_name'] ?? '').trim().toLowerCase();
+  const last = String(outputs['last_name'] ?? '').trim().toLowerCase();
+  const dobObj = (outputs['dob'] ?? {}) as Record<string, number>;
+  const dob = dobObj['year']
+    ? `${dobObj['year']}-${String(dobObj['month']).padStart(2, '0')}-${String(dobObj['day']).padStart(2, '0')}`
+    : '';
+  if (!first || !last || !dob) {
+    console.error('identity webhook: incomplete identity fields', sessionId);
+    return jsonResponse({ received: true, note: 'incomplete identity' }, 200);
+  }
+
+  const identityHash = await sha256Hex(`${first}|${last}|${dob}`);
+  const nowIso = new Date().toISOString();
+  const expiresIso = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+
+  const { error } = await sb.from('kyc_verifications').upsert({
+    user_id: userId,
+    status: 'approved',
+    provider: 'stripe_identity',
+    provider_session_id: sessionId,
+    identity_hash: identityHash,
+    verified_legal_name: `${outputs['first_name'] ?? ''} ${outputs['last_name'] ?? ''}`.trim(),
+    date_of_birth: dob,
+    verified_at: nowIso,
+    expires_at: expiresIso,
+    submitted_at: nowIso,
+  }, { onConflict: 'user_id' });
+
+  if (error) {
+    // 23505 = identity_hash already approved on another account → sybil; reject this one.
+    if ((error as { code?: string }).code === '23505') {
+      await sb.from('kyc_verifications').upsert({
+        user_id: userId,
+        status: 'rejected',
+        provider: 'stripe_identity',
+        provider_session_id: sessionId,
+        rejected_reason: 'This identity is already verified on another account',
+      }, { onConflict: 'user_id' });
+      console.warn('identity webhook: duplicate identity rejected for user', userId);
+      return jsonResponse({ received: true, rejected: 'duplicate_identity' }, 200);
+    }
+    console.error('identity webhook: kyc upsert error', JSON.stringify(error));
+    return jsonResponse({ error: 'KYC update failed' }, 500);
+  }
+
+  console.log('identity webhook: approved KYC for user', userId);
+  return jsonResponse({ received: true, approved: true }, 200);
+}
+
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: CORS_HEADERS });
@@ -101,8 +207,15 @@ serve(async (req: Request) => {
       });
     }
 
-    if (event['type'] !== 'checkout.session.completed') {
-      console.log('Ignoring event type:', event['type']);
+    const eventType = event['type'] as string;
+
+    // Stripe Identity verification → KYC identity_hash (sybil anchor, migration 102).
+    if (eventType === 'identity.verification_session.verified') {
+      return await handleIdentityVerified(event);
+    }
+
+    if (eventType !== 'checkout.session.completed') {
+      console.log('Ignoring event type:', eventType);
       return new Response(JSON.stringify({ received: true }), {
         status: 200,
         headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },

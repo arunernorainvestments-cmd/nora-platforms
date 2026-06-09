@@ -102,10 +102,12 @@ The §2 invariant is only as strong as account uniqueness — free alts defeat i
 (`kyc_verifications`, Stripe Identity in live mode, `kyc_simulate_approve` in sim)
 provides the identity anchor.
 
-- **`identity_hash`** (migration 102): a one-way hash of the verified document
-  (number + country) stored on the KYC row, with a **partial UNIQUE index** over
-  approved rows → one verified human → one staking identity. Populated by the Stripe
-  Identity webhook in live mode (sim leaves it NULL).
+- **`identity_hash`** (migration 102): a one-way SHA-256 of the verified, normalized
+  `first_name|last_name|dob` (Stripe Identity does not expose raw document numbers),
+  stored on the KYC row with a **partial UNIQUE index** over approved rows → one
+  verified human → one staking identity. Populated by `stripe-webhook` on the
+  `identity.verification_session.verified` event; a second account verifying the same
+  identity hits the unique index and is marked `rejected`. Sim mode leaves it NULL.
 - **`identity_linked_users(uuid)`**: returns every account sharing an approved
   `identity_hash` with a user (plus self); the §2 guards call it.
 - **How alt-resistance actually holds (important nuance):** because the unique index
@@ -187,22 +189,29 @@ Per-chit fields driving gameplay and animation:
 
 ## 6. Known gaps / build checklist
 
-- [ ] **`counter` + `type_override` combat hooks** in `process_battle_turn` — reflect
-      damage to attacker / ignore type disadvantage on next attack. Deferred to avoid
-      reproducing the ~550-line turn function untested; both are rare/epic RNG-only, so
-      low launch impact. Add as a careful, DB-smoke-tested migration.
-- [ ] **`damage_shield` true absorb** — replace the `save_state` approximation with a
-      dedicated "absorb up to N, carry remainder" hook once the turn function is reopened.
+- [x] **`counter` + `type_override` combat hooks** in `process_battle_turn` (migration
+      106) — counter reflects dealt damage to the attacker (+ attacker faint/forced-swap
+      handling); type_override floors the type multiplier at 1.0 (ignores disadvantage).
+      Source pulled via `pg_get_functiondef` and edited surgically; validated in a
+      rolled-back turn (all three effects consumed, `counter_reflect` event emitted).
+- [x] **`damage_shield` true absorb** (migration 106) — absorbs up to `effect_value`,
+      carries the remainder, consumes when depleted. `battle_use_chit` now stores
+      `damage_shield` under its own type (was approximated as `save_state`).
+- [x] **Stripe Identity `identity_hash` population** — `stripe-webhook` handles
+      `identity.verification_session.verified`: SHA-256 of normalized name+DOB →
+      `kyc_verifications.identity_hash`; 23505 collision → account marked `rejected`.
+- [ ] **Client KYC flow** — create the Stripe Identity `VerificationSession` (with
+      `metadata.user_id`) and a pending `kyc_verifications` row; surface the verify CTA.
+      The webhook is live and waiting for this.
 - [ ] **`aura` on charisma/influence** — these stats are not yet in the damage formula,
       so the multiplier is currently future-proofing only. Wire when stat coverage expands.
 - [ ] **Live combat screen** — `battle_match_screen.dart` is still a `test-match`
       placeholder; the chit inventory sheet is wired and ready but only calls the RPC in a
       real match context.
-- [ ] **Stripe Identity `identity_hash` population** — webhook must compute and store the
-      hash in live mode (sim leaves NULL; UNIQUE index ignores NULLs).
 - [ ] **Acquisition flows** — challenge/pack/gift paths are scaffold-only; only
       `match_rng` is live.
-- [ ] **Bench/target UX** — `wild_card` and `disruption` target pickers in the combat menu.
+- [ ] **Bench/target UX** — `wild_card`/`disruption` target pickers exist in `ChitSheet`;
+      wire them into the live combat menu when the combat screen lands.
 
 ## Hard rules added (see CLAUDE.md)
 - Battle Chits are the canonical powerup system; `arena_abilities`/`arena_trigger` are
