@@ -325,8 +325,20 @@ KYC staking gate · **match resolution → market settled (winner paid, loser se
   branch → SHA-256(name+DOB) into `kyc_verifications.identity_hash`; 23505 collision →
   account `rejected`. Inert until the client creates VerificationSessions (live mode).
 
+### Client KYC flow (2026-06-09)
+- **kyc-create-session** edge function (deployed): sim mode → `kyc_simulate_approve`;
+  live mode (`KYC_MODE=live`) → Stripe Identity VerificationSession (metadata.user_id,
+  return_url) + pending `kyc_verifications` row, returns hosted-flow `url`.
+- Flutter `features/kyc`: `myKycProvider` + `KycService.startVerification()`,
+  `/verify-identity` screen (status card + verify CTA), and a "Verify identity" button on
+  the battle bet sheet's KYC-gate error. Route added + protected. `flutter analyze` clean.
+- **Go-live checklist for KYC:** set edge env `KYC_MODE=live` + `STRIPE_SECRET_KEY`
+  (+ `APP_URL`), and `platform_integrity_settings.require_kyc_for_staking=true`
+  (and/or `require_kyc_for_combatant`). stripe-webhook already handles the verified event.
+
 ### Status / not yet done
-- **`flutter analyze`: clean** (No issues found, 2026-06-08; no Dart changed since).
-- **Migrations 102–106 pushed** + smoke-tested green; stripe-webhook deployed (2026-06-09).
-- Remaining (spec §6): client KYC VerificationSession flow, `aura` on charisma/influence,
-  live combat screen, acquisition flows (challenge/pack/gift), bench/target UX wiring.
+- **`flutter analyze`: clean** (No issues found, 2026-06-09).
+- **Migrations 102–106 pushed**; **stripe-webhook + kyc-create-session deployed**; smoke
+  test 9/9; combat-hook validation green.
+- Remaining (spec §6): `aura` on charisma/influence, live combat screen, acquisition
+  flows (challenge/pack/gift), bench/target UX wiring into the live combat menu.

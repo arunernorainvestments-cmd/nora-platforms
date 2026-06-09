@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/n_glass_sheet.dart';
@@ -462,6 +463,22 @@ class _BattleBetSheetState extends ConsumerState<_BattleBetSheet> {
           const SizedBox(height: 12),
           Text(_error!,
               style: const TextStyle(color: AppTheme.danger, fontSize: 13)),
+          if (_error!.contains('Verify your identity')) ...[
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.of(context).pop();
+                context.go('/verify-identity');
+              },
+              icon: const Icon(Icons.badge_outlined, size: 18),
+              label: const Text('Verify identity'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppTheme.primary,
+                side: const BorderSide(color: AppTheme.primary),
+                minimumSize: const Size(double.infinity, 44),
+              ),
+            ),
+          ],
         ],
         const SizedBox(height: 20),
         ElevatedButton(

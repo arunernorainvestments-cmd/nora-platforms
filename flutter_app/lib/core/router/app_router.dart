@@ -44,6 +44,7 @@ import '../../features/settings/screens/support_screen.dart';
 import '../../features/settings/screens/faq_screen.dart';
 import '../../features/marketplace/screens/marketplace_screen.dart';
 import '../../features/polls/screens/poll_screen.dart';
+import '../../features/kyc/screens/kyc_screen.dart';
 import '../../features/emergency_fund/screens/emergency_fund_screen.dart';
 import '../../features/emergency_fund/screens/contribute_screen.dart';
 import '../../features/emergency_fund/screens/request_funds_screen.dart';
@@ -113,7 +114,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // /home, /news, /explore, /hot-topic are intentionally PUBLIC.
       const protectedRoutes = [
         '/markets', '/profile', '/wallet', '/mybets', '/arena', '/battle',
-        '/campaigns', '/marketplace',
+        '/campaigns', '/marketplace', '/verify-identity',
       ];
       // sub-paths are also protected
       final isProtected = protectedRoutes.contains(loc) ||
@@ -424,6 +425,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => WalletScreen(
               purchaseResult: state.uri.queryParameters['purchase'],
             ),
+          ),
+          GoRoute(
+            path: '/verify-identity',
+            builder: (context, state) => const KycScreen(),
           ),
           GoRoute(
             path: '/arena',

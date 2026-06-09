@@ -200,9 +200,12 @@ Per-chit fields driving gameplay and animation:
 - [x] **Stripe Identity `identity_hash` population** — `stripe-webhook` handles
       `identity.verification_session.verified`: SHA-256 of normalized name+DOB →
       `kyc_verifications.identity_hash`; 23505 collision → account marked `rejected`.
-- [ ] **Client KYC flow** — create the Stripe Identity `VerificationSession` (with
-      `metadata.user_id`) and a pending `kyc_verifications` row; surface the verify CTA.
-      The webhook is live and waiting for this.
+- [x] **Client KYC flow** — `kyc-create-session` edge function (sim: `kyc_simulate_approve`;
+      live: Stripe Identity `VerificationSession` w/ `metadata.user_id` + pending row +
+      hosted-flow redirect, gated by `KYC_MODE` env). Flutter `kyc` module
+      (`myKycProvider`, `KycService`, `/verify-identity` screen) + "Verify identity" CTA on
+      the bet sheet's KYC error. Mode flip for live: set `KYC_MODE=live`, `STRIPE_SECRET_KEY`,
+      `platform_integrity_settings.require_kyc_for_staking=true`.
 - [ ] **`aura` on charisma/influence** — these stats are not yet in the damage formula,
       so the multiplier is currently future-proofing only. Wire when stat coverage expands.
 - [ ] **Live combat screen** — `battle_match_screen.dart` is still a `test-match`
