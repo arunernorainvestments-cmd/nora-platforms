@@ -43,6 +43,9 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 23. Emergency Fund AI evaluator facilitates only — never recommends approve/deny (Hard Rule: ubi_*)
 24. ubi-documents Storage bucket has NO client-accessible signed URLs, ever — documents are AI-only
 25. Individual vote values in ubi_panel_votes are forever private — no client SELECT policy, no index on vote column
+26. One role per match: for a match with an open battle_outcome market, a verified human is COMBATANT (uses chits, cannot bet) or SPECTATOR (bets, cannot influence) — never both. Enforced at the DB layer across KYC-linked alts (identity_hash). Never weaken the bets/arena_events integrity triggers (migration 102)
+27. Battle Chits are the canonical powerup system — arena_abilities/arena_trigger are legacy-only; do not extend them. Chit usage is participant-only and blocked while the caller holds a stake on the linked market
+28. identity_hash partial-UNIQUE on approved KYC rows is the sybil anchor — never drop it; Stripe Identity webhook populates it in live mode
 
 ## Games
 - **Markets**: bet on creator Display Score direction. Pool: 90% winners / 5% platform / 5% Market Maker.
@@ -58,6 +61,7 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 - Edge functions, pg_cron jobs, routing: docs/infra.md
 - Pre-launch reset sequence: docs/pre-launch.md
 - Campaigns architecture, fee model, regulatory framework, build phases: docs/campaigns-framework.md
+- Battle Chit economy, market-integrity invariant, KYC backstop: docs/battle-chits-and-arena-integrity.md
 
 ## Queued
 - Campaigns Phase 4 — Secondary market (stake listings, buy/sell, ownership transfer)
@@ -65,7 +69,7 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 - Campaigns Phase 6 — Revenue API integrations (YouTube Analytics, DistroKid CSV, Spotify for Artists)
 - Campaigns OG meta tags — Vercel edge middleware for rich link previews on /campaign/:id
 - Battle Phase D: map buff wiring, matchmaking queue, balance tuning
-- Battle Chit collectible economy (post-launch)
+- Battle Chit economy: framework built (migrations 086/102/103) — remaining: counter/type_override combat hooks, true damage_shield absorb, acquisition flows (challenge/pack/gift), Stripe Identity identity_hash population. See docs/battle-chits-and-arena-integrity.md §6
 - Slice 2: comprehensive is_test_account filter sweep
 - Celebrity profile pictures (pre-launch)
 - Onboarding walkthrough (4-5 slide PageView)

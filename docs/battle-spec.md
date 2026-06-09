@@ -95,10 +95,18 @@ Lottie effects:
 
 See docs/scoring-and-db-spec.md for full table schemas and data flow.
 
-## Battle Chit (future build)
-Collectible cards (Megaman NT Warrior model).
-Earned via challenges, packs, gifts. battle_chits table TBD.
-No mechanical effect implemented yet.
+## Battle Chit (framework built — migrations 086 + 103)
+Collectible single-use items (Megaman NT Warrior model). Player-only powerups;
+spectators with a market stake may NOT use them (see one-role invariant below).
+Tables: `battle_chit_definitions`, `user_battle_chits`, `chit_marketplace_listings`,
+`battle_chit_uses`. Used via `battle_use_chit(match, participant, chit_def, target?)`.
+Per-chit `animation_key` drives asset production. Effect semantics, caps, and the
+deferred `counter`/`type_override` hooks: see docs/battle-chits-and-arena-integrity.md.
+
+## Market integrity (migration 102)
+For a match with an open `battle_outcome` market, a verified human is either a
+COMBATANT (uses chits, cannot bet) or a SPECTATOR (bets, cannot influence) — never
+both, enforced at the DB layer across KYC-linked alts (`identity_hash`).
 
 ## Pending
 - Confirm SpriteMaster JSON format matches Flame SpriteAnimationData schema

@@ -8,6 +8,7 @@ import '../game/battle_game.dart';
 import '../models/battle_models.dart';
 import '../providers/battle_providers.dart';
 import '../widgets/battle_hud.dart';
+import '../widgets/chit_sheet.dart';
 import '../widgets/combat_menu.dart';
 
 // ── Placeholder data (test-match only) ───────────────────────────────────────
@@ -378,38 +379,13 @@ class _BattleMatchScreenState extends ConsumerState<BattleMatchScreen> {
 
   void _onChit() {
     _game.triggerChit();
+    // Placeholder combat screen has no real match/participant context yet, so the
+    // sheet previews the inventory. When the live combat screen lands, pass the
+    // real matchId/participantId + opponents/allies so chits are used via the RPC.
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF1A1A2E),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Center(
-              child: Container(
-                width: 36, height: 4,
-                decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(2)),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Icon(Icons.style_rounded, color: Color(0xFFFFB300), size: 36),
-            const SizedBox(height: 12),
-            const Text('Battle Chits', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            const Text(
-              'No chits collected yet.\nEarn chits through challenges, packs, and gifts.',
-              style: TextStyle(color: Colors.white54, fontSize: 13),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
+      builder: (_) => const ChitSheet(),
     );
   }
 }

@@ -138,13 +138,24 @@ class _BattleBetSheetState extends ConsumerState<_BattleBetSheet> {
     } catch (e) {
       if (mounted) {
         setState(() {
-          _error = e.toString().contains('Insufficient token balance')
-              ? 'Insufficient token balance'
-              : 'Failed to place bet. Please try again.';
+          _error = _betError(e.toString());
           _isSubmitting = false;
         });
       }
     }
+  }
+
+  String _betError(String raw) {
+    if (raw.contains('Insufficient token balance')) {
+      return 'Insufficient token balance';
+    }
+    if (raw.contains('combatants cannot bet')) {
+      return 'You\'re competing in this match — you can\'t bet on your own battle.';
+    }
+    if (raw.contains('KYC verification required')) {
+      return 'Verify your identity to place a bet.';
+    }
+    return 'Failed to place bet. Please try again.';
   }
 
   @override

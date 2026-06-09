@@ -246,3 +246,76 @@ already pays `WHERE position='team_1'/'team_2'` (confirmed: `process_battle_turn
   (1v1=2, 2v2=4, 3v3=6). Solo testing needs N browser sessions.
 - Legacy `battle_spectator_bets`/`spectator_pool` (062) still exists, unused by
   the redesign market path — candidate for later cleanup.
+
+---
+
+## Arena/Battle market integrity + Battle Chit framework (2026-06-08)
+
+Spec: `docs/battle-chits-and-arena-integrity.md`. Continuity hygiene before the
+Antigravity-assisted animation phase. Establishes the **one-role-per-match** invariant
+(combatant uses chits / cannot bet; spectator bets / cannot influence) and builds out
+the Battle Chit framework so animation production has stable effect + `animation_key`
+definitions.
+
+### Migration 102 — `arena_battle_market_integrity.sql` (APPLIED 2026-06-08)
+- `kyc_verifications.identity_hash` + partial UNIQUE index (one approved human → one
+  staking identity; NULLs in sim ignored).
+- `platform_integrity_settings` singleton: `enforce_one_role_per_match` (default TRUE),
+  `require_kyc_for_staking` / `require_kyc_for_combatant` (default FALSE, flip at live).
+- Helpers: `is_kyc_verified`, `identity_linked_users` (alts of same verified human),
+  `is_match_combatant`.
+- `enforce_bet_integrity` BEFORE INSERT on `bets` — rejects a battle-market bet from a
+  combatant (or KYC-linked alt); KYC gate when flag on. Runs ahead of the 004 AFTER
+  pool/token triggers, so a rejected bet never moves tokens.
+- `enforce_arena_event_integrity` BEFORE INSERT on `arena_events` — a backer can't
+  `trigger` and a triggerer can't `back` the same legacy-Arena match (retires the
+  audience-influence-while-staked path without touching the big arena RPCs).
+- `enforce_combatant_kyc` BEFORE INSERT on `battle_participants` — flag-gated, no-op
+  until live launch.
+
+### Migration 103 — `battle_chit_framework.sql` (APPLIED 2026-06-08)
+- `battle_chit_definitions` += `animation_key` (e.g. `chit_bronze_shield`),
+  `requires_target`, `per_match_use_limit` (1 for legendary/mythic).
+- `battle_chit_uses` ledger (per-turn/per-match cap enforcement + spectator animations).
+- `battle_use_chit` rewritten (drops the 091 3-arg overload; new 4th arg
+  `p_target_participant_id`): integrity guard (no chit while holding a stake), 1 chit/
+  participant/turn cap, per-chit per-match cap, target validation, and effect resolution:
+  - immediate: `momentum_surge`, `stat_boost` (snap_*+=), `aura` (snap_*×), `disruption`
+    (remove random opponent effect), `wild_card` (immediate bench swap).
+  - mapped: `damage_shield`→`save_state`, `speed_burst`→positive `speed_debuff`.
+  - **deferred**: `counter`, `type_override` stored + animated but not yet consumed by
+    `process_battle_turn` (rare/epic only; see spec §6).
+
+### Flutter
+- `battle_models.dart`: `ChitInventoryItem` model.
+- `battle_providers.dart`: `chitInventoryProvider`, `useChitProvider`/`UseChit`.
+- `battle/widgets/chit_sheet.dart` (new): inventory sheet + target picker; uses the RPC
+  in a live match, previews read-only in the `test-match` placeholder.
+- `battle_match_screen.dart`: `_onChit` now opens `ChitSheet` (preview mode).
+- `markets/widgets/battle_bet_sheet.dart`: surfaces combatant/KYC integrity errors.
+
+### Migrations 104 + 105 — settlement bugfixes (APPLIED 2026-06-09)
+Found by the pipeline smoke test (`supabase/tests/battle_market_pipeline_smoke.sql`).
+Both were **pre-existing 091 bugs** that broke EVERY battle-market settlement and were
+masked by `process_battle_turn`'s `EXCEPTION WHEN OTHERS` (match resolved, market left
+`open`, winning bettors never paid):
+- **104** `increment_token_balance_bigint.sql`: `distribute_match_revenue` calls
+  `increment_token_balance(uuid, bigint)` (its payout vars are BIGINT) but only the
+  `(uuid, integer)` definition existed → "function does not exist". Added a BIGINT
+  overload delegating to the INTEGER version.
+- **105** `markets_resolution_result_battle.sql`: `distribute_match_revenue` sets
+  `resolution_result='team_1'|'team_2'` but `markets_resolution_result_check` only
+  allowed `above|below|refund`. Extended the CHECK to include the battle outcomes.
+
+### Smoke test — PASSING (2026-06-09)
+`supabase/tests/battle_market_pipeline_smoke.sql` (BEGIN/ROLLBACK; reuses seeded test
+accounts) — all 9 checks green via the Management API `/database/query` endpoint:
+market opens parallel to live match · live bet → pool · combatant bet blocked · chit
+applied + ledger + event · per-turn cap · arena backer≠trigger · identity_hash unique ·
+KYC staking gate · **match resolution → market settled (winner paid, loser settled)**.
+
+### Status / not yet done
+- **`flutter analyze`: clean** (No issues found, 2026-06-08).
+- **Migrations 102–105 pushed** to remote and **smoke-tested green** (2026-06-09).
+- `counter`/`type_override` combat hooks + true `damage_shield` absorb (spec §6).
+- Stripe Identity webhook must populate `identity_hash` in live mode.

@@ -117,6 +117,44 @@ class BattleMatchmaking {
 final battleMatchmakingProvider =
     Provider<BattleMatchmaking>((ref) => const BattleMatchmaking());
 
+// Current user's Battle Chit inventory (owned + quantity > 0), with definitions.
+final chitInventoryProvider =
+    FutureProvider.autoDispose<List<ChitInventoryItem>>((ref) async {
+  final userId = Supabase.instance.client.auth.currentUser?.id;
+  if (userId == null) return [];
+  final data = await Supabase.instance.client
+      .from('user_battle_chits')
+      .select(
+          'chit_definition_id, quantity, battle_chit_definitions(name, description, rarity, effect_type, animation_key, requires_target)')
+      .eq('user_id', userId)
+      .gt('quantity', 0);
+  return (data as List)
+      .map((r) => ChitInventoryItem.fromJson(r as Map<String, dynamic>))
+      .toList();
+});
+
+// Uses a chit in a live match. [targetParticipantId] is required for chits whose
+// `requiresTarget` is true (disruption / wild_card); null otherwise.
+final useChitProvider = Provider<UseChit>((ref) => const UseChit());
+
+class UseChit {
+  const UseChit();
+
+  Future<void> call({
+    required String matchId,
+    required String participantId,
+    required String chitDefinitionId,
+    String? targetParticipantId,
+  }) async {
+    await Supabase.instance.client.rpc('battle_use_chit', params: {
+      'p_match_id': matchId,
+      'p_participant_id': participantId,
+      'p_chit_def_id': chitDefinitionId,
+      'p_target_participant_id': targetParticipantId,
+    });
+  }
+}
+
 // Battle-linked prediction market for a match (auto-created at match start).
 final battleArenaMarketProvider =
     FutureProvider.family.autoDispose<Map<String, dynamic>?, String>(

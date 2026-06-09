@@ -179,6 +179,44 @@ class EligibleCharacter {
       );
 }
 
+/// A Battle Chit the current user owns (inventory row joined to its definition).
+class ChitInventoryItem {
+  final String chitDefinitionId;
+  final String name;
+  final String description;
+  final String rarity;
+  final String effectType;
+  final String? animationKey;
+  final bool requiresTarget;
+  final int quantity;
+
+  const ChitInventoryItem({
+    required this.chitDefinitionId,
+    required this.name,
+    required this.description,
+    required this.rarity,
+    required this.effectType,
+    required this.animationKey,
+    required this.requiresTarget,
+    required this.quantity,
+  });
+
+  // Expects a user_battle_chits row with the joined `battle_chit_definitions` map.
+  factory ChitInventoryItem.fromJson(Map<String, dynamic> json) {
+    final def = (json['battle_chit_definitions'] as Map<String, dynamic>?) ?? json;
+    return ChitInventoryItem(
+      chitDefinitionId: json['chit_definition_id'] as String,
+      name: def['name'] as String? ?? 'Chit',
+      description: def['description'] as String? ?? '',
+      rarity: def['rarity'] as String? ?? 'common',
+      effectType: def['effect_type'] as String? ?? 'stat_boost',
+      animationKey: def['animation_key'] as String?,
+      requiresTarget: def['requires_target'] as bool? ?? false,
+      quantity: (json['quantity'] as num?)?.toInt() ?? 0,
+    );
+  }
+}
+
 class BattleParticipant {
   final String id;
   final String matchId;
