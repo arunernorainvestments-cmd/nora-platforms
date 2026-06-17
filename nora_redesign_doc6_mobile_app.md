@@ -282,8 +282,11 @@ class LicenseSyncService {
   final String _apiKey;  // stored in app config, not hardcoded
 
   Future<List<UnlockedCharacter>> syncLicensesForUser(String noraUserId) async {
+    // ADJUSTED: lkn-verify exposes the per-user list via ?licensee_nora_id=...
+    // (there is no /licenses/user/:id route). Returns a JSON array of active
+    // licenses; each item has license_status + use_category_permitted.
     final response = await http.get(
-      Uri.parse('$_apiBase/licenses/user/$noraUserId?use_category=entertainment_game'),
+      Uri.parse('$_apiBase/verify?licensee_nora_id=$noraUserId&use_category=entertainment_game'),
       headers: {'X-NORA-API-Key': _apiKey},
     );
 
