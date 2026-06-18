@@ -14,3 +14,7 @@ flutter_app/.flutter-plugins-dependencies
 # Landing page — keep source, ignore build output and deps
 landing/node_modules/
 landing/dist/
+
+# Never commit private keys / PEMs (public signing key is committed explicitly)
+*.pem
+!flutter_app/web/.well-known/nora-public-key.pem
