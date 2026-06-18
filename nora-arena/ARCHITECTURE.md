@@ -89,3 +89,79 @@ license. Until then, portrait-on-archetype-rig is the shippable answer.
   `ON CONFLICT DO NOTHING`, same `token_transactions` table as web).
 - **Models:** every copied model carries a `// SHARED MODEL` comment; keep in sync
   with nora-platforms (or extract a `nora_shared` package in V2).
+
+---
+
+# Addendum A — AI-only assets & the C/C++ question
+
+**Hard constraint:** every asset and every line of code on this project is produced
+by AI agents — **Claude** (code, Lottie, shaders) and **Google Antigravity / Gemini
+image** (characters, sprites, backgrounds). There is no human art team. This
+constraint *decides* the engine debate.
+
+## Why not C/C++ (or Unity) for the game
+
+"Build it in C/C++" really means a native engine (Unreal/Cocos2d-x/custom) or
+Unity (C#). For *this* product it's the wrong trade:
+
+1. **The genre doesn't need it.** A turn-based 2D battler's "wow" comes from good
+   art + skeletal/frame animation + game-juice (screen shake, hit-pause,
+   particles) — all reachable at 60fps in Flame + Impeller.
+2. **No first-class Supabase SDK in C++.** The game is driven by Supabase Realtime
+   (`battle_events`) + shared Auth. Flutter gets `supabase_flutter` free; raw C++
+   means hand-rolling websockets/JWT/RLS — i.e. rebuilding the exact "action
+   translation" layer that must be rock-solid.
+3. **It throws away Dart reuse** (models, import flow, wallet, markets).
+4. **AI code-gen reliability.** Claude and Antigravity are both excellent at
+   Dart/Flutter; pushing them to a custom C++ engine *lowers* output quality and
+   slows the loop — the opposite of the goal.
+5. **Asset formats.** AI produces **PNG sprites, Lottie JSON, GLSL shaders** best —
+   all natively consumed by Flame. A native engine wouldn't make AI-generated 2D
+   art look better.
+
+So: **stay Flutter + Flame.** The only legitimate escape hatch is graphics-ceiling,
+handled below — and even then the answer is *embed Unity for the battle scene*, not
+rewrite in C++.
+
+## Revision to the engine table: Rive → AI-friendly formats
+
+Under AI-only assets, prefer formats agents can author:
+- **Characters:** AI-generated **sprite sheets** (Gemini character-consistency from
+  the licensed portrait — see `pipeline/LIKENESS_TO_SPRITES.md`). Replaces the
+  earlier Rive-first plan, because `.riv` is binary and not AI-authorable.
+- **Effects / UI:** **Lottie** (JSON) — Claude writes/edits it directly.
+- **Polish:** GLSL shaders + procedural juice — Claude writes it.
+
+## The differentiator: per-creator characters from licensed likeness
+
+Gemini's image model ("Nano Banana") is best-in-class at **character consistency**.
+Feed it the licensed portrait and it generates the *same person* across battle
+states (idle/attack/hit/ko…). That means when a user licenses a real person, we
+**auto-generate an animated game character of that person** — no artist. This is
+strictly better UX than static, generic sprite sheets, and it ties the licensing
+thesis directly to gameplay. Full recipe + compliance gate in
+`pipeline/LIKENESS_TO_SPRITES.md`.
+
+## If the 2D ceiling ever isn't enough (Path B, deferred)
+
+Keep menus/licensing/import/wallet/markets in Flutter, render **only the battle
+scene** in **Unity embedded as a library (UaaL)**. Flutter ↔ engine talk over a
+thin protocol — this is literally "the game renders outside Flutter, actions get
+translated":
+
+```
+Flutter → engine:  { battle_state, roster[], event:"attack", actor, target, damage }
+engine → Flutter:  { player_action:"use_move", move_id } | { animation_complete }
+```
+
+The scaffold's display-only, server-authoritative design makes this a clean swap:
+only the renderer changes; import/verify/wallet/markets code is untouched. Prefer
+Unity (C#) over raw C++ here for the realtime/asset ecosystem and hiring. **Do not
+pre-build this** — only adopt it if a Flame+sprite prototype visibly misses the
+quality bar.
+
+## Decision rule
+1. Prototype the battle scene in Flame with AI-generated sprites + Lottie + juice.
+2. Meets the bar → ship all-Flutter.
+3. Visibly short → embed Unity (UaaL) for the battle only.
+4. Pure C/C++ only if the game later goes real-time/3D or targets consoles.

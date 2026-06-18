@@ -1,0 +1,41 @@
+// Image-generation MCP for in-loop sprite/character/background generation.
+//
+// HOW TO USE
+//   1. Copy this file to the repo root as `.mcp.json` (Claude Code reads that),
+//      or add the chosen server block to your existing MCP config.
+//   2. Put the API key in your environment (do NOT commit it — CLAUDE.md rule 6).
+//   3. Restart the agent; it can then generate images during Phase 3.
+//
+// NOTE: Antigravity has Gemini image generation built in, so inside Antigravity
+// you may not need an MCP at all — this is mainly so Claude Code can also generate
+// assets in-loop. Pick ONE provider block below; verify the exact package name for
+// your environment (these are the common options as of this writing).
+//
+// Strip the comments before saving as .mcp.json (JSON has no comments).
+
+{
+  "mcpServers": {
+    // --- Option A: Google Gemini / Imagen (keeps you in the Google stack) ---
+    "gemini-image": {
+      "command": "npx",
+      "args": ["-y", "<gemini-image-mcp-package>"],
+      "env": {
+        "GEMINI_API_KEY": "${GEMINI_API_KEY}"
+      }
+    }
+
+    // --- Option B: fal.ai (aggregator: image + image-to-video + consistency) ---
+    // "fal": {
+    //   "command": "npx",
+    //   "args": ["-y", "<fal-mcp-package>"],
+    //   "env": { "FAL_KEY": "${FAL_KEY}" }
+    // }
+
+    // --- Option C: Replicate (aggregator: many image/animation/3D models) ---
+    // "replicate": {
+    //   "command": "npx",
+    //   "args": ["-y", "<replicate-mcp-package>"],
+    //   "env": { "REPLICATE_API_TOKEN": "${REPLICATE_API_TOKEN}" }
+    // }
+  }
+}

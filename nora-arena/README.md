@@ -36,7 +36,13 @@ the governing spec.
 - RevenueCat IAP + `mobile_iap_confirm` edge function (needs RevenueCat config)
 - The native `android/` and `ios/` folders (run `flutter create`, above)
 
-## Read first
-- `ARCHITECTURE.md` — the game-build recommendation (engine, language, the
-  likeness→character pipeline) and why.
-- `CLAUDE.md` — hard rules for this repo.
+## Read first (especially AI build agents — Antigravity, Claude Code)
+- `AGENTS.md` — orientation + agent division of labor. **Start here.**
+- `BUILD_WORKFLOW.md` — phase-by-phase build plan (your task list).
+- `ARCHITECTURE.md` — engine/language decision + **Addendum A** (AI-only assets,
+  the C/C++ question, the likeness→character differentiator).
+- `pipeline/LIKENESS_TO_SPRITES.md` — turn a licensed portrait into an animated
+  character (prompts, sheet format, compliance gate).
+- `tooling/image-gen.mcp.json.example` — image-generation MCP config to enable
+  in-loop asset generation.
+- `CLAUDE.md` — hard rules for this repo (binding for every agent).
