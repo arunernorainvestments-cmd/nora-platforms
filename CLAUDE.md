@@ -71,6 +71,17 @@ ECDSA P-256 signed when NORA_SIGNING_PRIVATE_KEY is set (Hard Rule 32). License 
 come only from the pre-approved clause library (Hard Rule 30). Flutter screens under
 `flutter_app/lib/features/licensing/`. Deploy/runbook: docs/lkn-deploy-runbook.md.
 
+## Arena/Battle Mobile App (doc6)
+Arena + Battle move to a **separate new repo** `nora-arena` (Flutter mobile, Flame
+engine) sharing this Supabase backend. NO tables/edge functions/cron move — mobile
+is frontend-only. Repo A holds the prep: migration **114** (`profiles.fcm_token_mobile`,
+FCM push token, web-unused) and four thin convenience wrappers `nora-arena-api-*`
+(profile / spotlight / market / token-balance) that aggregate existing tables so the
+app loads a screen in one call — NOT new data sources. License Sync (the headline
+cross-platform test) calls `api.noraplatforms.com/v1/verify` per-user list mode.
+nora-arena-api-spotlight proxies compute-spotlight (Hard Rule 19 single producer),
+never recomputes. Full spec: nora_redesign_doc6_mobile_app.md.
+
 ## Reference Docs
 - Scoring formulas, DB tables, data flows: docs/scoring-and-db-spec.md
 - Battle animation, asset naming, type chart, speed stats: docs/battle-spec.md
