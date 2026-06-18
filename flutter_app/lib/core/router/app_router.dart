@@ -43,6 +43,13 @@ import '../../features/campaigns/providers/campaigns_providers.dart';
 import '../../features/settings/screens/support_screen.dart';
 import '../../features/settings/screens/faq_screen.dart';
 import '../../features/marketplace/screens/marketplace_screen.dart';
+import '../../features/licensing/screens/licensing_marketplace_home_screen.dart';
+import '../../features/licensing/screens/licensing_listing_detail_screen.dart';
+import '../../features/licensing/screens/license_checkout_screen.dart';
+import '../../features/licensing/screens/my_licenses_screen.dart';
+import '../../features/licensing/screens/create_listing_screen.dart';
+import '../../features/licensing/screens/partners_portal_screen.dart';
+import '../../features/licensing/screens/license_public_record_screen.dart';
 import '../../features/polls/screens/poll_screen.dart';
 import '../../features/kyc/screens/kyc_screen.dart';
 import '../../features/emergency_fund/screens/emergency_fund_screen.dart';
@@ -115,6 +122,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       const protectedRoutes = [
         '/markets', '/profile', '/wallet', '/mybets', '/arena', '/battle',
         '/campaigns', '/marketplace', '/verify-identity',
+        '/my-licenses', '/create-listing',
       ];
       // sub-paths are also protected
       final isProtected = protectedRoutes.contains(loc) ||
@@ -126,7 +134,10 @@ final routerProvider = Provider<GoRouter>((ref) {
           loc == '/campaigns/earnings' ||
           loc == '/emergency-fund/request' ||
           loc == '/emergency-fund/my-requests' ||
-          loc.startsWith('/emergency-fund/vote/');
+          loc.startsWith('/emergency-fund/vote/') ||
+          // Licensing: marketplace browsing is public, but buying a license
+          // requires auth (lkn-purchase-license is user-scoped).
+          loc.contains('/buy/');
       if (!isLoggedIn && isProtected) {
         // Store destination in Riverpod — reliable across async redirect re-fires
         ref.read(pendingNavigationProvider.notifier).state = loc;
@@ -348,6 +359,45 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ),
         ],
+      ),
+
+      // ── Licensing Marketplace (Doc 5) ────────────────────────────────────
+      // Browsing is public; /my-licenses, /create-listing and the buy flow
+      // require auth (enforced in redirect above).
+      GoRoute(
+        path: '/licenses',
+        builder: (context, state) => const LicensingMarketplaceHomeScreen(),
+      ),
+      GoRoute(
+        path: '/licenses/:listingId',
+        builder: (context, state) => LicensingListingDetailScreen(
+          listingId: state.pathParameters['listingId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/licenses/:listingId/buy/:tierId',
+        builder: (context, state) => LicenseCheckoutScreen(
+          listingId: state.pathParameters['listingId']!,
+          tierId: state.pathParameters['tierId']!,
+        ),
+      ),
+      GoRoute(
+        path: '/my-licenses',
+        builder: (context, state) => const MyLicensesScreen(),
+      ),
+      GoRoute(
+        path: '/create-listing',
+        builder: (context, state) => const CreateListingScreen(),
+      ),
+      GoRoute(
+        path: '/partners',
+        builder: (context, state) => const PartnersPortalScreen(),
+      ),
+      GoRoute(
+        path: '/license/:licenseId',
+        builder: (context, state) => LicensePublicRecordScreen(
+          licenseId: state.pathParameters['licenseId']!,
+        ),
       ),
 
       // ── Weekly Polls (Doc 3) — /poll/:pollId/embed is the shareable embed ──
