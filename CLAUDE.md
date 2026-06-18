@@ -46,6 +46,10 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 26. One role per match: for a match with an open battle_outcome market, a verified human is COMBATANT (uses chits, cannot bet) or SPECTATOR (bets, cannot influence) — never both. Enforced at the DB layer across KYC-linked alts (identity_hash). Never weaken the bets/arena_events integrity triggers (migration 102)
 27. Battle Chits are the canonical powerup system — arena_abilities/arena_trigger are legacy-only; do not extend them. Chit usage is participant-only and blocked while the caller holds a stake on the linked market
 28. identity_hash partial-UNIQUE on approved KYC rows is the sybil anchor — never drop it; Stripe Identity webhook populates it in live mode
+29. lkn_agreements is append-only: after INSERT only status fields change (revoked/expired/suspended/transferred). terms_snapshot is immutable — verification reads the snapshot, never the live template. Enforced by the migration 111 BEFORE UPDATE guard trigger; never weaken it.
+30. lkn_license_templates contract text is produced only by lkn-generate-contract from the pre-approved clause library — never generate novel legal language from AI.
+31. lkn-verify validates the API key (X-NORA-API-Key header) and enforces the daily rate limit BEFORE any license data is read. Never return license data without a valid key.
+32. The signing private key lives only as the NORA_SIGNING_PRIVATE_KEY edge-function secret (PKCS8 PEM). Never log it, return it, or commit it. lkn-verify degrades to signature:null when it is absent.
 
 ## Games
 - **Markets**: bet on creator Display Score direction. Pool: 90% winners / 5% platform / 5% Market Maker.
@@ -54,6 +58,18 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 - **Hot Topic**: celebrity buzz leaderboard, independent of games. 25 celebs, Claude scoring twice daily via Currents API.
 - **Campaigns**: royalty crowdfunding. Creators offer % of future royalties. Phases 1–3 live (SIM mode): KYC, investment, revenue/distributions, governance proposals + voting, campaign updates + notifications. See docs/campaigns-framework.md.
 - **Emergency Fund**: community mutual aid pool at `/emergency-fund`. Anyone can contribute (sim mode — no real money). Contributors vote on payout requests. AI evaluates requests privately; documents never exposed to voters. Stripe Treasury sim-mode until app clears. Migrations 093–097, functions ubi-*.
+
+## Licensing Marketplace
+Right of Publicity licensing at `/licenses`. Tables prefixed `lkn_` (migrations 108–113);
+edge functions `lkn-*`. A licensor lists their likeness; buyers purchase priced tiers,
+each governed by a toggle-driven template. Purchases create an append-only `lkn_agreements`
+row (Hard Rule 29) whose `terms_snapshot` is the contract in force. Public registry at
+`/license/:id` (no PII). Verification REST API: `GET api.noraplatforms.com/v1/verify`,
+auth via **X-NORA-API-Key** header, rate-limited per key (Hard Rule 31); responses are
+ECDSA P-256 signed when NORA_SIGNING_PRIVATE_KEY is set (Hard Rule 32). License IDs:
+`LKN-[year]-[8 chars]`. Payments sim-mode (`LKN_PAYMENTS` defaults `sim`). Contracts
+come only from the pre-approved clause library (Hard Rule 30). Flutter screens under
+`flutter_app/lib/features/licensing/`. Deploy/runbook: docs/lkn-deploy-runbook.md.
 
 ## Reference Docs
 - Scoring formulas, DB tables, data flows: docs/scoring-and-db-spec.md
