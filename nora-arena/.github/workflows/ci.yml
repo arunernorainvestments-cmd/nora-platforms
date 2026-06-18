@@ -1,0 +1,97 @@
+# N.O.R.A. Arena CI.
+#
+# NOTE: GitHub only runs workflows from `.github/workflows` at a REPO ROOT, so this
+# file is dormant while nora-arena lives inside nora-platforms. It activates once
+# nora-arena is extracted to its own repo (BUILD_WORKFLOW.md Phase 0). The build
+# jobs additionally need the android/ + ios/ shells from `flutter create`.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+env:
+  FLUTTER_CHANNEL: stable
+
+jobs:
+  analyze:
+    name: Analyze & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+      - run: flutter --version
+      - run: flutter pub get
+      # main.dart loads .env (declared as an asset) — provide a CI placeholder.
+      - name: Write placeholder .env
+        run: |
+          cat > .env <<'EOF'
+          SUPABASE_URL=https://cceisywxwhgljdpisjrl.supabase.co
+          SUPABASE_ANON_KEY=ci-placeholder
+          NORA_API_BASE=https://cceisywxwhgljdpisjrl.functions.supabase.co
+          NORA_API_KEY=ci-placeholder
+          EOF
+      - run: flutter analyze         # CLAUDE.md rule 9: zero issues
+      - run: flutter test
+
+  android:
+    name: Build Android (.aab)
+    needs: analyze
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+      - run: flutter pub get
+      - name: Write placeholder .env
+        run: |
+          cat > .env <<'EOF'
+          SUPABASE_URL=https://cceisywxwhgljdpisjrl.supabase.co
+          SUPABASE_ANON_KEY=ci-placeholder
+          NORA_API_BASE=https://cceisywxwhgljdpisjrl.functions.supabase.co
+          NORA_API_KEY=ci-placeholder
+          EOF
+      - run: flutter build appbundle --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-release-aab
+          path: build/app/outputs/bundle/release/*.aab
+      # TODO(Phase 6): deploy to Play Internal — needs PLAY_SERVICE_ACCOUNT_JSON
+      # secret + r0adkll/upload-google-play. Inject real keys at build via
+      # --dart-define instead of the placeholder .env.
+
+  ios:
+    name: Build iOS (.ipa, unsigned)
+    needs: analyze
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ env.FLUTTER_CHANNEL }}
+          cache: true
+      - run: flutter pub get
+      - name: Write placeholder .env
+        run: |
+          cat > .env <<'EOF'
+          SUPABASE_URL=https://cceisywxwhgljdpisjrl.supabase.co
+          SUPABASE_ANON_KEY=ci-placeholder
+          NORA_API_BASE=https://cceisywxwhgljdpisjrl.functions.supabase.co
+          NORA_API_KEY=ci-placeholder
+          EOF
+      - run: flutter build ios --release --no-codesign
+      # TODO(Phase 6): codesign + upload to TestFlight — needs Apple API key +
+      # certs (e.g. fastlane match / apple-actions/upload-testflight-build).
