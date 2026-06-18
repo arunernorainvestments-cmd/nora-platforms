@@ -33,7 +33,9 @@ the governing spec.
 ## What is NOT here yet (next phases — doc6 checklist)
 - Full Flame battle loop + Rive rigs + Lottie effects (art pipeline dependent)
 - Firebase Cloud Messaging wiring (needs a Firebase project)
-- RevenueCat IAP + `mobile_iap_confirm` edge function (needs RevenueCat config)
+- RevenueCat IAP — Dart/SDK side only (needs RevenueCat config); the backend
+  `mobile_iap_confirm` edge function + migration 115 are already DEPLOYED in
+  nora-platforms (see BUILD_WORKFLOW.md Phase 6)
 - The native `android/` and `ios/` folders (run `flutter create`, above)
 
 ## Read first (especially AI build agents — Antigravity, Claude Code)

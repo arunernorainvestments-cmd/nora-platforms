@@ -117,10 +117,21 @@ appears in the pool; resolution notifies.
 **Steps**
 1. **FCM:** Firebase project; `firebase_messaging`; store token in
    `profiles.fcm_token_mobile` (migration 114 — already live).
-2. **IAP:** RevenueCat products; on purchase call a new **nora-platforms** edge
-   function `mobile_iap_confirm(product_id, purchase_token)` (idempotent,
-   `ON CONFLICT DO NOTHING`, same `token_transactions`). This is the ONLY new
-   backend item — it belongs in nora-platforms, not here.
+2. **IAP:** RevenueCat products — token packs `tokens_starter|popular|pro|elite`
+   (100/500/1200/2500 tokens) and chit packs `chit_pack_common` (5 common) /
+   `chit_pack_rare` (1 rare + 2 common). On purchase, POST the user's Supabase
+   session JWT to the **nora-platforms** edge function `mobile_iap_confirm`:
+     `POST https://cceisywxwhgljdpisjrl.functions.supabase.co/mobile_iap_confirm`
+     body `{ "product_id": "...", "purchase_token": "..." }`
+     → `{ status: "credited"|"already_processed", tokens_credited, chits_credited }`
+   ✅ **BACKEND ALREADY BUILT + DEPLOYED** (nora-platforms migration 115
+   `mobile_iap_receipts` + the fn, 2026-06-18). Idempotent: `purchase_token` is the
+   PK of `mobile_iap_receipts`, so a replay echoes the original grant and never
+   double-credits; credits the SAME `token_transactions` ledger as web purchases.
+   Defaults to **sim mode** (credits on trust, pre-launch); to validate against
+   RevenueCat first, set nora-platforms secrets `MOBILE_IAP_MODE=live` +
+   `REVENUECAT_API_KEY`. The backend half is DONE — only the Dart side remains here
+   (RevenueCat SDK + calling the fn). NO backend work belongs in this repo.
 3. **Web hand-off (do last, only after Phase 4 is solid):** in nora-platforms add
    `ArenaRedirectScreen`/`BattleRedirectScreen` and remove the web `/arena`
    `/battle` screens (doc6 §What to REMOVE).
