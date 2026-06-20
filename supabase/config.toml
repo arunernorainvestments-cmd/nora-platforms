@@ -243,6 +243,15 @@ otp_expiry = 3600
 # subject = "You have been invited"
 # content_path = "./supabase/templates/invite.html"
 
+# Password-reset email uses the scanner-safe token_hash link (see template
+# comment). UpdatePasswordScreen verifies it via auth.verifyOTP. NOTE: the
+# PRODUCTION project (ref cceisywxwhgljdpisjrl) is configured in the Supabase
+# dashboard, not this file — mirror this template there and allow-list
+# https://noraplatforms.com/update-password under Auth → URL Configuration.
+[auth.email.template.recovery]
+subject = "Reset your NORA password"
+content_path = "./supabase/templates/recovery.html"
+
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]
 # enabled = true
