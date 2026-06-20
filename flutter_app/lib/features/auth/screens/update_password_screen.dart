@@ -99,6 +99,14 @@ class _UpdatePasswordScreenState extends ConsumerState<UpdatePasswordScreen> {
     }
   }
 
+  // Escape hatch off the expired screen. The router pins any active recovery
+  // session to /update-password, so we must release the latch first or these
+  // navigations bounce straight back here ("dead" buttons).
+  void _leaveRecovery(String location) {
+    ref.read(passwordRecoveryProvider.notifier).state = false;
+    context.go(location);
+  }
+
   String _humanizeError(String? code, String raw) {
     final lower = '${code ?? ''} $raw'.toLowerCase();
     if (lower.contains('expired') ||
@@ -301,12 +309,12 @@ class _UpdatePasswordScreenState extends ConsumerState<UpdatePasswordScreen> {
         ),
         const SizedBox(height: 32),
         ElevatedButton(
-          onPressed: () => context.go('/forgot-password'),
+          onPressed: () => _leaveRecovery('/forgot-password'),
           child: const Text('Request a new link'),
         ),
         const SizedBox(height: 12),
         TextButton(
-          onPressed: () => context.go('/login'),
+          onPressed: () => _leaveRecovery('/login'),
           child: const Text('Back to login'),
         ),
       ],
