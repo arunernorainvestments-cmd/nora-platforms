@@ -5,6 +5,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 // More reliable than ?next= URL params across GoRouter's async redirect re-fires.
 final pendingNavigationProvider = StateProvider<String?>((ref) => null);
 
+// Set true when Supabase emits AuthChangeEvent.passwordRecovery (user followed a
+// password-reset link). While true the router pins the user to /update-password so
+// the recovery session can't be silently bounced to /home. Cleared once the new
+// password is saved (or the flow is abandoned).
+final passwordRecoveryProvider = StateProvider<bool>((ref) => false);
+
 // Lightweight approval check used by the router.
 // Re-evaluates whenever auth state changes.
 // Returns: true = approved, false = pending, null = not logged in / loading.

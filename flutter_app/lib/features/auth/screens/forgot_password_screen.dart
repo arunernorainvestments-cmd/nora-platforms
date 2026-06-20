@@ -30,7 +30,12 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
     }
     setState(() { _isLoading = true; _error = null; _success = null; });
     try {
-      await Supabase.instance.client.auth.resetPasswordForEmail(email);
+      // redirectTo must be allowlisted in Supabase (Auth → URL Configuration).
+      // Uri.base.origin keeps this correct across local dev and production.
+      await Supabase.instance.client.auth.resetPasswordForEmail(
+        email,
+        redirectTo: '${Uri.base.origin}/update-password',
+      );
       setState(() {
         _success = 'Check your email for a password reset link';
       });
