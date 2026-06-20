@@ -1,0 +1,28 @@
+<!--
+  Password-reset (recovery) email template for NORA Platforms.
+
+  Uses the token_hash transport instead of the default {{ .ConfirmationURL }}.
+  Why: {{ .ConfirmationURL }} points at Supabase's /auth/v1/verify endpoint,
+  which spends the one-time recovery token on the FIRST GET request. Email
+  security scanners / link-prefetchers (Outlook SafeLinks, corporate proxies,
+  antivirus) hit that URL before the human does, so a brand-new link reads as
+  "expired" by the time it is clicked.
+
+  Linking straight to the app with token_hash defers verification to a POST
+  (auth.verifyOTP), which a passive scanner GET does not consume. It also works
+  cross-device. UpdatePasswordScreen reads ?token_hash & ?type and calls
+  verifyOTP(type: recovery, tokenHash: ...).
+
+  Production: paste this into Supabase Dashboard → Authentication → Emails →
+  "Reset Password" template, and make sure {{ .SiteURL }} is noraplatforms.com
+  and /update-password is in the redirect allow-list (URL Configuration).
+-->
+<h2>Reset your NORA password</h2>
+<p>We received a request to reset the password for your NORA Platforms account.</p>
+<p>
+  <a
+    href="{{ .SiteURL }}/update-password?token_hash={{ .TokenHash }}&type=recovery"
+    >Set a new password</a
+  >
+</p>
+<p>This link is single-use and expires shortly. If you didn't request it, you can safely ignore this email.</p>
