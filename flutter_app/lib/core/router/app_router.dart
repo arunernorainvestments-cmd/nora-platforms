@@ -1,7 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../features/auth/screens/forgot_password_screen.dart';
+import '../../features/auth/screens/update_password_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
 import '../../features/auth/screens/pending_approval_screen.dart';
 import '../../features/auth/screens/referral_screen.dart';
@@ -71,7 +73,14 @@ class _RouterNotifier extends ChangeNotifier {
 
 final routerProvider = Provider<GoRouter>((ref) {
   final notifier = _RouterNotifier();
-  ref.listen(authStateProvider, (_, __) => notifier.notify());
+  ref.listen(authStateProvider, (_, next) {
+    // A password-reset link produces a recovery session. Latch it so the
+    // redirect below pins the user to /update-password instead of /home.
+    if (next.value?.event == AuthChangeEvent.passwordRecovery) {
+      ref.read(passwordRecoveryProvider.notifier).state = true;
+    }
+    notifier.notify();
+  });
   ref.listen(approvalStatusProvider, (_, __) => notifier.notify());
   ref.onDispose(notifier.dispose);
 
@@ -88,6 +97,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       final isLoggedIn = authState.value?.session != null;
       final isApproved = approvalStatus.value; // null = loading or not logged in
       final loc = state.matchedLocation;
+
+      // ── Password recovery: pin to /update-password ────────────────────────
+      // A reset link grants a recovery session; without this pin the blocks
+      // below would bounce the user straight to /home and they could never set
+      // a new password.
+      if (ref.read(passwordRecoveryProvider) && loc != '/update-password') {
+        return '/update-password';
+      }
 
       // ── Beta gate: hard-block unapproved users ────────────────────────────
       if (isLoggedIn && isApproved == false && loc != '/pending-approval') {
@@ -179,6 +196,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/forgot-password',
         builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+      // Target of the password-reset email link (redirectTo). Public so the
+      // recovery session can be exchanged from the URL before the user is
+      // "logged in"; the screen handles the expired-link case itself.
+      GoRoute(
+        path: '/update-password',
+        builder: (context, state) => const UpdatePasswordScreen(),
       ),
 
       // ── Challenges screen (authenticated, no bottom nav) ──────────────────
