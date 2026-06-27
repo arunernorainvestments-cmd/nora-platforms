@@ -1,11 +1,19 @@
 # NORA Platforms — CLAUDE.md
-# Last updated: 2026-06-06
+# Last updated: 2026-06-27
 
 ## Project
-Flutter web prediction market + live battle platform. Three games, one wallet.
+Flutter web prediction market + live battle platform. Three games, one wallet,
+plus two community systems (Emergency Fund, Licensing Marketplace).
 Pre-launch — July 4 2026.
 Repo: arunernorainvestments-cmd/nora-platforms
 Supabase ref: cceisywxwhgljdpisjrl | Domain: noraplatforms.com (Cloudflare → Vercel → Flutter)
+
+This repo keeps four docs. **CLAUDE.md** = canonical rules + how to build safely
+(this file). **PLAN.md** = where we're going (future state not yet built). **ARCHIVE.md** =
+where we've been (history, full schemas, scoring formulas, infra, runbooks, testing,
+deprecated specs). **RECONCILIATION.md** = the cross-repo contract with the nora-arena mobile
+app (what it consumes from this backend + open platform-side decisions). If CLAUDE.md and
+ARCHIVE.md ever disagree, CLAUDE.md wins.
 
 ## Tech Stack
 - Flutter web: plain Riverpod only (FutureProvider.autoDispose / Provider). NO @riverpod, NO build_runner, NO codegen. Ever.
@@ -13,6 +21,7 @@ Supabase ref: cceisywxwhgljdpisjrl | Domain: noraplatforms.com (Cloudflare → V
 - Routing: GoRouter + PathUrlStrategy (clean URLs, no #)
 - Hosting: Vercel catch-all rewrite → Flutter index.html
 - Battle animations: Flame (sprites) + Lottie JSON (effects) + Flutter native (UI)
+- LLM calls use claude-sonnet-4-6 (Hot Topic scoring, Emergency Fund AI). Never hardcode keys.
 
 ## Theme
 bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00C896 | danger #FF4757
@@ -51,55 +60,40 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 31. lkn-verify validates the API key (X-NORA-API-Key header) and enforces the daily rate limit BEFORE any license data is read. Never return license data without a valid key.
 32. The signing private key lives only as the NORA_SIGNING_PRIVATE_KEY edge-function secret (PKCS8 PEM). Never log it, return it, or commit it. lkn-verify degrades to signature:null when it is absent.
 
-## Games
+## Systems (current, built)
 - **Markets**: bet on creator Display Score direction. Pool: 90% winners / 5% platform / 5% Market Maker.
-- **Arena**: 5-min live 1v1. ArenaScore in-memory (BaseFlow + HeatInfluence + AbilityImpact − Suppression). Pool: 90% backers / 5% platform / 5% winning creator.
-- **Battle**: 6-player (2 teams of 3), turn-based, Pokémon-style. Phases A+B+C done. Phase D (map buffs, matchmaking queue, balance) queued. See docs/battle-spec.md.
+- **Arena**: now the **spectator + prediction-market surface over Battle matches** (markets with resolution_type='battle_outcome'). A legacy creator-vs-creator live 5-min 1v1 (ArenaScore in-memory, Back/Trigger) still coexists on /arena and is walled off by the integrity triggers (Hard Rules 26–28). Legacy pool: 90% backers / 5% platform / 5% winning creator.
+- **Battle**: 6-player (2 teams of 3), turn-based, Pokémon-style. 1v1/2v2/3v3. Phases A+B+C done; matchmaking shipped. Phase D (map buffs, balance) queued.
 - **Hot Topic**: celebrity buzz leaderboard, independent of games. 25 celebs, Claude scoring twice daily via Currents API.
-- **Campaigns**: royalty crowdfunding. Creators offer % of future royalties. Phases 1–3 live (SIM mode): KYC, investment, revenue/distributions, governance proposals + voting, campaign updates + notifications. See docs/campaigns-framework.md.
-- **Emergency Fund**: community mutual aid pool at `/emergency-fund`. Anyone can contribute (sim mode — no real money). Contributors vote on payout requests. AI evaluates requests privately; documents never exposed to voters. Stripe Treasury sim-mode until app clears. Migrations 093–097, functions ubi-*.
+- **Likeness Cards**: collectible character cards (replaced Campaigns). Owners field cards in Battle and share match rewards; original creator always eligible to battle as themselves. Stat sheets (6 stats, 300-pt budget) feed Battle/Arena. Card + Chit marketplaces, weekly polls (stat multipliers) round it out.
+- **Battle Chits**: canonical single-use powerup collectibles (see Hard Rule 27 + ARCHIVE.md).
+- **Emergency Fund** (`/emergency-fund`, `ubi_*`): community mutual-aid pool, sim mode. Contribute → AI privately evaluates request → random contributor panel votes → Stripe Treasury disburses. Platform holds zero funds.
+- **Licensing Marketplace** (`/licenses`, `lkn_*`): Right of Publicity licensing. Buyers purchase priced tiers governed by toggle-driven templates → append-only `lkn_agreements` (Hard Rule 29). Public registry `/license/:id` (no PII). Verification REST API `GET api.noraplatforms.com/v1/verify`, X-NORA-API-Key auth, rate-limited (Hard Rule 31), ECDSA P-256 signed (Hard Rule 32). License IDs `LKN-[year]-[8 chars]`. Payments sim-mode (`LKN_PAYMENTS=sim`).
+- **Campaigns**: ARCHIVED. Deprecated by migration 089, replaced by Likeness Cards. Tables renamed `campaigns_archived_*`, read-only; Flutter list screen shows a deprecation banner. Do not resurrect. Full framework + on-chain vision preserved in ARCHIVE.md.
 
-## Licensing Marketplace
-Right of Publicity licensing at `/licenses`. Tables prefixed `lkn_` (migrations 108–113);
-edge functions `lkn-*`. A licensor lists their likeness; buyers purchase priced tiers,
-each governed by a toggle-driven template. Purchases create an append-only `lkn_agreements`
-row (Hard Rule 29) whose `terms_snapshot` is the contract in force. Public registry at
-`/license/:id` (no PII). Verification REST API: `GET api.noraplatforms.com/v1/verify`,
-auth via **X-NORA-API-Key** header, rate-limited per key (Hard Rule 31); responses are
-ECDSA P-256 signed when NORA_SIGNING_PRIVATE_KEY is set (Hard Rule 32). License IDs:
-`LKN-[year]-[8 chars]`. Payments sim-mode (`LKN_PAYMENTS` defaults `sim`). Contracts
-come only from the pre-approved clause library (Hard Rule 30). Flutter screens under
-`flutter_app/lib/features/licensing/`. Deploy/runbook: docs/lkn-deploy-runbook.md.
+## Building future work safely (governance)
+Everything queued in PLAN.md must respect these, in addition to the Hard Rules above:
+- **Migrations** apply only via the git-driven `supabase db push` flow so the
+  `schema_migrations` ledger stays consistent. NEVER hand-run DDL through the Management API
+  query endpoint — it applies the change without recording it and breaks the next push.
+- **Likeness/card language** is collectible game assets, never financial instruments. Never use
+  "investment", "return", "yield", "dividend", or "revenue share" in card-facing copy or code.
+- **Append-only ledgers** — `likeness_card_transfers`, `lkn_agreements`, `campaigns_archived_ledger`
+  — are INSERT-only. Never UPDATE an existing row (status-only changes on lkn_agreements per Rule 29).
+- **sim vs live** is a per-feature mode flag (campaigns/cards/Emergency Fund/licensing). Build new money
+  flows in sim first; KYC + payment gates flip on at live launch only. All monetary values are integer
+  USD cents — no floating point anywhere in money math.
+- **KYC staking gates** (`platform_integrity_settings`) default off in sim; flipping them on is the live-launch
+  switch. `enforce_one_role_per_match` stays TRUE always (money-independent integrity).
+- **IAP / token credit** functions must be idempotent (ON CONFLICT DO NOTHING + a receipt ledger) — web Stripe
+  and mobile RevenueCat both credit the same `token_transactions`.
+- **No backend in the mobile repo**: nora-arena is frontend-only. All tables, edge functions, and pg_cron
+  stay in this Supabase project. Mobile reaches licensing only through `api.noraplatforms.com/v1/verify`.
+- **Dev tooling** (arena bot-backer, test-match maintainer, dev_* RPCs) must be removed before launch — see the
+  pre-launch reset sequence in ARCHIVE.md.
 
-## Arena/Battle Mobile App (doc6)
-Arena + Battle move to a **separate new repo** `nora-arena` (Flutter mobile, Flame
-engine) sharing this Supabase backend. NO tables/edge functions/cron move — mobile
-is frontend-only. Repo A holds the prep: migration **114** (`profiles.fcm_token_mobile`,
-FCM push token, web-unused) and four thin convenience wrappers `nora-arena-api-*`
-(profile / spotlight / market / token-balance) that aggregate existing tables so the
-app loads a screen in one call — NOT new data sources. License Sync (the headline
-cross-platform test) calls `api.noraplatforms.com/v1/verify` per-user list mode.
-nora-arena-api-spotlight proxies compute-spotlight (Hard Rule 19 single producer),
-never recomputes. Full spec: nora_redesign_doc6_mobile_app.md.
-
-## Reference Docs
-- Scoring formulas, DB tables, data flows: docs/scoring-and-db-spec.md
-- Battle animation, asset naming, type chart, speed stats: docs/battle-spec.md
-- Edge functions, pg_cron jobs, routing: docs/infra.md
-- Pre-launch reset sequence: docs/pre-launch.md
-- Campaigns architecture, fee model, regulatory framework, build phases: docs/campaigns-framework.md
-- Battle Chit economy, market-integrity invariant, KYC backstop: docs/battle-chits-and-arena-integrity.md
-
-## Queued
-- Campaigns Phase 4 — Secondary market (stake listings, buy/sell, ownership transfer)
-- Campaigns Phase 5 — Live mode (Stripe Connect escrow, real KYC via Stripe Identity, SEC Form C workflow, Reg CF limit enforcement)
-- Campaigns Phase 6 — Revenue API integrations (YouTube Analytics, DistroKid CSV, Spotify for Artists)
-- Campaigns OG meta tags — Vercel edge middleware for rich link previews on /campaign/:id
-- Battle Phase D: map buff wiring, matchmaking queue, balance tuning
-- Battle Chit economy: framework built (migrations 086/102/103) — remaining: counter/type_override combat hooks, true damage_shield absorb, acquisition flows (challenge/pack/gift), Stripe Identity identity_hash population. See docs/battle-chits-and-arena-integrity.md §6
-- Slice 2: comprehensive is_test_account filter sweep
-- Celebrity profile pictures (pre-launch)
-- Onboarding walkthrough (4-5 slide PageView)
-- Profile avatars from connected platform data
-- Arena Visual Pass 2/3
-- Marketing campaign and launch-day animation
+## Reference
+- Where we're going, with build checklists: **PLAN.md**
+- History, scoring formulas, DB schemas, infra (edge fns / pg_cron / routes), Arena testing, deploy runbooks,
+  deprecated Campaigns framework, redesign migration ledger: **ARCHIVE.md**
+- Arena + Battle mobile app lives in a separate repo (`arunernorainvestments-cmd/nora-arena`, its own CLAUDE.md). Shares this backend. Cross-repo contract + open decisions: **RECONCILIATION.md**.
