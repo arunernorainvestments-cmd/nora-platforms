@@ -98,7 +98,7 @@ P3 (CCG engine)   P4 (Vibe)     P6 (mint+ascend) ─┘
 
 **DO NOT:** allow user-set tier/cost/stats · let licensed-pack barter skip KYC · drop archived 1v1 tables.
 **Exit:** chits exist, owned, deckable, tradeable; premium packs ride licensing rail.
-**Push status:** migrations 116–121 written + self-reviewed + committed; **NOT yet `supabase db push`'d to prod** (awaiting go-ahead — live pre-launch DB `cceisywxwhgljdpisjrl`). No Dart changed → `flutter analyze` unaffected.
+**Push status:** migrations 116–121 **APPLIED to prod** (`cceisywxwhgljdpisjrl`) 2026-07-01 via `supabase db push`; remote ledger `local==remote` through 121, no drift. Clean apply validates all DDL end-to-end. No Dart changed → `flutter analyze` unaffected. Functional RPC smoke test (barter/deck/pack flows) deferred until P2 seeds real chits via the derivation fn.
 
 ---
 
