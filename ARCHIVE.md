@@ -1,8 +1,30 @@
 # NORA Platforms — ARCHIVE.md
-# Where we've been + full engineering reference. Last updated: 2026-06-27.
+# Where we've been + full engineering reference. Last updated: 2026-07-01.
 #
 # CLAUDE.md is canonical. If this file disagrees with CLAUDE.md, CLAUDE.md wins.
 # PLAN.md holds future (not-yet-built) work.
+#
+# ---------------------------------------------------------------------------
+# 2026-07-01 — v3 PIVOT: "Moments" card-battler (supersedes the v2.x 1v1 fighter)
+# ---------------------------------------------------------------------------
+# The game pivoted from the 1v1 archetype-fighter to a collectible card-battler built on
+# minted "moment chits" (spec: NORA_PLATFORMS_BUILD_SPEC_v3.md; phased tracker:
+# NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md, P0–P7). CLAUDE.md §"The game (v3)" is canonical.
+# Deprecated by the pivot (RETAINED here, archived-not-dropped; v3 Phase 7 executes the archival):
+#   • 1v1 turn-based Battle resolver + 6-player sprite Battle — engineering in §A3 below.
+#   • D&D six-stat characters + per-archetype move-sets (`battle_abilities`) — §A3 (type chart/speed),
+#     migrations 060–069/091.
+#   • License-per-character battle eligibility (`check_battle_eligibility`, `battle_enqueue` card/license
+#     gating, mig 082/083/101) — v3 eligibility is "own moment chits + a legal deck." (RECONCILIATION R2 retired.)
+#   • Legacy powerup "Battle Chits" (`battle_chit_definitions`/`user_battle_chits`, mig 086/103/106) — dormant;
+#     integrity spec in §A4. NOTE: the v3 "moment chit" asset is a DIFFERENT table (`moment_chits`, P1) — do not conflate.
+#   • Legacy in-memory Arena (Back/Trigger, ArenaScore) + legacy `battle_spectator_bets` path (mig 062) — §A1/§A4;
+#     kept until the mobile bet cutover ships (RECONCILIATION R3).
+#   • Parody-celebrity avatars — celebrities now return as licensed premium chits (v3 P1).
+#   • Weekly polls / stat multipliers → DORMANT (v3 P7); stat sheets survive but are cosmetic in the CCG.
+# What survives & strengthens: prediction markets, the Vibe Meter (now also a gameplay unlock), the `lkn_*`
+# licensing infra (now premium chit packs), the two-currency model, and the payout split (creator slice now
+# routes to the moment-owners of chits played). Retired SQL stays in supabase/migrations/ + referenced §A3/§A4/§B.
 #
 # This file merges the former docs/: scoring-and-db-spec, infra, battle-spec,
 # battle-chits-and-arena-integrity, ARENA-TESTING, redesign-ground-truth, ARCHIVE,

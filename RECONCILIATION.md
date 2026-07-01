@@ -1,5 +1,5 @@
 # Cross-Repo Reconciliation — nora-platforms ↔ nora-arena
-# The backend/platform side of the contract. Last updated: 2026-06-27.
+# The backend/platform side of the contract. Last updated: 2026-07-01 (v3 CCG pivot — see §5).
 #
 # Pairs 1:1 with nora-arena/RECONCILIATION.md (the client side). nora-arena is the
 # Arena/Battle mobile app — a SEPARATE GitHub repo (arunernorainvestments-cmd/nora-arena,
@@ -162,7 +162,47 @@ R2 (license→battle eligibility — the headline integration), R3 (which specta
 canonical — and don't delete the legacy table until decided). All three are backend work that
 lives here; their actionable forms should be mirrored into PLAN.md.
 
-## 5. Pointers
+## 5. v3 CCG pivot — new client contracts (added 2026-07-01)
+
+The game pivoted to the **"Moments" card-battler** (`NORA_PLATFORMS_BUILD_SPEC_v3.md`; phased in
+`NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md`). This **replaces** the character-select / 1v1 fighter contract
+with a collectible-card-game contract. The §1 table above stays valid for what's already deployed (licensing,
+FCM, IAP, auth); the rows below are the **new/changed** contracts the Unity client must consume as each phase
+lands. Backbone rule unchanged: nora-arena is frontend-only and server-authoritative.
+
+| Backend provides (phase) | Arena consumes | Status |
+|---|---|---|
+| **`moment_chits` catalog** (`tier` F–S, `archetype_family`, `chit_type` creature/spell, `aura_cost`/`atk`/`hp`, `keywords[]`, `vibe_gate`, `card_art_url`, `moment_video_ref`) (P1/P2) | render chits as illustrated cards w/ tier badges; deck-builder | 🔴 not built |
+| **Lean deck rules** (size 20 / max 2 copies), server-validated on save + match entry (P1) | deck-builder validation mirror | 🔴 not built |
+| **CCG `battle_events` stream** (draw/summon w/ `moment_video_ref`/attack/effect/**fusion**/KO + Life/Aura/Vibe `*_after`), keyed `(turn_number, sequence_in_turn)` (P3) | `PlaybackQueue` + `SubmitTurn`; HUD reconciles from server, computes nothing | 🔴 rebuild — supersedes current `battle_events` |
+| **Shared-3D summon contract** + `moment_video_ref` (P3) | shared humanoid rig + camera-cut moment compositing (Meshy/Unity) | 🔴 not built |
+| **`match_vibe`** server-authoritative (multi-factor, floored) (P4) | render Vibe; never compute | 🔴 not built |
+| **Real-money `battle_outcome` market iff both players KYC'd**; royalty → moment-owners of played chits (P5) | bet UI only on KYC'd matches; KYC/age/jurisdiction gating; USD settlement | 🔴 not built (G-MON gate) |
+| **Minting + ascension** (weekly, definition-level, one-directional) (P6) | minting UI; tier-reveal; ascension/refresh UI + tier-up celebration | 🔴 not built |
+| **`fusion_rules`** (tag-based patterns) (P2/P3) | fusion feedback + combined cutscene | 🔴 not built |
+
+**Currency split (Hard Rule 33):** battle prediction markets settle **USD**; Markets settle **tokens** — the
+client must not cross them. **G-MON** (🚧 §2-style open call) is the one open product decision: real-money
+market gating + royalty routing to moment-owners.
+
+**Retirements the client should plan for (v3):**
+- **R2 (license → battle eligibility) is RETIRED** — v3 removes license-per-character eligibility. Battle
+  eligibility is now "own moment chits + a legal deck." The `check_battle_eligibility`/`battle_enqueue`
+  card/license gating is deprecated; the Unity combatant flow should target the deck/chit model, not license unlock.
+- **R1 survives** — archetype **families** are the v3 effect-family classifier; still expose the resolved
+  archetype/family (via `moment_chits.archetype_family` and the registry) so the client drops its alias map.
+- **R3 survives, direction fixed** — v3 battle markets settle via `bets` on `battle_outcome` `markets` in USD;
+  point mobile at that path and deprecate legacy `battle_place_spectator_bet` (mig 062). Do NOT delete the
+  legacy 062 table/RPC until the mobile cutover ships.
+- Legacy 6-player sprite Battle, D&D stat characters, per-archetype move-sets, and parody-celebrity avatars are
+  deprecated (celebrities return as **licensed premium chits**). Retired schemas are archived-not-dropped (P7).
+
+**Client engine note:** nora-arena uses a local **Unity Editor via `unity-mcp`** (no WebGL/headless CI);
+launch target is mobile IL2CPP.
+
+---
+
+## 6. Pointers
 - Client side of this contract: `nora-arena/RECONCILIATION.md` + `UNITY_MIGRATION_HANDOFF.md` + `STATUS.md`.
 - Our backend reference: ARCHIVE.md (§A1 scoring/DB, §A2 infra, §A3 battle, §A4 chits/integrity, §B5 doc6).
 - Our forward work: PLAN.md (R1–R3 + gateway/key-rotation belong there as concrete tasks).

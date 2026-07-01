@@ -1,10 +1,11 @@
 # NORA Platforms — CLAUDE.md
-# Last updated: 2026-06-27
+# Last updated: 2026-07-01
 
 ## Project
-Flutter web prediction market + live battle platform. Three games, one wallet,
-plus two community systems (Emergency Fund, Licensing Marketplace).
-Pre-launch — July 4 2026.
+Flutter web prediction-market + **card-battler** platform ("Moments" — the v3 CCG pivot),
+one wallet, plus two community systems (Emergency Fund, Licensing Marketplace).
+Pre-launch — July 4 2026. The v3 build path lives in `NORA_PLATFORMS_BUILD_SPEC_v3.md` (canonical
+spec) + `NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md` (phased tracker, P0–P7).
 Repo: arunernorainvestments-cmd/nora-platforms
 Supabase ref: cceisywxwhgljdpisjrl | Domain: noraplatforms.com (Cloudflare → Vercel → Flutter)
 
@@ -53,23 +54,61 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 24. ubi-documents Storage bucket has NO client-accessible signed URLs, ever — documents are AI-only
 25. Individual vote values in ubi_panel_votes are forever private — no client SELECT policy, no index on vote column
 26. One role per match: for a match with an open battle_outcome market, a verified human is COMBATANT (uses chits, cannot bet) or SPECTATOR (bets, cannot influence) — never both. Enforced at the DB layer across KYC-linked alts (identity_hash). Never weaken the bets/arena_events integrity triggers (migration 102)
-27. Battle Chits are the canonical powerup system — arena_abilities/arena_trigger are legacy-only; do not extend them. Chit usage is participant-only and blocked while the caller holds a stake on the linked market
+27. **Naming (v3):** "Battle Chits" the single-use **powerup** collectibles live in `battle_chit_definitions`/`user_battle_chits` and are now **legacy/dormant** under the v3 card-battler. The v3 **card asset** — the minted-moment creature/spell that IS the game — is the **"moment chit"** in `moment_chits` (see Systems + PLAN P1). Do not conflate the two tables. The legacy powerup rule still holds: arena_abilities/arena_trigger are legacy-only, do not extend; legacy chit usage is participant-only and blocked while the caller holds a stake on the linked market.
 28. identity_hash partial-UNIQUE on approved KYC rows is the sybil anchor — never drop it; Stripe Identity webhook populates it in live mode
 29. lkn_agreements is append-only: after INSERT only status fields change (revoked/expired/suspended/transferred). terms_snapshot is immutable — verification reads the snapshot, never the live template. Enforced by the migration 111 BEFORE UPDATE guard trigger; never weaken it.
 30. lkn_license_templates contract text is produced only by lkn-generate-contract from the pre-approved clause library — never generate novel legal language from AI.
 31. lkn-verify validates the API key (X-NORA-API-Key header) and enforces the daily rate limit BEFORE any license data is read. Never return license data without a valid key.
 32. The signing private key lives only as the NORA_SIGNING_PRIVATE_KEY edge-function secret (PKCS8 PEM). Never log it, return it, or commit it. lkn-verify degrades to signature:null when it is absent.
+33. Battle prediction markets settle in **real money (USD)**, Markets settle in **tokens** — never cross the two currencies.
+34. A chit's **archetype/effect-family and damage numbers come from the authored `tier_ladder`**, never user-set. Tier is **cost-banded** (higher tier = stronger AND costlier Aura) — never strictly-better-for-cost.
+35. Real-money `battle_outcome` markets exist **only for matches where both players are KYC-verified** (per decision gate G-MON). Non-KYC matches run non-monetized.
+36. Tier **ascension is one-directional** (never de-rank), applies **between matches only**, and matches **snapshot chit stats at start** — mid-match ascension can never alter an active match.
+
+## The game (v3 — "Moments" card-battler, canonical)
+> **v3 supersedes the v2.x 1v1 archetype-fighter model entirely.** The build path is `NORA_PLATFORMS_BUILD_SPEC_v3.md`
+> + phased tracker `NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md` (P0–P7). Backend owns ALL game logic; Arena is display-only/server-authoritative.
+
+Each player has **Life** (default 30), builds a **lean deck** (size 20, max 2 copies/chit) of **moment chits**, and on
+their turn spends **Aura** (auto-ramp +1/turn to a cap of 10, refills each turn, **no land cards**) to summon chit
+**creatures** (ATK + HP only, **no AP**, field cap **3**) onto a shared-3D field or cast one-shot **spell-moments**.
+Win by reducing the opponent's Life to 0. Combat is **server-authoritative** — `process_battle_turn` resolves and emits
+ordered `battle_events`; the client computes nothing.
+
+- **The asset = the moment chit** (`moment_chits`, P1). A card minted from a real **viral moment** (a user's social post,
+  consent at link). Owned/collected/traded. Card art = the viral thumbnail; body = a shared 3D humanoid rig + a minted
+  cel-shaded moment video composited by camera cut on summon. Two value layers: **consent-minted user moments** (free to
+  mint/collect, the base) and **licensed creator/celebrity moments** (premium packs on the `lkn_*` rail).
+- **Tier ladder** (`tier_ladder`, P2) is the balance core: tiers **F/E/D/C/B/A/S**, **cost-banded** (higher tier stronger
+  AND costlier — Hard Rule 34). Tier is assigned from engagement at mint; a chit's cost/atk/hp/effect are **derived**,
+  never user-set. Archetype **families** (athlete/musician/artist/scientist/comedian/…) are the **effect-family classifier**.
+- **Fusion** (`fusion_rules`, P2/P3) is **tag-based** — authored patterns on `{family, keyword, element, count}`, not
+  per-card recipes — so it works for any user-minted chit.
+- **Two resource gates:** **Aura** (personal, "can I afford it?", auto-ramp) and **Vibe** (`match_vibe`, P4 — shared,
+  symmetric, market-driven, server-authoritative, passive floor; "is the crowd hyped?"). Premium ultimate chits need both.
+- **Minting + ascension** (P6): moments → chits (link → recommend → animate → classify → tier-assign → moderate → mint).
+  **Ascension** is one-directional, definition-level (all copies together), ≤1/7 days per user, between-matches only (Hard Rule 36).
 
 ## Systems (current, built)
-- **Markets**: bet on creator Display Score direction. Pool: 90% winners / 5% platform / 5% Market Maker.
-- **Arena**: now the **spectator + prediction-market surface over Battle matches** (markets with resolution_type='battle_outcome'). A legacy creator-vs-creator live 5-min 1v1 (ArenaScore in-memory, Back/Trigger) still coexists on /arena and is walled off by the integrity triggers (Hard Rules 26–28). Legacy pool: 90% backers / 5% platform / 5% winning creator.
-- **Battle**: 6-player (2 teams of 3), turn-based, Pokémon-style. 1v1/2v2/3v3. Phases A+B+C done; matchmaking shipped. Phase D (map buffs, balance) queued.
+- **Markets**: bet on creator Display Score direction, settled in **tokens** (Hard Rule 33). Pool: 90% winners / 5% platform / 5% Market Maker.
+- **Battle prediction markets** (v3): `battle_outcome` markets over card-battler matches, settled in **real money (USD)**.
+  Created **only when both players are KYC-verified** (decision gate **G-MON**, Hard Rule 35); non-KYC matches run
+  non-monetized. Payout split routes the creator/passive slices to the **moment-owners of the chits actually played**
+  ("summon your friend, your friend earns") — see PLAN P5.
 - **Hot Topic**: celebrity buzz leaderboard, independent of games. 25 celebs, Claude scoring twice daily via Currents API.
-- **Likeness Cards**: collectible character cards (replaced Campaigns). Owners field cards in Battle and share match rewards; original creator always eligible to battle as themselves. Stat sheets (6 stats, 300-pt budget) feed Battle/Arena. Card + Chit marketplaces, weekly polls (stat multipliers) round it out.
-- **Battle Chits**: canonical single-use powerup collectibles (see Hard Rule 27 + ARCHIVE.md).
+- **Likeness Cards**: collectible character cards + stat sheets (6 stats). Marketplaces + weekly polls persist; **weekly
+  polls/stat-multipliers go DORMANT under v3** (P7). Stat sheets are cosmetic-only in the card-battler.
 - **Emergency Fund** (`/emergency-fund`, `ubi_*`): community mutual-aid pool, sim mode. Contribute → AI privately evaluates request → random contributor panel votes → Stripe Treasury disburses. Platform holds zero funds.
-- **Licensing Marketplace** (`/licenses`, `lkn_*`): Right of Publicity licensing. Buyers purchase priced tiers governed by toggle-driven templates → append-only `lkn_agreements` (Hard Rule 29). Public registry `/license/:id` (no PII). Verification REST API `GET api.noraplatforms.com/v1/verify`, X-NORA-API-Key auth, rate-limited (Hard Rule 31), ECDSA P-256 signed (Hard Rule 32). License IDs `LKN-[year]-[8 chars]`. Payments sim-mode (`LKN_PAYMENTS=sim`).
-- **Campaigns**: ARCHIVED. Deprecated by migration 089, replaced by Likeness Cards. Tables renamed `campaigns_archived_*`, read-only; Flutter list screen shows a deprecation banner. Do not resurrect. Full framework + on-chain vision preserved in ARCHIVE.md.
+- **Licensing Marketplace** (`/licenses`, `lkn_*`): Right of Publicity licensing; now also the rail for **premium chit packs**. Buyers purchase priced tiers governed by toggle-driven templates → append-only `lkn_agreements` (Hard Rule 29). Public registry `/license/:id` (no PII). Verification REST API `GET api.noraplatforms.com/v1/verify`, X-NORA-API-Key auth, rate-limited (Hard Rule 31), ECDSA P-256 signed (Hard Rule 32). License IDs `LKN-[year]-[8 chars]`. Payments sim-mode (`LKN_PAYMENTS=sim`).
+
+## Deprecated / retired by v3 (archive, don't drop)
+- **The 1v1 archetype-fighter model**: the 6-player turn-based Battle resolver, **D&D six-stat characters**, per-archetype
+  **move-sets** (`battle_abilities`), and **license-per-character battle eligibility** (`check_battle_eligibility` gating).
+  Eligibility under v3 is "you own moment chits and have a legal deck." Retired schemas stay in place (P7 archives, never DROPs).
+- **Legacy Arena** creator-vs-creator live 5-min 1v1 (ArenaScore in-memory, Back/Trigger) + legacy `battle_spectator_bets`
+  path — walled off by integrity triggers (Hard Rules 26–28), retained until mobile bet path is settled (RECONCILIATION R3).
+- **Legacy powerup "Battle Chits"** (`battle_chit_definitions`) — dormant; superseded by the moment-chit asset (Hard Rule 27).
+- **Campaigns**: ARCHIVED (migration 089, replaced by Likeness Cards). Tables `campaigns_archived_*`, read-only. Do not resurrect.
 
 ## Building future work safely (governance)
 Everything queued in PLAN.md must respect these, in addition to the Hard Rules above:
@@ -93,6 +132,8 @@ Everything queued in PLAN.md must respect these, in addition to the Hard Rules a
   pre-launch reset sequence in ARCHIVE.md.
 
 ## Reference
+- v3 card-battler spec (canonical *what*): **NORA_PLATFORMS_BUILD_SPEC_v3.md**
+- v3 phased implementation tracker (the *how/when*, P0–P7, with repo-grounded reconciliation): **NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md**
 - Where we're going, with build checklists: **PLAN.md**
 - History, scoring formulas, DB schemas, infra (edge fns / pg_cron / routes), Arena testing, deploy runbooks,
   deprecated Campaigns framework, redesign migration ledger: **ARCHIVE.md**
