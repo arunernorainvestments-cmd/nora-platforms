@@ -140,18 +140,19 @@ P3 (CCG engine)   P4 (Vibe)     P6 (mint+ascend) ─┘
 
 ---
 
-## PHASE 4 — Vibe Meter backend (parallelizable with P3)
-**Effort:** M · **Depends:** P2 (threshold contract) · **Migrations:** ~125 · **PR:** `v3-p4-vibe`
+## PHASE 4 — Vibe Meter backend  ✅ applied to prod (mig 130–131)
+**Effort:** M · **Depends:** P2 (threshold contract) · **Migrations:** 130–131 · **PR:** `v3-p4-vibe`
 
 | # | Task | Done |
 |---|---|---|
-| 4.1 | **`process_battle_vibe_tick`** — copy only the COMMIT-per-tick + Realtime-broadcast pattern from the retired arena tick; **zero legacy-table dependency**. | ☐ |
-| 4.2 | **`match_vibe`** state (0–100 + thresholds). | ☐ |
-| 4.3 | Vibe = f(market activity + spectator presence + token reactions) with **passive floor / slow rise** (works in thin/non-monetized matches). Server-authoritative. | ☐ |
-| 4.4 | Engine (P3) reads thresholds for Vibe-gated chits; availability applies at **next-round boundary** after a crossing. | ☐ |
+| 4.1 | **`process_battle_vibe_tick`** — copy only the COMMIT-per-tick + Realtime-broadcast pattern from the retired arena tick; **zero legacy-table dependency**. → **mig 131** (void fn, one call = one tick; `ccg-vibe-tick` pg_cron @30s; zero legacy deps). | ✅ |
+| 4.2 | **`match_vibe`** state (0–100 + thresholds). → **mig 130** (`vibe` live + `available_vibe` latched + `vibe_floor`; thresholds = chits' `vibe_gate`). | ✅ |
+| 4.3 | Vibe = f(market activity + spectator presence + token reactions) with **passive floor / slow rise** (works in thin/non-monetized matches). Server-authoritative. → **mig 130** `ccg_vibe_events` (3 sources) + `ccg_record_vibe_signal()`; **mig 131** slew-toward-target (floor + activity, rise +5/decay −3 per tick). | ✅ |
+| 4.4 | Engine (P3) reads thresholds for Vibe-gated chits; availability applies at **next-round boundary** after a crossing. → **mig 130** repoints `ccg_get_match_vibe()` to `available_vibe`; `ccg_matches_latch_vibe` trigger latches live→available on turn advance (no `ccg_begin_turn` change needed). | ✅ |
 
 **DO NOT:** compute Vibe client-side · depend on a legacy table · depend solely on real-money bets.
 **Exit:** floored multi-factor Vibe broadcasts over Realtime; engine consumes it.
+**Push status:** migrations 130–131 **APPLIED to prod** 2026-07-01. Functional proof: mig 131 smoke — activity pulse → 3 ticks → `vibe 15` → round-boundary latch → engine reads latched value (logged `Vibe tick smoke OK: vibe 15, latched available 15`). Realtime: `match_vibe` + `ccg_events` added to `supabase_realtime` publication. `ccg_record_vibe_signal()` is the hook P5 bets/reactions will call. No Dart → `flutter analyze` unaffected.
 
 ---
 
