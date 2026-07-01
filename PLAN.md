@@ -19,7 +19,9 @@
   integrity/chit/KYC. 107–113 = Licensing. 114 = `profiles.fcm_token_mobile`. 115 = `mobile_iap_receipts`
   (on an UNMERGED branch `doc6-mobile-iap-confirm` — a v3 P5 live-flip prereq).
 - **`flutter analyze`:** clean as of the last redesign session.
-- **v3 status:** Phase 0 (docs/governance) IN PROGRESS. P1–P7 not started.
+- **v3 status:** Phase 0 (docs) DONE. Phase 1 (asset layer) BUILT — migrations **116–121** written +
+  self-reviewed + committed on branch `v3-p1-chit-asset-layer`, **not yet pushed to prod**. P2–P7 not started.
+  (P1.6 physical archival deferred to P7 — mig 121 sets deprecation markers only.)
 
 ---
 

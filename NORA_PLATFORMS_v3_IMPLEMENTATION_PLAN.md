@@ -84,20 +84,21 @@ P3 (CCG engine)   P4 (Vibe)     P6 (mint+ascend) ─┘
 
 ---
 
-## PHASE 1 — Chit catalog + collection + deck + ownership/barter
-**Effort:** L · **Depends:** P0 · **Migrations:** ~116–118 · **PR:** `v3-p1-chit-asset-layer`
+## PHASE 1 — Chit catalog + collection + deck + ownership/barter  ✅ built (migrations 116–121; not yet pushed)
+**Effort:** L · **Depends:** P0 · **Migrations:** 116–121 · **PR:** `v3-p1-chit-asset-layer`
 
 | # | Task | Done |
 |---|---|---|
-| 1.1 | **`moment_chits`** catalog (name locked P0; distinct from legacy `battle_chit_definitions`): `id, moment_id, character_class(consent_minted\|licensed), chit_type(creature\|spell_moment), archetype_family, tier(F–S), aura_cost, atk, hp, timing_type, keywords[], effect_ref, vibe_gate NULLable, card_art_url, moment_video_ref`. Tier/cost/atk/hp/effect **derived** (from P2), not free-set — enforce via constraint/trigger. | ☐ |
-| 1.2 | **`chit_ownership`** (user↔chit, quantity) + **append-only acquisition ledger** + derived holdings view. Copies fungible. RLS. | ☐ |
-| 1.3 | **`decks`/`deck_chits`**: size 20, max 2 copies/chit; validate server-side on save **and** at match entry. | ☐ |
-| 1.4 | **`chit-barter`** RPC: chit↔chit / chit↔token = **no KYC**; any swap touching a **licensed** chit requires **KYC both parties** (verify/cancel popup). Atomic; logs transfer event. | ☐ |
-| 1.5 | **Premium chit packs** on existing `lkn_*` plumbing (a licensed pack = set of `licensed`-class chits sold real-money). | ☐ |
-| 1.6 | Archive `battle_abilities` per-archetype move-set tables + remove license-per-character eligibility (eligibility = "own chits + legal deck"). **Archive, don't DROP.** | ☐ |
+| 1.1 | **`moment_chits`** catalog (name locked P0; distinct from legacy `battle_chit_definitions`): `id, moment_id, character_class(consent_minted\|licensed), chit_type(creature\|spell_moment), archetype_family, tier(F–S), aura_cost, atk, hp, timing_type, keywords[], effect_ref, vibe_gate NULLable, card_art_url, moment_video_ref`. Tier/cost/atk/hp/effect **derived** (from P2), not free-set — enforce via constraint/trigger. → **mig 116** (+ minimal `moments` anchor; RLS public-read, no client writes; stat-shape + keyword-subset CHECKs). | ✅ |
+| 1.2 | **`chit_ownership`** (user↔chit, quantity) + **append-only acquisition ledger** + derived holdings view. Copies fungible. RLS. → **mig 117** (`chit_acquisition_ledger` append-only + guard trigger; `chit_ownership` trigger-maintained holdings; `chit_grant` helper). | ✅ |
+| 1.3 | **`decks`/`deck_chits`**: size 20, max 2 copies/chit; validate server-side on save **and** at match entry. → **mig 118** (`deck_validate` + `deck_set_chits`; match-entry re-check via `deck_is_legal` in mig 121). | ✅ |
+| 1.4 | **`chit-barter`** RPC: chit↔chit / chit↔token = **no KYC**; any swap touching a **licensed** chit requires **KYC both parties** (verify/cancel popup). Atomic; logs transfer event. → **mig 119** (offer/accept/cancel handshake; `is_kyc_verified` gate on licensed crossover; `chit_barter_events` log). | ✅ |
+| 1.5 | **Premium chit packs** on existing `lkn_*` plumbing (a licensed pack = set of `licensed`-class chits sold real-money). → **mig 120** (`chit_packs`→`lkn_listings`, licensed-only contents guard, idempotent `chit_pack_grant`; real-money purchase wiring deferred to P5). | ✅ |
+| 1.6 | Archive `battle_abilities` per-archetype move-set tables + remove license-per-character eligibility (eligibility = "own chits + legal deck"). **Archive, don't DROP.** → **mig 121: deprecation MARKERS + new deck eligibility only.** ⚠️ **Physical archival (rename `battle_abilities`, drop `check_battle_eligibility`/`get_eligible_characters`) DEFERRED to P7** — the legacy `process_battle_turn` is live until P3 and nora-arena still consumes those fns (RECONCILIATION §1); removing now breaks live code. New path `deck_is_legal(deck, user)` shipped. | ◑ markers done; physical archival → P7 |
 
 **DO NOT:** allow user-set tier/cost/stats · let licensed-pack barter skip KYC · drop archived 1v1 tables.
 **Exit:** chits exist, owned, deckable, tradeable; premium packs ride licensing rail.
+**Push status:** migrations 116–121 written + self-reviewed + committed; **NOT yet `supabase db push`'d to prod** (awaiting go-ahead — live pre-launch DB `cceisywxwhgljdpisjrl`). No Dart changed → `flutter analyze` unaffected.
 
 ---
 
@@ -210,7 +211,7 @@ P3 (CCG engine)   P4 (Vibe)     P6 (mint+ascend) ─┘
 | # | Task | Done |
 |---|---|---|
 | 7.1 | **Fusion rule expansion** — author additional `fusion_rules` + fusion effect templates beyond starter set (content, not engine). | ☐ |
-| 7.2 | Execute deprecations: archive retired 1v1/stat/moveset tables; remove license-per-character eligibility remnants; **weekly polls + multipliers → DORMANT**; retire parody-avatar scaffolding (celebrities now = licensed chits). | ☐ |
+| 7.2 | Execute deprecations **(markers set in P1 mig 121)**: physically archive retired 1v1/stat/moveset tables (rename `battle_abilities`→*_archived); drop `check_battle_eligibility`/`get_eligible_characters` license-per-character eligibility (gated on P3 engine live + nora-arena cutover to `deck_is_legal`); **weekly polls + multipliers → DORMANT**; retire parody-avatar scaffolding (celebrities now = licensed chits). | ☐ |
 | 7.3 | **Emergency Fund (G4 default)** live wiring on shared Treasury/KYC rail behind config; sim acceptable at launch; may hold to immediate post-launch if P5 runs long. | ☐ |
 | 7.4 | **Pre-launch reset** (ARCHIVE §A8) + remove dev tooling (`dev_*`, `arena-dev-*` fns); test-account sweep; seed required imagery. | ☐ |
 | 7.5 | Final `flutter analyze` clean; real-money + token smoke tests pass. | ☐ |
