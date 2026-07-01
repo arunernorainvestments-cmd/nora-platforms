@@ -156,8 +156,12 @@ P3 (CCG engine)   P4 (Vibe)     P6 (mint+ascend) ─┘
 
 ---
 
-## PHASE 5 — Real-money rail + market gating + payout (G-MON)
-**Effort:** L · **Depends:** P3, P6 (moment-owner routing) · **Migrations:** ~126–128 · **PR:** `v3-p5-real-money`
+## PHASE 5 — Real-money rail + market gating + payout (G-MON)  ✅ built like-live, SIM behind switch (mig 132–134)
+**Effort:** L · **Depends:** P3, P6 (moment-owner routing) · **Migrations:** 132–134 · **PR:** `v3-p5-real-money`
+
+> **The switch:** `platform_integrity_settings.battle_payments_mode` (`sim`|`live`, default **sim**). Everything is
+> built as if live; in sim, USD flows against `sim_usd_balances`; flipping to `live` routes to Stripe Treasury —
+> the live branch RAISEs until the two prereqs land (5.0a/5.0b). Helper: `battle_payments_mode()`.
 
 **🚧 DECISION GATE G-MON** — confirm with product owner before live go-live:
 > Real-money `battle_outcome` market created **iff both players KYC-verified** (default); royalty → moment-owners of played chits; licensed celebrity chits premium; consent at mint, KYC at cash-out. **Build the gate regardless; confirm the rule before flip.**
@@ -170,13 +174,14 @@ P3 (CCG engine)   P4 (Vibe)     P6 (mint+ascend) ─┘
 
 | # | Task | Done |
 |---|---|---|
-| 5.1 | **`currency`** on `markets` (`'token'\|'usd'`, default token) + denormalized on `bets`; `handle_bet_pool_update` branches (token→`token_balances`; USD→`sim_usd_balances`/Stripe Treasury). Markets stays token-only; battle markets settle USD. | ☐ |
-| 5.2 | **G-MON gating**: create real-money `battle_outcome` market **iff both players KYC'd**; else run non-monetized. | ☐ |
-| 5.3 | Rewrite **`match_revenue_config`** to explicit keys: `predictors 0.80, winner_players 0.06, loser_players 0.02, creator 0.02, passive_holders 0.05, platform 0.05`. Creator slice → **moment-owners of chits played**; passive slice → holders of those chits. | ☐ |
-| 5.4 | Wire **Stripe Connect** (royalty payouts) + **Treasury** (pools + Fund) for live behind config; sim preserved. KYC at cash-out; age + jurisdiction gates; `identity_hash` populated; idempotent across Stripe + RevenueCat. | ☐ |
+| 5.1 | **`currency`** on `markets`/`bets` (default token) + usd pools; the 3 bet triggers branch on currency (token path byte-for-byte preserved; usd → `ccg_usd_debit`/usd pools). → **mig 132** (columns + `ccg_usd_debit`/`ccg_usd_credit` sim/live-switched) + **133** (branched `handle_bet_pool_update`/`handle_bet_token_deduction`/`handle_bet_notify_creator`). Markets stays token; battle markets USD (Hard Rule 33). | ✅ |
+| 5.2 | **G-MON gating**: create real-money `battle_outcome` market **iff both players KYC'd**; else non-monetized. → **mig 133** `ccg_create_outcome_market` (returns NULL when not both KYC'd) + `ccg_place_bet`; **`enforce_ccg_bet_integrity`** BEFORE-INSERT trigger enforces one-role (combatant can't bet) + eligibility — additive, never weakens mig-102 (Hard Rule 26). | ✅ |
+| 5.3 | Explicit payout keys `ccg_*` (predictors .80/winner .06/loser .02/creator .02/passive .05/platform .05; legacy keys untouched). Creator slice → **moment-owners of chits PLAYED** (`ccg_match_cards`→`moment_chits`→`moments.owner_user_id`); passive → holders of those chits pro-rata. → **mig 132** (keys) + **134** `ccg_settle_market` + finish trigger (exception-guarded). | ✅ |
+| 5.4 | USD rail wired for live behind the switch (sim preserved); `is_eligible_for_real_money` (KYC always; age≥18 + jurisdiction at live); idempotent settlement (market-status guard). Full Stripe Connect/Treasury API + `identity_hash`/RevenueCat idempotency = live-branch stubs (RAISE until flip). | ◑ sim complete; live branch stubbed |
 
 **DO NOT:** settle Battle in tokens or Markets in real money · create real-money market unless both KYC'd · flip live before 5.0a + 5.0b.
 **Exit:** currency-branched settlement; gated market creation; moment-owner payout; sim intact, live behind config.
+**Push status:** migrations 132–134 **APPLIED to prod** 2026-07-01. Functional proof: mig 134 smoke — `P5 smoke OK: split sums 1.0, mode sim, G-MON gated non-KYC match to non-monetized`. ⚠️ Full payout round-trip (2 KYC'd users + sim USD, moment-owner + passive-holder credits) NOT yet exercised e2e — needs a test-account pass. Live Treasury/Connect API + age/jurisdiction enforcement + IAP idempotency are stubbed behind `battle_payments_mode='live'` (RAISE until 5.0a/5.0b). No Dart → `flutter analyze` unaffected.
 
 ---
 
