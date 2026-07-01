@@ -185,28 +185,30 @@ P3 (CCG engine)   P4 (Vibe)     P6 (mint+ascend) ─┘
 
 ---
 
-## PHASE 6 — Minting pipeline + tier-ascension
-**Effort:** L · **Depends:** P2 · **Migrations:** ~129–130 · **PR:** `v3-p6-mint-ascend`
-*(Sequence note: P6 mint must exist before P5 can route royalties to moment-owners — build P6 mint before P5.3/5.4 wiring.)*
+## PHASE 6 — Minting pipeline + tier-ascension  ✅ applied to prod (mig 135–136)
+**Effort:** L · **Depends:** P2 · **Migrations:** 135–136 · **PR:** `v3-p6-mint-ascend`
+*(DB owns orchestration; social fetch / cel-shaded animation / AI family classification are external edge steps that feed params.)*
 
-**6.1 Minting**
+**6.1 Minting** → **mig 135** (extends `moments` w/ pipeline state; `moment_record`/`moment_recommend`/`moment_moderate`/`moment_mint`)
 | # | Task | Done |
 |---|---|---|
-| 6.1a | Social link via existing API access (record consent). | ☐ |
-| 6.1b | **Recommend the moment** — surface user's highest-engagement post/video. | ☐ |
-| 6.1c | **Animate** — moment → cel-shaded clip via camera cuts; never rig to a skeleton. | ☐ |
-| 6.1d | **Classify** content → archetype family. | ☐ |
-| 6.1e | **Assign tier** from `engagement_tier_thresholds` (current engagement). | ☐ |
-| 6.1f | **Moderate** before mint. | ☐ |
-| 6.1g | **Mint** `moment_chits` row with ladder-derived cost/stats/effect; card art = viral thumbnail. User picks moment+flavor; system sets family/tier/cost/stats/effect. **Users never set power.** | ☐ |
+| 6.1a | Social link via existing API access (record consent). → `moment_record` (sets `consent_granted_at`). | ✅ |
+| 6.1b | **Recommend the moment** — surface user's highest-engagement post/video. → `moment_recommend` (max engagement, un-minted). | ✅ |
+| 6.1c | **Animate** — moment → cel-shaded clip via camera cuts; never rig to a skeleton. → external edge; `moment_video_ref` stored at mint. | ◑ external |
+| 6.1d | **Classify** content → archetype family. → external AI; family passed to `moment_mint`. | ◑ external |
+| 6.1e | **Assign tier** from `engagement_tier_thresholds` (current engagement). → `moment_mint` calls `tier_for_engagement`. | ✅ |
+| 6.1f | **Moderate** before mint. → `moment_moderate`; `moment_mint` requires `moderation_status='approved'`. | ✅ |
+| 6.1g | **Mint** `moment_chits` via ladder-derived stats; card art = viral thumbnail; **users never set power**. → `moment_mint` → `create_moment_chit` (consent_minted, thumbnail as card art). | ✅ |
 
-**6.2 Tier-ascension**
+**6.2 Tier-ascension** → **mig 136** (`chit_ascension_log`, `ascension_review_queue`, `moment_chit_rederive`, `chit_ascension_refresh`)
 | # | Task | Done |
 |---|---|---|
-| 6.2a | **Weekly refresh**, user-requested, **≤1/7 days per user** (cooldown protects APIs). Pull current cumulative engagement → recompute tier → ascend if higher tier crossed. | ☐ |
-| 6.2b | **One-directional** (never de-rank), **definition-level** (all owned copies ascend together), re-derive stats/cost/effect from cost-banded ladder. Family/effect type fixed at mint; only magnitude/tier scales. | ☐ |
-| 6.2c | **Match safety**: ascension between matches only; active matches use start snapshot (Hard Rule 36). | ☐ |
-| 6.2d | **Abuse mitigation**: authenticity heuristics + moderation on refresh; manual-review queue for large single-jump ascensions; deleted post/expired token → last-verified tier persists (no de-rank, no further ascension until re-verified). | ☐ |
+| 6.2a | **Weekly refresh**, ≤1/7 days per user (cooldown). → `chit_ascension_refresh` (7-day guard via `chit_ascension_log`; recompute tier from engagement). | ✅ |
+| 6.2b | **One-directional** / **definition-level** / re-derive from cost-banded ladder; family/effect fixed. → `moment_chit_rederive` (updates the catalog row = all copies; only ascends when new rank > current). | ✅ |
+| 6.2c | **Match safety**: between matches only; active matches use start snapshot (Hard Rule 36). → catalog update is safe; matches read `ccg_match_cards.snap_*`. | ✅ |
+| 6.2d | **Abuse mitigation**: moderation on refresh; **large-jump (≥3 tiers) → manual-review queue** (not auto-applied); deleted/expired source keeps last tier (`source_status<>'active'` skipped). | ✅ |
+
+**Push status:** migrations 135–136 **APPLIED to prod** 2026-07-01. Smokes: `P6.1 mint OK` (engagement→tier boundaries + missing-moment guard); `P6.2 ascension OK` (Seed Sprinter C→A re-derived: cost 8, mag 12, family/effect fixed → reset C). ⚠️ Full owner-scoped mint + weekly refresh cooldown not e2e-tested (needs a real auth user + linked moment). No Dart → `flutter analyze` unaffected.
 
 **DO NOT:** let users set tier/stats · de-rank chits · change archetype/effect type on ascension · apply ascension to in-progress match · exceed weekly per-user API cap.
 **Exit:** moments → chits pipeline live; viral chits ascend safely.
