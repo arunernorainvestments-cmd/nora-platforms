@@ -121,21 +121,22 @@ P3 (CCG engine)   P4 (Vibe)     P6 (mint+ascend) ─┘
 ---
 
 ## PHASE 3 — CCG combat engine (`process_battle_turn` rebuilt) — LARGEST BUILD
-**Effort:** XL · **Depends:** P2 · **Migrations:** ~122–124 · **PR:** `v3-p3-ccg-engine`
+**Effort:** XL · **Depends:** P2 · **Migrations:** 126–129 · **PR:** `v3-p3-ccg-engine` · ✅ applied to prod
 
 | # | Task | Done |
 |---|---|---|
-| 3.1 | **Board-state engine**: per-match state (both Life, Aura/max-Aura, hand, deck, field ≤3, Vibe). Rebuild in place; supersede old resolver, archive old artifacts. | ☐ |
-| 3.2 | **Start of turn**: max Aura +1 (cap 10), refill, draw 1, fire `start_of_turn` triggers, read Vibe. | ☐ |
-| 3.3 | **Main**: validate/resolve summon (3-cap, summoning sickness unless `charge`), cast spell-moment, pay `activated`; each spends Aura; Vibe-gated require current threshold. | ☐ |
-| 3.4 | **Combat**: face=Life dmg; creature-vs-creature mutual ATK→HP; `taunt` forces targeting; eliminate at 0 HP. | ☐ |
-| 3.5 | **End**: fire `end_of_turn` triggers; hold `counter` for opponent. | ☐ |
-| 3.6 | **Fusion detection/resolution**: within a turn's "Advance window," match played chits to `fusion_rule` patterns; resolve combined effect (Aura-costed by components); emit fusion event. | ☐ |
-| 3.7 | **Match-start snapshot**: freeze each deck chit's tier/stats so mid-match ascension can't alter an active match (Hard Rule 36). | ☐ |
-| 3.8 | **`battle_events` stream**: ordered events (draw/summon w/ `moment_video_ref`/attack/effect/fusion/KO + Life/Aura/Vibe deltas), keyed `(turn_number, sequence_in_turn)` with `*_after` reconciliation fields. | ☐ |
+| 3.1 | **Board-state engine**: per-match state (both Life, Aura/max-Aura, hand, deck, field ≤3, Vibe). Built as **NEW `ccg_*`** (mig 126: `ccg_matches`/`ccg_match_players`/`ccg_match_cards`/`ccg_events`); legacy `battle_*` engine left intact (non-breaking, archived in P7). | ✅ |
+| 3.2 | **Start of turn**: max Aura +1 (cap 10), refill, draw 1, fire `start_of_turn` triggers, read Vibe. → **mig 128** `ccg_begin_turn`. | ✅ |
+| 3.3 | **Main**: validate/resolve summon (3-cap, summoning sickness unless `charge`), cast spell-moment, pay `activated`; each spends Aura; Vibe-gated require current threshold. → **mig 129** `ccg_submit_turn`. | ✅ |
+| 3.4 | **Combat**: face=Life dmg; creature-vs-creature mutual ATK→HP; `taunt` forces targeting; eliminate at 0 HP. → **mig 129** (attack handler) + **128** `ccg_damage_creature`/`ccg_kill_card`. | ✅ |
+| 3.5 | **End**: fire `end_of_turn` triggers; hold `counter` for opponent. → **mig 129** (end phase) + **128** `ccg_fire_timed_triggers`; `counter`/when_attacked fires in the attack handler. | ✅ |
+| 3.6 | **Fusion detection/resolution**: within a turn's "Advance window," match played chits to `fusion_rule` patterns; resolve combined effect; emit fusion event. → **mig 128** `ccg_resolve_fusions` (matches this-turn summons on family/keyword; power_scaling over component tiers). | ✅ |
+| 3.7 | **Match-start snapshot**: freeze each deck chit's tier/stats so mid-match ascension can't alter an active match (Hard Rule 36). → **mig 129** `ccg_instantiate_card` copies `snap_*` at match start; engine reads snapshot only. | ✅ |
+| 3.8 | ordered event stream (draw/summon w/ chit ref/attack/effect/fusion/KO + Life/Aura/Vibe deltas), keyed `(turn_number, sequence_in_turn)` with `*_after` reconciliation. → **mig 126** `ccg_events` (own stream, supersedes legacy `battle_events`) + **127** `ccg_emit_event` stamps `life_p1/p2_after`, `aura_active_after`, `vibe_after`. | ✅ |
 
 **DO NOT:** compute any outcome client-side · let ascension affect in-progress match · exceed field cap or skip sickness/taunt validation server-side.
 **Exit:** full server-authoritative CCG turn resolves and emits a complete event stream.
+**Push status:** migrations 126–129 **APPLIED to prod** 2026-07-01. Functional proof: mig 129's apply-time smoke plays a synthetic match (summon → on-summon effect → 2 fusions → face damage → event stream) and asserts — logged `CCG engine smoke OK: 2 summons, 2 fusion(s), seat2 life 2` (synthetic match auto-deleted). ⚠️ **Balance note:** fusion magnitude scales high (base × Σ tier effect_power ≈ 27) — tune in P7; mechanism correct. Deck-entry path (`ccg_create_match` from real 20-card decks + 2 auth users) not yet exercised end-to-end (needs the deck/matchmaking UI or a test-account pass). No Dart → `flutter analyze` unaffected.
 
 ---
 
