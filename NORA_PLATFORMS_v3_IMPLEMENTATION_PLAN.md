@@ -102,20 +102,21 @@ P3 (CCG engine)   P4 (Vibe)     P6 (mint+ascend) ─┘
 
 ---
 
-## PHASE 2 — Tier ladder + anatomy + effects/keywords/families + fusion DATA ⭐ CRITICAL PATH
-**Effort:** L · **Depends:** P1 · **Migrations:** ~119–121 · **PR:** `v3-p2-balance-core`
+## PHASE 2 — Tier ladder + anatomy + effects/keywords/families + fusion DATA ⭐ CRITICAL PATH  ✅ applied to prod (mig 122–125)
+**Effort:** L · **Depends:** P1 · **Migrations:** 122–125 · **PR:** `v3-p2-balance-core`
 
 | # | Task | Done |
 |---|---|---|
-| 2.1 | **`tier_ladder`** — per tier F–S: `aura_cost_range, atk_range, hp_range, effect_power`. **Cost-banded** (higher tier stronger AND costlier). | ☐ |
-| 2.2 | **`engagement_tier_thresholds`** — engagement→tier map (F `<1k` … S `>5M`, per-platform normalized). Read by mint + ascension (P6). | ☐ |
-| 2.3 | **`effect_templates`** — finite library keyed by (archetype family × timing type), parameterized by tier `effect_power`. Chit references template; magnitude = template scaled to tier. | ☐ |
-| 2.4 | Enumerate **timing types** (`on_summon, activated, triggered, counter`), **keywords** (`taunt, charge, shield, stealth`), **archetype families** (athlete/musician/artist/scientist/comedian/influencer/politician/business/gamer/actor). | ☐ |
-| 2.5 | **`fusion_rules`** — tag-based **patterns** `{archetype_family, keyword, element/tag, count}` → fusion effect template scaled by component tiers. Ship a **launch starter set**. | ☐ |
-| 2.6 | **Derivation function**: `(family, timing, tier) → concrete (cost, atk, hp, effect magnitude)`. This is what 1.1, P3, and P6 all call. | ☐ |
+| 2.1 | **`tier_ladder`** — per tier F–S: `aura_cost_range, atk_range, hp_range, effect_power`. **Cost-banded** (higher tier stronger AND costlier). → **mig 122** + `assert_tier_cost_banding()` statement-trigger (encodes Hard Rule 34 — rebalancing can't break cost-banding). | ✅ |
+| 2.2 | **`engagement_tier_thresholds`** — engagement→tier map (F `<1k` … S `>5M`, per-platform normalized). Read by mint + ascension (P6). → **mig 122** + `tier_for_engagement()`. | ✅ |
+| 2.3 | **`effect_templates`** — finite library keyed by (archetype family × timing type), parameterized by tier `effect_power`. Chit references template; magnitude = template scaled to tier. → **mig 123** (10-template starter library, 1 signature effect/family; `is_fusion` flag + shape CHECK). | ✅ |
+| 2.4 | Enumerate **timing types** (`on_summon, activated, triggered, counter`), **keywords** (`taunt, charge, shield, stealth`), **archetype families** (athlete/musician/artist/scientist/comedian/influencer/politician/business/gamer/actor). → CHECK constraints across mig 116/123/124. | ✅ |
+| 2.5 | **`fusion_rules`** — tag-based **patterns** `{archetype_family, keyword, element/tag, count}` → fusion effect template scaled by component tiers. Ship a **launch starter set**. → **mig 124** (3 fusion templates + 3 starter rules: athlete-pair / charge-pair / musician-pair; `power_scaling` sum/max/avg; template-must-be-fusion guard). | ✅ |
+| 2.6 | **Derivation function**: `(family, timing, tier) → concrete (cost, atk, hp, effect magnitude)`. This is what 1.1, P3, and P6 all call. → **mig 125** `derive_chit_stats()` + `create_moment_chit()` (sanctioned server-only writer) + adds `moment_chits.effect_magnitude` & the `effect_ref → effect_templates` FK. | ✅ |
 
 **DO NOT:** author fusion as per-card recipes · break cost-banding (no strictly-better-for-cost high tiers) · scale stats without scaling cost.
 **Exit:** balance data + derivation fn exist; a chit's numbers are fully ladder-derived.
+**Push status:** migrations 122–125 **APPLIED to prod** 2026-07-01 via `supabase db push` (clean). Functional proof: mig 125 seeds 6 chits through `create_moment_chit`→`derive_chit_stats`→insert against the FK + all CHECKs — inserted with zero errors, validating the whole derivation chain. (6 dev-seed chits now in catalog — swept by P7 reset.) No Dart → `flutter analyze` unaffected.
 
 ---
 
