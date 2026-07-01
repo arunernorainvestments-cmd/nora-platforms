@@ -215,19 +215,20 @@ P3 (CCG engine)   P4 (Vibe)     P6 (mint+ascend) ─┘
 
 ---
 
-## PHASE 7 — Fusion expansion + deprecation cleanup + Fund + launch hygiene
+## PHASE 7 — Fusion expansion + deprecation cleanup + Fund + launch hygiene  ◑ additive done (mig 137); destructive DEFERRED to launch prep
 **Effort:** M · **Depends:** P2/P3 (fusion content), all · **PR:** `v3-p7-launch-hygiene`
 
 | # | Task | Done |
 |---|---|---|
-| 7.1 | **Fusion rule expansion** — author additional `fusion_rules` + fusion effect templates beyond starter set (content, not engine). | ☐ |
-| 7.2 | Execute deprecations **(markers set in P1 mig 121)**: physically archive retired 1v1/stat/moveset tables (rename `battle_abilities`→*_archived); drop `check_battle_eligibility`/`get_eligible_characters` license-per-character eligibility (gated on P3 engine live + nora-arena cutover to `deck_is_legal`); **weekly polls + multipliers → DORMANT**; retire parody-avatar scaffolding (celebrities now = licensed chits). | ☐ |
-| 7.3 | **Emergency Fund (G4 default)** live wiring on shared Treasury/KYC rail behind config; sim acceptable at launch; may hold to immediate post-launch if P5 runs long. | ☐ |
-| 7.4 | **Pre-launch reset** (ARCHIVE §A8) + remove dev tooling (`dev_*`, `arena-dev-*` fns); test-account sweep; seed required imagery. | ☐ |
-| 7.5 | Final `flutter analyze` clean; real-money + token smoke tests pass. | ☐ |
+| 7.1 | **Fusion rule expansion** — author additional `fusion_rules` + fusion effect templates beyond starter set. → **mig 137**: +3 fusion templates (control_purge/disrupt/wall) + 3 rules (scientist/comedian/shield pairs) = **6 rules total**. PLUS balance pass: gentler `effect_power` curve (F1…S4) + all fusion rules → `avg` scaling (fixed the ~27-dmg issue → Seed Sprinter magnitude now 4); seed chits re-derived. | ✅ |
+| 7.2 | Execute deprecations (markers set in P1 mig 121): physically archive retired 1v1/stat/moveset tables; drop `check_battle_eligibility`/`get_eligible_characters`; polls→DORMANT; retire parody-avatar scaffolding. | ⏸ **DEFERRED to launch prep** — mobile still consumes legacy fns; gated on P3-engine cutover + the pending companion↔nora-arena pivot. Do NOT run before that. |
+| 7.3 | **Emergency Fund (G4 default)** live wiring behind config; sim acceptable at launch. | ✅ already satisfied — Fund runs in sim (ubi_*), which the spec accepts at launch; flips to live on the shared Treasury/KYC rail (same `battle_payments_mode`-style switch) post-launch. No new work now. |
+| 7.4 | **Pre-launch reset** (ARCHIVE §A8) + remove dev tooling (`dev_*`, `arena-dev-*`); test-account sweep; seed imagery; **remove P2/P3 dev-seed chits + `is_test` matches**. | ⏸ **DEFERRED to launch day** — destructive; must run last, after the pivot and once matches/decks are exercised. |
+| 7.5 | Final `flutter analyze` clean; real-money + token smoke tests pass. | ◑ per-phase apply-time smokes green; **full flutter analyze + e2e real-money/token round-trip pending** the Flutter client work + test-account pass. |
 
 **DO NOT:** drop dormant/retired schemas · ship dev tooling to prod.
 **Exit:** expanded fusion; retired schemas archived (not dropped); Fund behind config; dev tooling gone; smoke tests green.
+**Push status:** mig 137 (additive: fusion expansion + balance) **APPLIED to prod** 2026-07-01. 7.2 + 7.4 (destructive) intentionally deferred — see notes. No Dart → `flutter analyze` unaffected.
 
 ---
 
