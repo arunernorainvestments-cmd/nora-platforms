@@ -65,6 +65,15 @@ gate; confirm the rule before real-money go-live.
 
 ---
 
+> **⏸️ SESSION CHECKPOINT — 2026-07-02 21:20 UTC (Claude: read this first on resume).**
+> Paused for usage-limit reset mid-track, per user. Phase 0 + C0 + C1 + C2 are DONE — committed +
+> pushed through `84ba092`, migrations 138–140 applied to prod, `cinematic-mint` deployed, E2E mint
+> smoke PASSED (sim). **Resume at M-P1** (OAuth consent + oEmbed ingest + pre-gen vision moderation),
+> then M-P4 → M-P5 → C3. Full state in auto-memory `project_cinematic_engine.md`.
+> Waiting on user: SEGMIND_API_KEY · TikTok/IG OAuth app creds · visual sign-off on the 12 plates
+> (then re-run `tools/cinematic/generate_anchor_plates.ts` live with FORCE=1 and flip rows to
+> 'signed_off'). Remove this note when the track completes.
+
 ## Minting + Match Cut + Cinematic Engine track (specs added 2026-07-02)
 
 The web-side minting pipeline + the cutscene generation engine. Naming: the specs' `battle_chits` = our
