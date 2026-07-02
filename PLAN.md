@@ -1,5 +1,5 @@
 # NORA Platforms — PLAN.md
-# Where we're going. Last updated: 2026-07-01.
+# Where we're going. Last updated: 2026-07-02.
 # Rules for HOW to build any of this live in CLAUDE.md ("Building future work safely").
 # Full specs / schemas / history for anything referenced here live in ARCHIVE.md.
 #
@@ -15,13 +15,15 @@
   card/chit marketplaces, celebrity integration, KYC flow, Emergency Fund (sim), Licensing Marketplace
   (backend + Flutter merged). Battle (1v1 turn-based, Phases A–C + matchmaking) + legacy Arena exist but
   are **superseded by the v3 card-battler** (see Retired).
-- **Migration ledger:** remote DB at **115**. Next new migration = **116**. 080–106 = redesign Docs 1–4 +
-  integrity/chit/KYC. 107–113 = Licensing. 114 = `profiles.fcm_token_mobile`. 115 = `mobile_iap_receipts`
-  (on an UNMERGED branch `doc6-mobile-iap-confirm` — a v3 P5 live-flip prereq).
+- **Migration ledger:** remote DB in sync at **137** (verified `supabase migration list`, 2026-07-02). Next
+  new migration = **138**. 080–106 = redesign Docs 1–4 + integrity/chit/KYC. 107–113 = Licensing. 114/115 =
+  mobile prep. 116–137 = v3 phases (116–121 asset layer · 122–125 tier ladder/effects/fusion · 126–129 CCG
+  engine · 130–131 Vibe · 132–134 real-money rail · 135–136 minting + ascension · 137 fusion expansion).
 - **`flutter analyze`:** clean as of the last redesign session.
-- **v3 status:** Phase 0 (docs) DONE. Phase 1 (asset layer) BUILT — migrations **116–121** written +
-  self-reviewed + committed on branch `v3-p1-chit-asset-layer`, **not yet pushed to prod**. P2–P7 not started.
-  (P1.6 physical archival deferred to P7 — mig 121 sets deprecation markers only.)
+- **v3 status:** P0–P6 BUILT + applied to prod; P7 partial (fusion expansion + balance pass, commit 6028765).
+- **NEW TRACK (2026-07-02): Minting + Match Cut + Cinematic Engine** — see section below; specs
+  `NORA_PLATFORMS_MINTING_MATCHCUT_SPEC.md` + `NORA_PLATFORMS_CINEMATIC_ENGINE_SPEC.md`, contract in
+  RECONCILIATION §7, Hard Rules 37–39. ← *current*
 
 ---
 
@@ -60,6 +62,35 @@ via `supabase db push`. Integer USD cents. Append-only ledgers INSERT-only. Hono
 **🚧 One open product call — G-MON:** real-money `battle_outcome` market created iff both players KYC'd;
 royalty routes to moment-owners; licensed celeb chits premium; consent at mint, KYC at cash-out. Build the
 gate; confirm the rule before real-money go-live.
+
+---
+
+## Minting + Match Cut + Cinematic Engine track (specs added 2026-07-02)
+
+The web-side minting pipeline + the cutscene generation engine. Naming: the specs' `battle_chits` = our
+`moment_chits` (RECONCILIATION §7). Vendor final: Seedance 2.0 via Segmind (fallback BytePlus ModelArk);
+sim-first behind `CINEMATIC_MODE` per governance. Build order:
+
+- [ ] **C0 — Registries + tool wiring** (mig 138): `match_cut_templates` (6 role-keyed geometries),
+      `match_cut_anchor_plates` + `match_cut_prompt_templates` (versioned), cinematic/minting columns on
+      `moment_chits` + `moments`; Segmind client module (image + Seedance Fast/standard, seed capture,
+      draft-vs-final config, sim mode); `battle-media` bucket; round-trip smoke test.
+- [ ] **C1 — Author plates + prompts**: 6 motion prompt templates (§4 grammar, style-lock fixed) seeded;
+      12 anchor plates generated 16:9 house-style (**needs `SEGMIND_API_KEY`**); versions registered.
+      **Gate: user visual sign-off against the Arena anchor poses before C2 finalization.**
+- [ ] **C2 — Generation pipeline**: classify→template select→illustration→Seedance cutscene (plate
+      bookends, fixed seed)→post-gen moderation (reject → adjust `{SUBJECT_DESC}` only, re-run)→preview
+      battle→store `battle-media`→write chit fields. End-to-end mint proof.
+- [ ] **M-P1 — OAuth consent + ingestion**: extend platform linking with TikTok + Instagram (**needs
+      OAuth app credentials — external**; YouTube exists via `oauth-initiate`); ownership gate; oEmbed
+      ingestion; pre-gen vision moderation (minor-safety absolute, Hard Rule 37).
+- [ ] **M-P4 — One-active-card + `wager_match`**: `self_minted` limit + swap flow (never delete before
+      the new mint confirms; handle deck membership); chit escrow + atomic transfer preserving
+      `original_minter_handle`.
+- [ ] **M-P5 — Integration glue**: `profiles.avatar_loadout`; `is_monetized` per G-MON;
+      `battle_place_spectator_bet_usd(p_match_id, …)` wrapper over the mig-133 USD path.
+- [ ] **C3 — Contract mirror**: RECONCILIATION §7 kept current as each phase lands. (Initial mirror done
+      2026-07-02.)
 
 ---
 

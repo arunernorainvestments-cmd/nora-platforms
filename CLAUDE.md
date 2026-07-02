@@ -1,5 +1,5 @@
 # NORA Platforms — CLAUDE.md
-# Last updated: 2026-07-01
+# Last updated: 2026-07-02
 
 ## Project
 Flutter web prediction-market + **card-battler** platform ("Moments" — the v3 CCG pivot),
@@ -64,6 +64,9 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 34. A chit's **archetype/effect-family and damage numbers come from the authored `tier_ladder`**, never user-set. Tier is **cost-banded** (higher tier = stronger AND costlier Aura) — never strictly-better-for-cost.
 35. Real-money `battle_outcome` markets exist **only for matches where both players are KYC-verified** (per decision gate G-MON). Non-KYC matches run non-monetized.
 36. Tier **ascension is one-directional** (never de-rank), applies **between matches only**, and matches **snapshot chit stats at start** — mid-match ascension can never alter an active match.
+37. Chits are minted **only from a post the user owns** (OAuth-verified account link); source allowlist TikTok/Instagram/YouTube; **no arbitrary-URL or raw-upload minting** at launch. **Pre-generation moderation runs before any generation; the minor-safety/CSAM screen is absolute and cannot be bypassed.**
+38. Every minted cutscene MP4 is stored in the **`battle-media`** bucket (**never a hotlinked provider URL**) and the chit carries `match_cut_template_id`, `anchor_plate_version`, `prompt_template_version`, `generation_seed`. (`final_frame_camera` is deprecated — Unity owns the camera pose via its local `MatchCutAnchor`, authored against the plates.)
+39. Anchor plates + motion prompt templates are **per Match Cut template, never per card**, both versioned (`match_cut_anchor_plates`, `match_cut_prompt_templates`). The prompt's **STYLE (style-lock) and CONSTRAINTS blocks are never user-influenced or omitted** — only `{SUBJECT_DESC}`/`{FAMILY_ACTION}`/`{TIER_INTENSITY}` vary. **Post-generation moderation on the finished MP4 is mandatory — clean bookends never vouch for the middle.** A rejected generation re-runs by adjusting `{SUBJECT_DESC}` only, with the seed fixed. The user must preview the card in a practice battle before the chit finalizes.
 
 ## The game (v3 — "Moments" card-battler, canonical)
 > **v3 supersedes the v2.x 1v1 archetype-fighter model entirely.** The build path is `NORA_PLATFORMS_BUILD_SPEC_v3.md`
@@ -88,6 +91,18 @@ ordered `battle_events`; the client computes nothing.
   symmetric, market-driven, server-authoritative, passive floor; "is the crowd hyped?"). Premium ultimate chits need both.
 - **Minting + ascension** (P6): moments → chits (link → recommend → animate → classify → tier-assign → moderate → mint).
   **Ascension** is one-directional, definition-level (all copies together), ≤1/7 days per user, between-matches only (Hard Rule 36).
+- **Minting + Match Cut + Cinematic Engine** (specs: `NORA_PLATFORMS_MINTING_MATCHCUT_SPEC.md` +
+  `NORA_PLATFORMS_CINEMATIC_ENGINE_SPEC.md`, the latter supersedes the retired anchor-plate doc): the web-side
+  minting pipeline (Companion-App model — mint on web, off the 30% store fee). OAuth-owned post → pre-gen
+  moderation → classify/tier → stylized illustration → **cutscene MP4 bracketed by fixed per-template anchor
+  plates** (Seedance 2.0 via Segmind, first/last-frame conditioned, seeded) → post-gen moderation → preview
+  battle → store in `battle-media` (Hard Rules 37–39). ~6 `match_cut_templates` (role-keyed camera geometries:
+  ground_slam/sky_descent/projectile_strike/radial_burst/aura_surge/counter_veil) make the 2D→3D seam; Unity
+  brackets the MP4 with a local anchor. **Naming: the specs say "battlechit"/`battle_chits` — in this repo that
+  IS `moment_chits`** (Hard Rule 27 naming stands; `chit_ownership` already exists, mig 117). Also queued from
+  the minting spec: **one active self-minted chit per user** (swap = warn → delete old chit + media → mint new,
+  never delete before the new mint confirms), **`wager_match` mode** (chit escrow, winner takes loser's chit,
+  `original_minter_handle` attribution survives transfer), `profiles.avatar_loadout`, `is_monetized` per G-MON.
 
 ## Systems (current, built)
 - **Markets**: bet on creator Display Score direction, settled in **tokens** (Hard Rule 33). Pool: 90% winners / 5% platform / 5% Market Maker.
@@ -133,6 +148,8 @@ Everything queued in PLAN.md must respect these, in addition to the Hard Rules a
 
 ## Reference
 - v3 card-battler spec (canonical *what*): **NORA_PLATFORMS_BUILD_SPEC_v3.md**
+- Minting + Match Cut spec (web minting, consent/moderation stack, templates, wager mode): **NORA_PLATFORMS_MINTING_MATCHCUT_SPEC.md**
+- Cinematic Engine spec (anchor plates + motion prompts + Seedance/Segmind generation; supersedes the anchor-plate doc): **NORA_PLATFORMS_CINEMATIC_ENGINE_SPEC.md**
 - v3 phased implementation tracker (the *how/when*, P0–P7, with repo-grounded reconciliation): **NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md**
 - Where we're going, with build checklists: **PLAN.md**
 - History, scoring formulas, DB schemas, infra (edge fns / pg_cron / routes), Arena testing, deploy runbooks,

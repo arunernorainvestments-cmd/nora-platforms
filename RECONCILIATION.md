@@ -206,3 +206,33 @@ launch target is mobile IL2CPP.
 - Client side of this contract: `nora-arena/RECONCILIATION.md` + `UNITY_MIGRATION_HANDOFF.md` + `STATUS.md`.
 - Our backend reference: ARCHIVE.md (§A1 scoring/DB, §A2 infra, §A3 battle, §A4 chits/integrity, §B5 doc6).
 - Our forward work: PLAN.md (R1–R3 + gateway/key-rotation belong there as concrete tasks).
+
+---
+
+## 7. Minting + Match Cut + Cinematic Engine contract (added 2026-07-02)
+
+Specs: `NORA_PLATFORMS_MINTING_MATCHCUT_SPEC.md` + `NORA_PLATFORMS_CINEMATIC_ENGINE_SPEC.md` (the latter
+supersedes the anchor-plate doc and replaces per-card keyframes/`final_frame_camera` with fixed per-template
+anchor plates). Backend Hard Rules 37–39 govern.
+
+**⚠️ Naming resolution (binding):** where the specs say **"battlechit" / `battle_chits`**, this repo's table is
+**`moment_chits`** (Hard Rule 27 — `battle_chit_*` is the legacy powerup namespace, dormant). `chit_ownership`
+is as-specced (mig 117, ledger-backed). Unity should code against `moment_chits`.
+
+| Platforms provides | Arena consumes | Status |
+|---|---|---|
+| `moment_chits` cinematic fields: `match_cut_template_id`, `anchor_plate_version`, `prompt_template_version`, `generation_seed`, `mp4_cutscene_url`, `card_art_url`, `original_minter_handle`, `source_platform` | full-card view (minter handle at top); selects the local `MatchCutAnchor` by template id; validates plate version | 🔴 C0 |
+| `match_cut_templates` (~6, role-keyed: ground_slam / sky_descent / projectile_strike / radial_burst / aura_surge / counter_veil; entry/exit framing, duration, stage transition) | one authored `MatchCutAnchor` (camera pose + stage dim) per template | 🔴 C0/C1 |
+| `match_cut_anchor_plates` (versioned start/end plate pair per template, 16:9, house style) | anchor camera poses are authored to match these plates (`final_frame_camera` is DEPRECATED — Unity owns the pose) | 🔴 C1 |
+| cutscene MP4s in **`battle-media`** (opens on start-plate, closes on end-plate; never provider URLs) | Addressables → `VideoPlayer`, mounted on the anchor, preloaded at match load | 🔴 C2 |
+| `match_cut_prompt_templates` + `generation_seed` | n/a — generation-side only | 🔴 C0/C1 |
+| one **self-minted** chit per user; swap = warn → delete old chit + media → mint new | swap warning UI | 🔴 P4 |
+| **`wager_match`** type: chit escrow at start, winner receives loser's chit, `original_minter_handle` survives transfer | wager mode UI + resolution reveal | 🔴 P4 |
+| `profiles.avatar_loadout` (JSON; Platforms persists, never edits) | Dressing Room read/write; round-trip verified | 🔴 P5 |
+| `is_monetized` on the match per G-MON (both players KYC'd) | gates the spectator bet UI | 🔴 P5 |
+| USD spectator-bet RPC — **built today as `ccg_place_bet(p_market_id, …)` (mig 133)**; a match-scoped wrapper `battle_place_spectator_bet_usd(p_match_id, …)` will be exposed for `SpectatorMarketService` (resolves the `battle_outcome` market from the match). Extends R3: this is the canonical mobile path; legacy mig-062 RPC still not deleted. | `SpectatorMarketService` calls the wrapper | 🔴 P5 |
+
+Minting is **web-only** (Companion-App model — off the 30% store fee; mobile deep-links to web mint).
+Consent stack unchanged from the Minting spec: OAuth-owned posts only, TikTok/IG/YT allowlist, mandatory
+pre-gen (minor-safety absolute) + post-gen moderation. Generation vendor: Seedance 2.0 via Segmind
+(fallback BytePlus ModelArk) — invisible to Arena; Arena only ever sees `battle-media` MP4s.
