@@ -228,9 +228,9 @@ is as-specced (mig 117, ledger-backed). Unity should code against `moment_chits`
 | `match_cut_prompt_templates` + `generation_seed` | n/a — generation-side only | 🟢 BUILT (migs 138/139) |
 | one **self-minted** chit per user; swap = warn → delete old chit + media → mint new | swap warning UI | 🟢 platform-side BUILT (mig 142; `cinematic-mint` returns the 409 warning contract + `swap_of_chit_id`/`swap_confirm`) |
 | **`wager_match`** type: chit escrow at start, winner receives loser's chit, `original_minter_handle` survives transfer | wager mode UI + resolution reveal | 🟢 platform-side BUILT (mig 142: `ccg_create_wager_match` + settle-on-finish; abandoned matches return stakes) |
-| `profiles.avatar_loadout` (JSON; Platforms persists, never edits) | Dressing Room read/write; round-trip verified | 🔴 P5 |
-| `is_monetized` on the match per G-MON (both players KYC'd) | gates the spectator bet UI | 🔴 P5 |
-| USD spectator-bet RPC — **built today as `ccg_place_bet(p_market_id, …)` (mig 133)**; a match-scoped wrapper `battle_place_spectator_bet_usd(p_match_id, …)` will be exposed for `SpectatorMarketService` (resolves the `battle_outcome` market from the match). Extends R3: this is the canonical mobile path; legacy mig-062 RPC still not deleted. | `SpectatorMarketService` calls the wrapper | 🔴 P5 |
+| `profiles.avatar_loadout` (JSON; Platforms persists, never edits) | Dressing Room read/write; round-trip verified | 🟢 BUILT (mig 145; own-update RLS round-trip verified vs prod 2026-07-03; 8 KB object cap) |
+| `is_monetized` on the match per G-MON (both players KYC'd) | gates the spectator bet UI | 🟢 BUILT (mig 145: `ccg_matches.is_monetized`, stamped by `ccg_create_outcome_market`; spectators read via `ccg_match_is_monetized(match_id)` RPC — match RLS unchanged) |
+| USD spectator-bet RPC — **built today as `ccg_place_bet(p_market_id, …)` (mig 133)**; the match-scoped wrapper **`battle_place_spectator_bet_usd(p_match_id, p_team_number, p_amount_dollars)` is now EXPOSED** (mig 145) for `SpectatorMarketService` — resolves the open `battle_outcome` market from the match; KYC/one-role/eligibility enforced by the mig-133 triggers. Extends R3: this is the canonical mobile path; legacy mig-062 RPC still not deleted. | `SpectatorMarketService` calls the wrapper | 🟢 BUILT (mig 145) |
 
 Minting is **web-only** (Companion-App model — off the 30% store fee; mobile deep-links to web mint).
 Consent stack unchanged from the Minting spec: OAuth-owned posts only, TikTok/IG/YT allowlist, mandatory

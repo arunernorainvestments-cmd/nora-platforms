@@ -15,13 +15,13 @@
   card/chit marketplaces, celebrity integration, KYC flow, Emergency Fund (sim), Licensing Marketplace
   (backend + Flutter merged). Battle (1v1 turn-based, Phases A–C + matchmaking) + legacy Arena exist but
   are **superseded by the v3 card-battler** (see Retired).
-- **Migration ledger:** remote DB in sync at **144** (applied via `supabase db push`, 2026-07-03). Next
-  new migration = **145**. 080–106 = redesign Docs 1–4 + integrity/chit/KYC. 107–113 = Licensing. 114/115 =
+- **Migration ledger:** remote DB in sync at **145** (applied via `supabase db push`, 2026-07-03). Next
+  new migration = **146**. 080–106 = redesign Docs 1–4 + integrity/chit/KYC. 107–113 = Licensing. 114/115 =
   mobile prep. 116–137 = v3 phases (116–121 asset layer · 122–125 tier ladder/effects/fusion · 126–129 CCG
   engine · 130–131 Vibe · 132–134 real-money rail · 135–136 minting + ascension · 137 fusion expansion).
-  138–144 = cinematic/minting track (138 registries · 139 plates/prompts · 140 generation pipeline ·
+  138–145 = cinematic/minting track (138 registries · 139 plates/prompts · 140 generation pipeline ·
   141 ingestion consent + pre-gen moderation · 142 one-active-card + wager escrow · 143/144 latent
-  P3/P1 bug fixes surfaced by the wager smoke).
+  P3/P1 bug fixes surfaced by the wager smoke · 145 M-P5 glue: avatar_loadout / is_monetized / bet RPC).
 - **`flutter analyze`:** clean as of the last redesign session.
 - **v3 status:** P0–P6 BUILT + applied to prod; P7 partial (fusion expansion + balance pass, commit 6028765).
 - **NEW TRACK (2026-07-02): Minting + Match Cut + Cinematic Engine** — see section below; specs
@@ -69,10 +69,10 @@ gate; confirm the rule before real-money go-live.
 ---
 
 > **⏸️ SESSION CHECKPOINT — 2026-07-03 (Claude: read this first on resume).**
-> Phase 0 + C0 + C1 + C2 + **M-P1 + M-P4** are DONE — migs 141–144 applied to prod (143/144 fix
-> latent P1/P3 bugs the M-P4 smoke surfaced), `moment-ingest` + `cinematic-mint` (swap flow)
-> deployed, all smokes PASSED (M-P1 ingest, M-P4 wager/swap, C2 mint regression).
-> **Resume at M-P5** (avatar_loadout, is_monetized, `battle_place_spectator_bet_usd` wrapper), then C3.
+> **ALL build phases of this track are DONE** (Phase 0, C0–C3, M-P1, M-P4, M-P5) — migs 138–145
+> applied to prod, `cinematic-mint` (swap flow) + `moment-ingest` deployed, every smoke PASSED
+> (M-P1 ingest · M-P4 wager/swap · M-P5 loadout round-trip · C2 mint regression). What remains is
+> EXTERNAL (below) + the next tracks in "Cross-cutting work" / v3 P7 launch hygiene.
 > Full state in auto-memory `project_cinematic_engine.md`.
 > Waiting on user: SEGMIND_API_KEY · TikTok/IG OAuth app creds (backend wired; `oauth-initiate`
 > returns 503 for them until `TIKTOK_CLIENT_KEY`/`INSTAGRAM_CLIENT_ID` secrets are set; then flip
@@ -104,10 +104,12 @@ sim-first behind `CINEMATIC_MODE` per governance. Build order:
       `self_mint_slot` limit + swap flow (old chit retired in the SAME tx as the new mint; media
       deleted only after; decks purged + invalidated); `ccg_wager_escrow` + `ccg_create_wager_match`
       + settle-on-finish transfer preserving `original_minter_handle`; abandoned matches return stakes.
-- [ ] **M-P5 — Integration glue**: `profiles.avatar_loadout`; `is_monetized` per G-MON;
-      `battle_place_spectator_bet_usd(p_match_id, …)` wrapper over the mig-133 USD path.
-- [ ] **C3 — Contract mirror**: RECONCILIATION §7 kept current as each phase lands. (Initial mirror done
-      2026-07-02.)
+- [x] **M-P5 — Integration glue** (mig 145, 2026-07-03): `profiles.avatar_loadout` (persist-only, own-update
+      RLS round-trip verified); `is_monetized` on `ccg_matches` stamped per G-MON + `ccg_match_is_monetized`
+      spectator read; `battle_place_spectator_bet_usd(p_match_id, p_team_number, p_amount_dollars)` wrapper
+      over the mig-133 USD path (KYC/one-role enforced by the existing triggers).
+- [x] **C3 — Contract mirror**: RECONCILIATION §7 kept current as each phase lands (updated through
+      M-P5, 2026-07-03; keep mirroring as external gates unblock).
 
 ---
 
