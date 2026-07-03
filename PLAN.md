@@ -1,5 +1,5 @@
 # NORA Platforms — PLAN.md
-# Where we're going. Last updated: 2026-07-02.
+# Where we're going. Last updated: 2026-07-03.
 # Rules for HOW to build any of this live in CLAUDE.md ("Building future work safely").
 # Full specs / schemas / history for anything referenced here live in ARCHIVE.md.
 #
@@ -153,9 +153,10 @@ leak into ranking/discovery (Hard Rule 15). Tracked separately (Rule 22).
 
 ### Pre-launch polish (before July 4 2026)
 - [ ] Celebrity profile pictures — `celebs.image_url` NULL for all 25 (UI falls back to initials).
-- [ ] Onboarding walkthrough (4–5 slide PageView).
+- [x] Onboarding walkthrough — SHIPPED 2026-07-03 (6-page welcome tour, once per user, re-openable from drawer).
 - [ ] Profile avatars from connected platform data.
-- [ ] Marketing campaign + launch-day animation.
+- [x] Launch-day animation — SHIPPED 2026-07-03 (countdown → midnight ET; breakaway + rocket cutscene
+      `assets/video/launch_rocket.mp4` with built-in fallback; lands on /home). **User still owes the MP4.**
 - [ ] Run the **pre-launch reset sequence** + remove all dev tooling (ARCHIVE §A8) — folded into v3 P7.
 
 ---
@@ -176,6 +177,45 @@ provenance; the retired schemas live under ARCHIVE §A3/§A4/§B (archived, neve
   eligibility is "own moment chits + legal deck." No longer a decision.
 - **D&D six-stat characters / per-archetype move-sets (`battle_abilities`) / parody-celebrity avatars** —
   deprecated; celebrities return as licensed premium chits (P1). Stat sheets survive but are cosmetic.
+
+---
+
+## PARKED pending counsel — card-value accrual economy (decision gate G-CARDVAL)
+
+Founder idea (2026-07-03), captured for future exploration. **Do not build or describe on any
+user-facing page until legal counsel clears it** — see the compliance analysis below.
+
+**The idea.** A Market Maker minting a moment chit chooses a finite sale quantity (e.g. 100 copies)
+and lists them on the marketplace. A defined slice of prediction-market rake on markets involving
+that Market Maker (or on battles where the copies are played) **accrues into the cards themselves**,
+so the finite supply appreciates over time. Holders can trade card-for-card value inside the internal
+marketplace but cannot freely cash out; a non-Market-Maker's only cash-out path is collecting **all**
+copies of one Market Maker's card (set-completion redemption). Wager matches feed this loop: the
+match loser surrenders a card of the winner's choice (that pick UX lives in nora-arena).
+
+**Why it's parked (from the 2026-07-03 review).**
+- A collectible whose value is *designed* to appreciate from platform revenue, bought with an
+  expectation of profit from others' efforts, walks directly into Howey/investment-contract
+  territory — the exact thing the CLAUDE.md governance rule ("cards are collectible game assets,
+  never financial instruments; never use investment/return/yield/dividend/revenue-share language")
+  exists to avoid. Restricted redemption (set-completion cash-out) does not cure this; it may also
+  add money-transmission exposure.
+- Rake accruing *into* tradable cards mixes the token and USD economies (Hard Rule 33: battle
+  markets settle USD, Markets settle tokens — never cross).
+- Finite-supply multi-copy self-minting also conflicts with the shipped **one active self-minted
+  chit per user** rule (M-P4); multi-copy supply currently exists only via the licensed premium
+  pack rail (`lkn_*`).
+
+**The safe adjacent path (already spec'd, partially built).** P5 payout routing: the rake slice pays
+the **creator** (KYC-verified Market Maker) each time their moment is played in a monetized match —
+recurring creator earnings, no holder appreciation promise. Holders get gameplay power, scarcity,
+permanent minter attribution, and player-set marketplace pricing. Wager-match card forfeiture is
+already built (mig 142).
+
+**If G-CARDVAL is ever cleared, open design questions:** exact accrual formula and which markets
+feed it; whether accrual attaches per-copy or per-definition; how set-completion redemption prices
+out; interaction with ascension (value vs tier); anti-manipulation (wash-trading a card you also
+rake into); and how any of it is disclosed without financial-instrument language.
 
 ---
 
