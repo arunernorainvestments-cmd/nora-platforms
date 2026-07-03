@@ -26,6 +26,9 @@ import '../../polls/models/poll_models.dart';
 import '../../marketplace/providers/marketplace_providers.dart';
 import '../../emergency_fund/providers/ubi_providers.dart';
 import '../../emergency_fund/models/ubi_models.dart';
+import '../../onboarding/widgets/welcome_tour.dart';
+import '../../settings/widgets/settings_overlay.dart';
+import '../../settings/widgets/help_overlay.dart';
 
 final _checkInProvider = FutureProvider.autoDispose<void>((ref) async {
   final actions = ref.read(challengeActionsProvider);
@@ -64,10 +67,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     ref.read(_checkInProvider.future).ignore();
+    // First-login walkthrough (once per user; see welcome_tour.dart).
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final user = ref.read(currentUserProvider);
+      if (user != null) maybeShowWelcomeTour(context, user.id);
+    });
   }
 
   @override
   Widget build(BuildContext context) {
+    // Catches the login-completes-after-home-mounts case (session restore).
+    ref.listen(currentUserProvider, (prev, next) {
+      if (prev == null && next != null && mounted) {
+        maybeShowWelcomeTour(context, next.id);
+      }
+    });
     final isWide = MediaQuery.of(context).size.width >= 900;
 
     return Scaffold(
@@ -106,7 +121,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     const SliverToBoxAdapter(child: _CommunitySection()),
                     const SliverToBoxAdapter(child: _RisingSection()),
                     const SliverToBoxAdapter(child: _WhoIsLiveSection()),
-                    const SliverToBoxAdapter(child: _Phase2BannerCard()),
+                    const SliverToBoxAdapter(child: _MomentsBannerCard()),
                     const SliverToBoxAdapter(child: _FooterLinks()),
                     const SliverToBoxAdapter(child: SizedBox(height: 24)),
                   ],
@@ -186,7 +201,7 @@ class _Header extends ConsumerWidget {
                         color: AppTheme.textPrimary,
                         fontSize: 12,
                         fontWeight: FontWeight.w800)),
-                Text('Phase 1',
+                Text('Beta',
                     style: TextStyle(
                         color: AppTheme.textSecondary, fontSize: 10)),
               ],
@@ -194,6 +209,14 @@ class _Header extends ConsumerWidget {
           ),
           if (isLoggedIn) ...[
             const Spacer(),
+            IconButton(
+              icon: const Icon(Icons.search,
+                  color: AppTheme.textSecondary, size: 22),
+              onPressed: () => GoRouter.of(context).go('/search'),
+              padding: EdgeInsets.zero,
+              constraints:
+                  const BoxConstraints(minWidth: 36, minHeight: 36),
+            ),
             // Notification bell with unread badge
             Stack(
               clipBehavior: Clip.none,
@@ -265,7 +288,7 @@ class _Header extends ConsumerWidget {
                         horizontal: 16, vertical: 10),
                   ),
                   child: const Text(
-                    'Learn more about Phase 2 and Phase 3',
+                    'What is N.O.R.A.? How it works →',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 12,
@@ -2280,7 +2303,7 @@ class _SideDrawer extends ConsumerWidget {
                                 color: AppTheme.textPrimary,
                                 fontSize: 15,
                                 fontWeight: FontWeight.w800)),
-                        Text('Phase 1',
+                        Text('Beta',
                             style: TextStyle(
                                 color: AppTheme.primary,
                                 fontSize: 11,
@@ -2435,11 +2458,17 @@ class _SideDrawer extends ConsumerWidget {
                         _navTo(context, ref, '/arena', requiresAuth: true),
                   ),
                   _DrawerNavItem(
-                    icon: Icons.sports_kabaddi_outlined,
+                    icon: Icons.style_outlined,
                     label: 'Battle',
-                    subtitle: '6-player team battles',
+                    subtitle: 'Moments card battles',
                     onTap: () =>
                         _navTo(context, ref, '/battle', requiresAuth: true),
+                  ),
+                  _DrawerNavItem(
+                    icon: Icons.search_outlined,
+                    label: 'Search',
+                    subtitle: 'Find creators',
+                    onTap: () => _navTo(context, ref, '/search'),
                   ),
                   _DrawerNavItem(
                     icon: Icons.local_fire_department_outlined,
@@ -2455,10 +2484,15 @@ class _SideDrawer extends ConsumerWidget {
                         requiresAuth: true),
                   ),
                   _DrawerNavItem(
-                    icon: Icons.attach_money_outlined,
-                    label: 'Phase 2',
-                    subtitle: 'Royalty campaigns (SIM)',
-                    badge: 'New',
+                    icon: Icons.workspace_premium_outlined,
+                    label: 'Licenses',
+                    subtitle: 'Likeness licensing marketplace',
+                    onTap: () => _navTo(context, ref, '/licenses'),
+                  ),
+                  _DrawerNavItem(
+                    icon: Icons.auto_awesome_outlined,
+                    label: 'How It Works',
+                    subtitle: 'The game, the cards & the markets',
                     onTap: () => _navTo(context, ref, '/plan'),
                   ),
 
@@ -2485,13 +2519,28 @@ class _SideDrawer extends ConsumerWidget {
                     icon: Icons.settings_outlined,
                     label: 'Settings',
                     subtitle: 'App preferences',
-                    onTap: () => Navigator.pop(context), // placeholder
+                    onTap: () {
+                      Navigator.pop(context);
+                      showSettingsOverlay(context);
+                    },
                   ),
                   _DrawerNavItem(
                     icon: Icons.help_outline,
                     label: 'Help',
                     subtitle: 'Support & FAQ',
-                    onTap: () => Navigator.pop(context), // placeholder
+                    onTap: () {
+                      Navigator.pop(context);
+                      showHelpOverlay(context);
+                    },
+                  ),
+                  _DrawerNavItem(
+                    icon: Icons.tour_outlined,
+                    label: 'Take the Tour',
+                    subtitle: 'A 60-second walkthrough of the app',
+                    onTap: () {
+                      Navigator.pop(context);
+                      showWelcomeTour(context);
+                    },
                   ),
                 ],
               ),
@@ -2529,7 +2578,7 @@ class _SideDrawer extends ConsumerWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('v1.0.0 — Phase 1',
+                  const Text('v1.0.0 — Beta',
                       style: TextStyle(
                           color: AppTheme.textSecondary, fontSize: 11)),
                   Text(
@@ -2776,10 +2825,10 @@ class _NotificationSheet extends ConsumerWidget {
   }
 }
 
-// ─── Phase 2 banner ───────────────────────────────────────────────────────────
+// ─── "How it works" banner (Moments card game) ────────────────────────────────
 
-class _Phase2BannerCard extends StatelessWidget {
-  const _Phase2BannerCard();
+class _MomentsBannerCard extends StatelessWidget {
+  const _MomentsBannerCard();
 
   @override
   Widget build(BuildContext context) {
@@ -2812,7 +2861,7 @@ class _Phase2BannerCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'PHASE 2',
+                    'MOMENTS',
                     style: TextStyle(
                       color: Colors.black87,
                       fontSize: 10,
@@ -2830,7 +2879,7 @@ class _Phase2BannerCard extends StatelessWidget {
                     border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
                   ),
                   child: const Text(
-                    'SIM MODE LIVE',
+                    'THE CARD GAME',
                     style: TextStyle(
                       color: AppTheme.primary,
                       fontSize: 10,
@@ -2842,7 +2891,7 @@ class _Phase2BannerCard extends StatelessWidget {
               ]),
               const SizedBox(height: 12),
               const Text(
-                'Royalty Campaigns',
+                'Mint your moment. Battle with it.',
                 style: TextStyle(
                   color: AppTheme.textPrimary,
                   fontSize: 20,
@@ -2851,7 +2900,9 @@ class _Phase2BannerCard extends StatelessWidget {
               ),
               const SizedBox(height: 6),
               const Text(
-                'Back creators directly. Earn a share of their future revenue — music, content, brand deals, and more.',
+                'Turn a viral post you own into a playable collectible card, '
+                'build a deck, and battle. Back your favorite creators in the '
+                'prediction markets while you play.',
                 style: TextStyle(
                   color: AppTheme.textSecondary,
                   fontSize: 13,
@@ -2867,7 +2918,7 @@ class _Phase2BannerCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Text(
-                  'Explore Phase 2 →',
+                  'See how it works →',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     color: Colors.white,

@@ -8,11 +8,13 @@ class MainShell extends StatelessWidget {
   const MainShell({super.key, required this.child});
 
   int _locationToIndex(String location) {
-    if (location.startsWith('/search')) return 1;
+    if (location.startsWith('/battle') || location.startsWith('/arena')) {
+      return 1;
+    }
     if (location.startsWith('/markets')) return 2;
     if (location.startsWith('/profile')) return 3;
     if (location.startsWith('/wallet')) return 4;
-    return 0;
+    return 0; // /home, /search, /hot-topic fall back to Home
   }
 
   @override
@@ -35,7 +37,7 @@ class MainShell extends StatelessWidget {
           onTap: (index) {
             switch (index) {
               case 0: context.go('/home'); break;
-              case 1: context.go('/search'); break;
+              case 1: context.go('/battle'); break;
               case 2: context.go('/markets'); break;
               case 3: context.go('/profile'); break;
               case 4: context.go('/wallet'); break;
@@ -48,9 +50,9 @@ class MainShell extends StatelessWidget {
               label: 'Home',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.search_outlined),
-              activeIcon: Icon(Icons.search),
-              label: 'Search',
+              icon: Icon(Icons.style_outlined),
+              activeIcon: Icon(Icons.style),
+              label: 'Battle',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.bar_chart_outlined),

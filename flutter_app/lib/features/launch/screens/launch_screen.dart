@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,12 +7,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/local_flags.dart';
 import '../../../core/utils/open_url.dart';
 import '../../waitlist/models/waitlist_models.dart';
 import '../../waitlist/providers/waitlist_provider.dart';
+import '../widgets/launch_sequence.dart';
 
-// Update this date before public launch.
-final _launchDate = DateTime.utc(2026, 7, 4);
+// Midnight July 4, 2026 US Eastern (EDT = UTC-4). The site launches at
+// midnight Florida time, not midnight UTC.
+final _launchDate = DateTime.utc(2026, 7, 4, 4);
+
+// localStorage flag: visitor has already seen the launch-night rocket
+// sequence, so later visits to / go straight to /home.
+const _kLaunchSeenFlag = 'nora_launch_sequence_seen';
 
 class LaunchScreen extends ConsumerStatefulWidget {
   // Populated when arriving via /w/:token. Null on the root / route.
@@ -23,9 +31,15 @@ class LaunchScreen extends ConsumerStatefulWidget {
   ConsumerState<LaunchScreen> createState() => _LaunchScreenState();
 }
 
-class _LaunchScreenState extends ConsumerState<LaunchScreen> {
+class _LaunchScreenState extends ConsumerState<LaunchScreen>
+    with SingleTickerProviderStateMixin {
   late Timer _timer;
   late Duration _remaining;
+
+  // Launch-night sequence: content breaks away, then the rocket plays.
+  late final AnimationController _breakaway;
+  bool _sequenceStarted = false;
+  bool _showRocket = false;
 
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
@@ -36,12 +50,33 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
   @override
   void initState() {
     super.initState();
+    _breakaway = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed && mounted) {
+          setState(() => _showRocket = true);
+        }
+      });
+
     _remaining = _launchDate.difference(DateTime.now().toUtc());
+    if (_remaining.isNegative && LocalFlags.get(_kLaunchSeenFlag)) {
+      // Already launched and this visitor has seen the rocket — the launch
+      // cover is over, send them to the live app.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) context.go('/home');
+      });
+    }
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) {
-        setState(() {
-          _remaining = _launchDate.difference(DateTime.now().toUtc());
-        });
+      if (!mounted) return;
+      setState(() {
+        _remaining = _launchDate.difference(DateTime.now().toUtc());
+      });
+      if (!_remaining.isNegative) return;
+      if (LocalFlags.get(_kLaunchSeenFlag)) {
+        if (!_sequenceStarted) context.go('/home');
+      } else {
+        _startLaunchSequence();
       }
     });
 
@@ -64,8 +99,25 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
   @override
   void dispose() {
     _timer.cancel();
+    _breakaway.dispose();
     _emailController.dispose();
     super.dispose();
+  }
+
+  // Kicks off the midnight moment: the page content shakes and falls away,
+  // then LaunchSequenceOverlay plays the rocket cutscene (or its built-in
+  // fallback animation), and we land on /home.
+  void _startLaunchSequence() {
+    if (_sequenceStarted) return;
+    setState(() => _sequenceStarted = true);
+    _breakaway.forward();
+  }
+
+  void _onSequenceFinished() {
+    // Preview runs (long-press on the countdown) don't set the flag, so the
+    // real launch night still plays the sequence for this visitor.
+    if (_remaining.isNegative) LocalFlags.set(_kLaunchSeenFlag, true);
+    if (mounted) context.go('/home');
   }
 
   Future<void> _submit() async {
@@ -104,6 +156,23 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
     final waitlistState = ref.watch(waitlistStateProvider);
     final r = _remaining.isNegative ? Duration.zero : _remaining;
 
+    // Sections that break apart at T-0, each flying off on its own vector.
+    final sections = <Widget>[
+      _buildHeader(),
+      _buildUserCount(countAsync),
+      _buildCountdown(
+        r.inDays,
+        r.inHours % 24,
+        r.inMinutes % 60,
+        r.inSeconds % 60,
+      ),
+      _buildExploreButton(context),
+      _buildWaitlistSection(waitlistState),
+      _buildAuthLinks(context),
+      _buildFooter(context),
+    ];
+    const gaps = <double>[16, 28, 32, 24, 28, 32, 32];
+
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: Stack(
@@ -115,29 +184,22 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const SizedBox(height: 16),
-                  _buildHeader(),
-                  const SizedBox(height: 28),
-                  _buildUserCount(countAsync),
-                  const SizedBox(height: 32),
-                  _buildCountdown(
-                    r.inDays,
-                    r.inHours % 24,
-                    r.inMinutes % 60,
-                    r.inSeconds % 60,
-                  ),
-                  const SizedBox(height: 24),
-                  _buildExploreButton(context),
-                  const SizedBox(height: 28),
-                  _buildWaitlistSection(waitlistState),
-                  const SizedBox(height: 32),
-                  _buildAuthLinks(context),
-                  const SizedBox(height: 32),
-                  _buildFooter(context),
+                  for (var i = 0; i < sections.length; i++) ...[
+                    SizedBox(height: gaps[i]),
+                    _BreakawayPiece(
+                      animation: _breakaway,
+                      index: i,
+                      child: sections[i],
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
+          if (_showRocket)
+            Positioned.fill(
+              child: LaunchSequenceOverlay(onFinished: _onSequenceFinished),
+            ),
         ],
       ),
     );
@@ -472,6 +534,14 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
   }
 
   Widget _buildCountdown(int days, int hours, int minutes, int seconds) {
+    // Long-press: hidden preview of the launch-night sequence.
+    return GestureDetector(
+      onLongPress: _startLaunchSequence,
+      child: _buildCountdownInner(days, hours, minutes, seconds),
+    );
+  }
+
+  Widget _buildCountdownInner(int days, int hours, int minutes, int seconds) {
     return Column(
       children: [
         Text(
@@ -632,6 +702,61 @@ class _LaunchScreenState extends ConsumerState<LaunchScreen> {
     if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
     if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
     return n.toString();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BREAKAWAY PIECE
+// Wraps each launch-page section. When the breakaway controller runs, every
+// piece shakes briefly then flies off on its own vector with spin + fade —
+// the "menu breaking away" beat before the rocket cutscene.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _BreakawayPiece extends StatelessWidget {
+  final Animation<double> animation;
+  final int index;
+  final Widget child;
+
+  const _BreakawayPiece({
+    required this.animation,
+    required this.index,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: animation,
+      child: child,
+      builder: (context, child) {
+        final t = animation.value;
+        if (t == 0) return child!;
+
+        // Deterministic pseudo-random vector per section.
+        final seed = index * 37 + 11;
+        final dx = ((seed % 7) - 3) * 220.0; // -660..660
+        final spin = ((seed % 5) - 2) * 0.45; // radians at full throw
+        final stagger = (index * 0.07).clamp(0.0, 0.35);
+
+        // Shake for the first 25%, then throw.
+        final shake = t < 0.25
+            ? math.sin(t * 80 + index) * 4 * (1 - t / 0.25)
+            : 0.0;
+        final throwT = Curves.easeInCubic
+            .transform(((t - 0.25 - stagger) / (0.75 - stagger)).clamp(0.0, 1.0));
+
+        return Opacity(
+          opacity: 1 - throwT,
+          child: Transform.translate(
+            offset: Offset(dx * throwT + shake, 900 * throwT * throwT),
+            child: Transform.rotate(
+              angle: spin * throwT,
+              child: child,
+            ),
+          ),
+        );
+      },
+    );
   }
 }
 

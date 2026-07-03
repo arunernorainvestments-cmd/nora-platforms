@@ -2,6 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 
+// /plan — the public "How N.O.R.A. works" explainer.
+// Covers the Moments card game (minting, consent & likeness, how cards work),
+// the two prediction-market loops, and what's live today vs coming at launch.
+//
+// Compliance note (CLAUDE.md governance): cards are collectible game assets.
+// Never describe them with investment/return/yield/dividend/revenue-share
+// language.
 class PlanScreen extends StatelessWidget {
   const PlanScreen({super.key});
 
@@ -14,7 +21,12 @@ class PlanScreen extends StatelessWidget {
           SliverAppBar(
             backgroundColor: AppTheme.surface,
             pinned: true,
-            title: const Text('Phase 2'),
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () =>
+                  context.canPop() ? context.pop() : context.go('/home'),
+            ),
+            title: const Text('How N.O.R.A. Works'),
             actions: [
               Padding(
                 padding: const EdgeInsets.only(right: 16),
@@ -27,7 +39,7 @@ class PlanScreen extends StatelessWidget {
                     border: Border.all(
                         color: AppTheme.secondary.withValues(alpha: 0.4)),
                   ),
-                  child: const Text('SIM MODE LIVE',
+                  child: const Text('BETA',
                       style: TextStyle(
                           color: AppTheme.secondary,
                           fontSize: 10,
@@ -43,10 +55,12 @@ class PlanScreen extends StatelessWidget {
               children: [
                 _Hero(),
                 _HowItWorks(),
-                _FeaturesGrid(),
-                _RegulatorySection(),
-                _SimulationSection(onExplore: () => context.push('/campaigns')),
-                _Phase3Teaser(),
+                _CardsExplainer(),
+                _ConsentSection(),
+                _MarketsExplainer(),
+                _StatusSection(),
+                _CommunityTeaser(),
+                _GetStartedCta(),
                 const SizedBox(height: 48),
               ],
             ),
@@ -83,21 +97,21 @@ class _Hero extends StatelessWidget {
             padding:
                 const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
             decoration: BoxDecoration(
-              color: AppTheme.danger.withValues(alpha: 0.12),
+              color: AppTheme.secondary.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
-              border:
-                  Border.all(color: AppTheme.danger.withValues(alpha: 0.4)),
+              border: Border.all(
+                  color: AppTheme.secondary.withValues(alpha: 0.4)),
             ),
-            child: const Text('PENDING REGULATORY APPROVAL',
+            child: const Text('LAUNCHING JULY 4, 2026',
                 style: TextStyle(
-                    color: AppTheme.danger,
+                    color: AppTheme.secondary,
                     fontSize: 10,
                     fontWeight: FontWeight.w700,
                     letterSpacing: 1)),
           ),
           const SizedBox(height: 20),
           const Text(
-            'NORA Campaigns',
+            'Moments',
             style: TextStyle(
                 color: AppTheme.textPrimary,
                 fontSize: 32,
@@ -110,7 +124,7 @@ class _Hero extends StatelessWidget {
               colors: [AppTheme.primary, AppTheme.secondary],
             ).createShader(bounds),
             child: const Text(
-              'Royalty Crowdfunding',
+              'The viral-moment card game',
               style: TextStyle(
                   color: Colors.white,
                   fontSize: 20,
@@ -119,29 +133,30 @@ class _Hero extends StatelessWidget {
           ),
           const SizedBox(height: 20),
           const Text(
-            'Creators launch funding campaigns. Backers invest in '
-            'a percentage of future royalties. Real returns tied to '
-            'real revenue — enforced mechanically, not by trust.',
+            'Every viral post is a moment. On N.O.R.A. you can mint a moment '
+            'you own into a playable collectible card, build a deck, and '
+            'battle other players — while the community predicts which '
+            'creators are about to blow up.',
             style: TextStyle(
                 color: AppTheme.textSecondary, fontSize: 15, height: 1.6),
           ),
           const SizedBox(height: 28),
           const Row(children: [
             _Pill(
-              icon: Icons.shield_outlined,
-              label: 'SEC Reg CF',
+              icon: Icons.style_outlined,
+              label: 'Collectible Cards',
               color: AppTheme.primary,
             ),
             SizedBox(width: 10),
             _Pill(
-              icon: Icons.link,
-              label: 'On-Chain Ready',
+              icon: Icons.verified_user_outlined,
+              label: 'Consent-First',
               color: AppTheme.secondary,
             ),
             SizedBox(width: 10),
             _Pill(
-              icon: Icons.science_outlined,
-              label: 'Sim Mode Live',
+              icon: Icons.trending_up,
+              label: 'Creator Markets',
               color: AppTheme.success,
             ),
           ]),
@@ -192,32 +207,55 @@ class _HowItWorks extends StatelessWidget {
           const SizedBox(height: 20),
           const _Step(
             number: '01',
-            title: 'Creator launches a campaign',
-            body: 'A creator sets a funding goal and offers a percentage '
-                'of future royalties — from an album, film, podcast, software, '
-                'or any creative work. The platform files an SEC Form C before '
-                'any investment can occur.',
+            title: 'Create your account',
+            body: 'Sign up with your email and set up your profile. '
+                'Optionally link the social accounts you own — TikTok, '
+                'Instagram, or YouTube. Linking is always your choice, and '
+                'it\'s what unlocks minting.',
             color: AppTheme.primary,
           ),
           _connector(),
           const _Step(
             number: '02',
-            title: 'Backers invest',
-            body: 'Anyone can invest within their Reg CF limits. Each dollar '
-                'buys a proportional royalty stake, recorded in an immutable '
-                'ownership ledger designed to migrate on-chain when the NORA '
-                'coin launches.',
+            title: 'Mint a moment card',
+            body: 'Pick a viral post you own and mint it into a playable '
+                'card. The moment\'s engagement decides the card\'s tier '
+                '(F up to S) — the stats and cost are derived from the tier, '
+                'never hand-picked. Every mint passes content moderation and '
+                'you preview the card in a practice battle before it\'s final.',
             color: AppTheme.secondary,
           ),
           _connector(),
           const _Step(
             number: '03',
-            title: 'Revenue flows to backers',
-            body: 'As the creator earns — from streams, views, downloads, '
-                'or sales — the platform verifies the revenue and automatically '
-                'distributes royalty payments to all backers in proportion '
-                'to their stake. No creator intervention required.',
+            title: 'Build a deck & battle',
+            body: 'Decks are 20 cards, max two copies each. Summon creatures '
+                'and cast spell-moments using Aura, which grows every turn. '
+                'Reduce your opponent\'s Life to zero to win. All combat is '
+                'resolved server-side — no pay-to-win client tricks.',
             color: AppTheme.success,
+          ),
+          _connector(),
+          const _Step(
+            number: '04',
+            title: 'Predict the rise of creators',
+            body: 'Independently of the card game, bet platform tokens on '
+                'whether a creator\'s Display Score goes up or down. When a '
+                'market resolves, 90% of the pool goes to winning bettors, '
+                '5% to the platform, and 5% to the creator (the Market Maker).',
+            color: Color(0xFFFFD700),
+          ),
+          _connector(),
+          const _Step(
+            number: '05',
+            title: 'Go pro as a Market Maker',
+            body: 'Opting in as a Market Maker means consenting to markets on '
+                'your popularity and to the platform using your linked-account '
+                'likeness for those markets and your minted cards. It requires '
+                'identity verification (KYC), and in return you earn the '
+                'creator\'s share whenever your markets resolve or your '
+                'moments appear in monetized matches.',
+            color: AppTheme.danger,
           ),
         ],
       ),
@@ -293,9 +331,9 @@ class _Step extends StatelessWidget {
       );
 }
 
-// ─── Features Grid ────────────────────────────────────────────────────────────
+// ─── How the cards work ───────────────────────────────────────────────────────
 
-class _FeaturesGrid extends StatelessWidget {
+class _CardsExplainer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Padding(
@@ -303,52 +341,54 @@ class _FeaturesGrid extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SectionLabel('WHAT YOU GET'),
+          _SectionLabel('HOW THE CARDS WORK'),
           SizedBox(height: 20),
           _FeatureCard(
-            icon: Icons.pie_chart_outline,
+            icon: Icons.military_tech_outlined,
             color: AppTheme.primary,
-            title: 'Royalty Ownership',
-            body: 'Your investment buys a real percentage of a creator\'s '
-                'revenue stream. Not a donation. Not a gift. An investment '
-                'with verifiable returns.',
+            title: 'Tiers F through S',
+            body: 'A card\'s tier comes from how viral the moment was at '
+                'minting. Higher tiers hit harder but cost more Aura to play '
+                '— stronger is never simply better, it\'s a real trade-off.',
           ),
           SizedBox(height: 12),
           _FeatureCard(
-            icon: Icons.how_to_vote_outlined,
+            icon: Icons.category_outlined,
             color: AppTheme.secondary,
-            title: 'Creator Governance',
-            body: 'Backers vote on how escrowed capital is spent. '
-                'Simple majority with a 25% quorum threshold. '
-                'Proposals, votes, and fund releases are all auditable.',
+            title: 'Families & effects',
+            body: 'Each moment is classified into a family — athlete, '
+                'musician, artist, scientist, comedian, and more. The family '
+                'decides the card\'s effect style in battle, so decks have '
+                'personality.',
+          ),
+          SizedBox(height: 12),
+          _FeatureCard(
+            icon: Icons.movie_outlined,
+            color: AppTheme.success,
+            title: 'Cinematic summons',
+            body: 'Minting generates a short stylized cutscene of your '
+                'moment. When you summon the card, the arena camera cuts '
+                'into that clip — your moment literally enters the fight.',
+          ),
+          SizedBox(height: 12),
+          _FeatureCard(
+            icon: Icons.trending_up,
+            color: Color(0xFFFFD700),
+            title: 'Ascension',
+            body: 'If a moment keeps gaining engagement after minting, its '
+                'card can ascend to a higher tier — all copies together, at '
+                'most once a week, and only between matches. Cards never '
+                'de-rank.',
           ),
           SizedBox(height: 12),
           _FeatureCard(
             icon: Icons.swap_horiz,
-            color: AppTheme.success,
-            title: 'Secondary Market',
-            body: 'List your royalty stake for sale at any time once '
-                'a campaign is active. Buyers get the exact stake you held — '
-                'every transfer recorded in the ownership ledger.',
-          ),
-          SizedBox(height: 12),
-          _FeatureCard(
-            icon: Icons.link,
-            color: Color(0xFFFFD700),
-            title: 'On-Chain Future',
-            body: 'The ownership ledger is append-only and designed to '
-                'mirror blockchain state. When the NORA coin launches, '
-                'every stake becomes a token. No migration work required for backers.',
-          ),
-          SizedBox(height: 12),
-          _FeatureCard(
-            icon: Icons.verified_outlined,
-            color: AppTheme.primary,
-            title: 'Verified Revenue',
-            body: 'Revenue starts with creator uploads. The roadmap adds '
-                'CSV imports, Spotify and YouTube OAuth pulls, and eventually '
-                'direct data partnerships — so payouts require zero creator '
-                'manual input.',
+            color: AppTheme.danger,
+            title: 'Wager matches',
+            body: 'In the optional wager mode, both players stake a card and '
+                'the winner takes the loser\'s card. The original minter\'s '
+                'handle stays on the card wherever it travels. Standard '
+                'matches never risk your collection.',
           ),
         ],
       ),
@@ -410,9 +450,9 @@ class _FeatureCard extends StatelessWidget {
       );
 }
 
-// ─── Regulatory Section ───────────────────────────────────────────────────────
+// ─── Consent, ownership & likeness ────────────────────────────────────────────
 
-class _RegulatorySection extends StatelessWidget {
+class _ConsentSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -420,7 +460,7 @@ class _RegulatorySection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionLabel('WHY IT\'S NOT LIVE YET'),
+          const _SectionLabel('YOUR MOMENTS, YOUR CONSENT'),
           const SizedBox(height: 20),
           Container(
             padding: const EdgeInsets.all(20),
@@ -428,7 +468,7 @@ class _RegulatorySection extends StatelessWidget {
               color: AppTheme.surface,
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
-                  color: AppTheme.danger.withValues(alpha: 0.3)),
+                  color: AppTheme.secondary.withValues(alpha: 0.3)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -437,49 +477,59 @@ class _RegulatorySection extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: AppTheme.danger.withValues(alpha: 0.1),
+                      color: AppTheme.secondary.withValues(alpha: 0.1),
                       shape: BoxShape.circle,
                     ),
-                    child: const Icon(Icons.gavel_outlined,
-                        color: AppTheme.danger, size: 20),
+                    child: const Icon(Icons.verified_user_outlined,
+                        color: AppTheme.secondary, size: 20),
                   ),
                   const SizedBox(width: 12),
-                  const Text('Regulation Crowdfunding (Reg CF)',
-                      style: TextStyle(
-                          color: AppTheme.textPrimary,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w700)),
+                  const Expanded(
+                    child: Text('How ownership and likeness work',
+                        style: TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700)),
+                  ),
                 ]),
                 const SizedBox(height: 16),
-                const Text(
-                  'Campaigns are securities offerings under the JOBS Act. '
-                  'Going live requires:',
-                  style: TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 13,
-                      height: 1.6),
-                ),
-                const SizedBox(height: 14),
                 ...[
                   (
-                    'SEC Funding Portal Registration',
-                    'NORA must register as a Funding Portal (Form Funding Portal) '
-                        'with the SEC before any campaign can go live.'
+                    'Only your own posts',
+                    'Cards can only be minted from a post on a social account '
+                        'you\'ve verified you own. There is no minting from '
+                        'random URLs or uploads of other people\'s content.'
                   ),
                   (
-                    'Form C per campaign',
-                    'Each creator campaign requires an individual SEC Form C '
-                        'filing before accepting investments.'
+                    'Consent is explicit and specific',
+                    'When you mint, you consent to that one moment being used '
+                        'as a card. Playing for fun never requires giving up '
+                        'anything else. Becoming a Market Maker is a separate, '
+                        'explicit opt-in that covers markets on your popularity.'
                   ),
                   (
-                    'Annual raise limits',
-                    'Creators can raise up to \$5M per year under Reg CF. '
-                        'US investors have per-year investment limits based on income.'
+                    'You stay credited',
+                    'Every card permanently carries the original minter\'s '
+                        'handle — even if the card later changes hands in a '
+                        'wager match.'
                   ),
                   (
-                    'Attorney review',
-                    'Legal counsel must review each campaign before '
-                        'it opens to investors.'
+                    'Moderation is mandatory',
+                    'Every moment is screened before generation and every '
+                        'finished card animation is screened again after. '
+                        'Safety checks cannot be bypassed by anyone.'
+                  ),
+                  (
+                    'One active self-minted card',
+                    'You have one active self-minted card at a time. Minting a '
+                        'new one replaces the old card after a clear warning — '
+                        'so your best moment is always the one in play.'
+                  ),
+                  (
+                    'Celebrity & creator packs are licensed',
+                    'Premium moments from public figures only enter the game '
+                        'through the licensing marketplace, with a recorded, '
+                        'verifiable license behind every card.'
                   ),
                 ].map((item) => Padding(
                       padding: const EdgeInsets.only(bottom: 12),
@@ -489,7 +539,7 @@ class _RegulatorySection extends StatelessWidget {
                           const Padding(
                             padding: EdgeInsets.only(top: 5),
                             child: Icon(Icons.circle,
-                                size: 5, color: AppTheme.danger),
+                                size: 5, color: AppTheme.secondary),
                           ),
                           const SizedBox(width: 10),
                           Expanded(
@@ -516,47 +566,15 @@ class _RegulatorySection extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: AppTheme.success.withValues(alpha: 0.06),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                  color: AppTheme.success.withValues(alpha: 0.25)),
-            ),
-            child: const Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.check_circle_outline,
-                    color: AppTheme.success, size: 18),
-                SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    'The platform is fully built and compliance-ready. '
-                    'The moment regulatory approval is in hand, we flip the '
-                    'switch — no code change, just a database update.',
-                    style: TextStyle(
-                        color: AppTheme.success,
-                        fontSize: 13,
-                        height: 1.5),
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
   }
 }
 
-// ─── Simulation Section ───────────────────────────────────────────────────────
+// ─── The two market loops ─────────────────────────────────────────────────────
 
-class _SimulationSection extends StatelessWidget {
-  final VoidCallback onExplore;
-  const _SimulationSection({required this.onExplore});
-
+class _MarketsExplainer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
@@ -564,128 +582,8 @@ class _SimulationSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const _SectionLabel('TRY IT TODAY'),
+          const _SectionLabel('TWO KINDS OF PREDICTION MARKETS'),
           const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppTheme.secondary.withValues(alpha: 0.12),
-                  AppTheme.primary.withValues(alpha: 0.06),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                  color: AppTheme.secondary.withValues(alpha: 0.35)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(children: [
-                  const Icon(Icons.science_outlined,
-                      color: AppTheme.secondary, size: 22),
-                  const SizedBox(width: 10),
-                  const Text('Simulation Mode',
-                      style: TextStyle(
-                          color: AppTheme.secondary,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800)),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: AppTheme.success.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Text('LIVE NOW',
-                        style: TextStyle(
-                            color: AppTheme.success,
-                            fontSize: 9,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 1)),
-                  ),
-                ]),
-                const SizedBox(height: 14),
-                const Text(
-                  'The entire platform — campaigns, investing, governance, '
-                  'distributions, and the secondary market — is running '
-                  'right now in simulation mode.',
-                  style: TextStyle(
-                      color: AppTheme.textSecondary,
-                      fontSize: 13,
-                      height: 1.6),
-                ),
-                const SizedBox(height: 12),
-                ...[
-                  'Start with \$10,000 in simulated USD — seeded automatically',
-                  'Browse and invest in real simulated campaigns',
-                  'Earn simulated royalty distributions as revenue events are posted',
-                  'Vote on governance proposals (Phase 3)',
-                  'Trade stakes on the secondary market (Phase 4)',
-                ].map((item) => Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Padding(
-                            padding: EdgeInsets.only(top: 5),
-                            child: Icon(Icons.arrow_forward_ios,
-                                size: 9, color: AppTheme.secondary),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(item,
-                                style: const TextStyle(
-                                    color: AppTheme.textPrimary,
-                                    fontSize: 13,
-                                    height: 1.5)),
-                          ),
-                        ],
-                      ),
-                    )),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: onExplore,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.secondary,
-                      foregroundColor: Colors.black,
-                      padding:
-                          const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10)),
-                    ),
-                    child: const Text('Explore Campaigns in Simulation',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w700, fontSize: 14)),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─── Phase 3 Teaser ───────────────────────────────────────────────────────────
-
-class _Phase3Teaser extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 40, 24, 0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const _SectionLabel('WHAT\'S AFTER PHASE 2'),
-          const SizedBox(height: 16),
           Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
@@ -694,37 +592,34 @@ class _Phase3Teaser extends StatelessWidget {
               border: Border.all(color: AppTheme.cardBorder),
             ),
             child: const Column(children: [
-              _Phase3Item(
-                icon: Icons.how_to_vote_outlined,
-                title: 'Governance (Phase 3)',
-                body: 'Backers vote on creator spending proposals. '
-                    'Approved votes release escrowed capital directly.',
+              _MarketRow(
+                icon: Icons.bar_chart_outlined,
+                title: 'Creator markets — tokens',
+                body: 'Bet platform tokens on a creator\'s Display Score '
+                    'going up or down. Tokens are the in-app currency; '
+                    'during beta they are simulated.',
                 color: AppTheme.primary,
               ),
               Divider(color: AppTheme.cardBorder, height: 28),
-              _Phase3Item(
-                icon: Icons.swap_horiz,
-                title: 'Secondary Market (Phase 4)',
-                body: 'Buy and sell royalty stakes between users. '
-                    'Listing + buy-now model to start, order book post-launch.',
-                color: AppTheme.secondary,
-              ),
-              Divider(color: AppTheme.cardBorder, height: 28),
-              _Phase3Item(
-                icon: Icons.hub_outlined,
-                title: 'Revenue API Integrations (Phase 6)',
-                body: 'YouTube, Spotify, DistroKid, and TuneCore pull '
-                    'revenue data automatically. Zero creator manual input.',
+              _MarketRow(
+                icon: Icons.sports_esports_outlined,
+                title: 'Battle markets — real money',
+                body: 'Spectators can back a player in a card battle with '
+                    'real money (USD) — but only in matches where both '
+                    'players are identity-verified. A slice of each battle '
+                    'market goes to the creators whose moments were actually '
+                    'played: summon your friend, your friend earns.',
                 color: AppTheme.success,
               ),
               Divider(color: AppTheme.cardBorder, height: 28),
-              _Phase3Item(
-                icon: Icons.currency_bitcoin,
-                title: 'On-Chain Settlement (Phase 7)',
-                body: 'Every campaign stake becomes a NORA coin token. '
-                    'Distributions settle on-chain. '
-                    'No migration work for existing backers.',
-                color: Color(0xFFFFD700),
+              _MarketRow(
+                icon: Icons.gavel_outlined,
+                title: 'One role per match',
+                body: 'For any battle with an open money market, a person is '
+                    'either a player or a bettor — never both. This is '
+                    'enforced at the database level and cannot be toggled '
+                    'off.',
+                color: AppTheme.danger,
               ),
             ]),
           ),
@@ -734,13 +629,13 @@ class _Phase3Teaser extends StatelessWidget {
   }
 }
 
-class _Phase3Item extends StatelessWidget {
+class _MarketRow extends StatelessWidget {
   final IconData icon;
   final String title;
   final String body;
   final Color color;
 
-  const _Phase3Item({
+  const _MarketRow({
     required this.icon,
     required this.title,
     required this.body,
@@ -773,6 +668,227 @@ class _Phase3Item extends StatelessWidget {
           ),
         ],
       );
+}
+
+// ─── Status: what's live vs coming ────────────────────────────────────────────
+
+class _StatusSection extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 40, 24, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionLabel('WHERE THINGS STAND TODAY'),
+          const SizedBox(height: 20),
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppTheme.secondary.withValues(alpha: 0.12),
+                  AppTheme.primary.withValues(alpha: 0.06),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                  color: AppTheme.secondary.withValues(alpha: 0.35)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Row(children: [
+                  Icon(Icons.science_outlined,
+                      color: AppTheme.secondary, size: 22),
+                  SizedBox(width: 10),
+                  Text('Beta status',
+                      style: TextStyle(
+                          color: AppTheme.secondary,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800)),
+                ]),
+                const SizedBox(height: 14),
+                const Text(
+                  'You can explore the whole platform right now. Money flows '
+                  'run in simulation until launch:',
+                  style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 13,
+                      height: 1.6),
+                ),
+                const SizedBox(height: 12),
+                ...[
+                  'Creator prediction markets are live with simulated tokens',
+                  'Card battles run in the Arena with server-side rules',
+                  'Minting your own moment cards opens with launch',
+                  'Real-money battle markets switch on only after identity '
+                      'verification goes live',
+                  'The Emergency Fund and licensing marketplace are running '
+                      'in simulation mode',
+                ].map((item) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Padding(
+                            padding: EdgeInsets.only(top: 5),
+                            child: Icon(Icons.arrow_forward_ios,
+                                size: 9, color: AppTheme.secondary),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(item,
+                                style: const TextStyle(
+                                    color: AppTheme.textPrimary,
+                                    fontSize: 13,
+                                    height: 1.5)),
+                          ),
+                        ],
+                      ),
+                    )),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Community systems teaser ─────────────────────────────────────────────────
+
+class _CommunityTeaser extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 40, 24, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const _SectionLabel('BEYOND THE GAME'),
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppTheme.surface,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppTheme.cardBorder),
+            ),
+            child: Column(children: [
+              _TeaserItem(
+                icon: Icons.volunteer_activism,
+                title: 'Emergency Fund',
+                body: 'A community mutual-aid pool. Members contribute, '
+                    'requests are reviewed privately, and a randomly chosen '
+                    'panel of contributors votes on each one.',
+                color: AppTheme.success,
+                onTap: () => context.push('/emergency-fund'),
+              ),
+              const Divider(color: AppTheme.cardBorder, height: 28),
+              _TeaserItem(
+                icon: Icons.workspace_premium_outlined,
+                title: 'Likeness Licensing',
+                body: 'A public marketplace for Right of Publicity licensing '
+                    'with a verifiable registry — the same rail that powers '
+                    'premium creator card packs.',
+                color: AppTheme.primary,
+                onTap: () => context.push('/licenses'),
+              ),
+              const Divider(color: AppTheme.cardBorder, height: 28),
+              _TeaserItem(
+                icon: Icons.local_fire_department_outlined,
+                title: 'Hot Topic',
+                body: 'A celebrity buzz leaderboard scored twice a day from '
+                    'real news — a quick pulse on who the world is talking '
+                    'about.',
+                color: AppTheme.danger,
+                onTap: () => context.push('/hot-topic'),
+              ),
+            ]),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TeaserItem extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String body;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _TeaserItem({
+    required this.icon,
+    required this.title,
+    required this.body,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) => InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(icon, color: color, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      style: const TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 4),
+                  Text(body,
+                      style: const TextStyle(
+                          color: AppTheme.textSecondary,
+                          fontSize: 13,
+                          height: 1.5)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right,
+                color: AppTheme.textSecondary, size: 18),
+          ],
+        ),
+      );
+}
+
+// ─── Get started CTA ──────────────────────────────────────────────────────────
+
+class _GetStartedCta extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 40, 24, 0),
+      child: SizedBox(
+        width: double.infinity,
+        child: ElevatedButton(
+          onPressed: () => context.go('/signup'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: AppTheme.primary,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12)),
+          ),
+          child: const Text('Create your account',
+              style:
+                  TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+        ),
+      ),
+    );
+  }
 }
 
 // ─── Shared helpers ───────────────────────────────────────────────────────────

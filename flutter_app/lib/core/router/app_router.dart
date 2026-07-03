@@ -32,16 +32,6 @@ import '../../features/battle/screens/battle_match_screen.dart';
 import '../../features/battle/screens/battle_matchmaking_screen.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/home/screens/plan_screen.dart';
-import '../../features/campaigns/screens/campaigns_list_screen.dart';
-import '../../features/campaigns/screens/campaign_detail_screen.dart';
-import '../../features/campaigns/screens/campaign_create_screen.dart';
-import '../../features/campaigns/screens/campaign_revenue_screen.dart';
-import '../../features/campaigns/screens/campaign_earnings_screen.dart';
-import '../../features/campaigns/screens/campaign_proposals_screen.dart';
-import '../../features/campaigns/screens/campaign_proposal_detail_screen.dart';
-import '../../features/campaigns/screens/campaign_proposal_create_screen.dart';
-import '../../features/campaigns/screens/campaign_updates_screen.dart';
-import '../../features/campaigns/providers/campaigns_providers.dart';
 import '../../features/settings/screens/support_screen.dart';
 import '../../features/settings/screens/faq_screen.dart';
 import '../../features/marketplace/screens/marketplace_screen.dart';
@@ -138,17 +128,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       // /home, /news, /explore, /hot-topic are intentionally PUBLIC.
       const protectedRoutes = [
         '/markets', '/profile', '/wallet', '/mybets', '/arena', '/battle',
-        '/campaigns', '/marketplace', '/verify-identity',
+        '/marketplace', '/verify-identity',
         '/my-licenses', '/create-listing',
       ];
       // sub-paths are also protected
       final isProtected = protectedRoutes.contains(loc) ||
           loc.startsWith('/arena/') ||
           loc.startsWith('/battle/') ||
-          loc.startsWith('/campaigns/') ||
-          loc.startsWith('/campaign/') ||
           loc.startsWith('/marketplace/') ||
-          loc == '/campaigns/earnings' ||
           loc == '/emergency-fund/request' ||
           loc == '/emergency-fund/my-requests' ||
           loc.startsWith('/emergency-fund/vote/') ||
@@ -273,76 +260,24 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ScoreDashboardScreen(),
       ),
 
-      // ── Campaign detail — public read, auth required to invest ───────────
+      // ── Campaigns are ARCHIVED (migration 089) — old links land on /plan ──
+      GoRoute(
+        path: '/campaigns',
+        redirect: (context, state) => '/plan',
+      ),
+      GoRoute(
+        path: '/campaigns/:rest',
+        redirect: (context, state) => '/plan',
+      ),
       GoRoute(
         path: '/campaign/:id',
-        builder: (context, state) => CampaignDetailScreen(
-          campaignId: state.pathParameters['id']!,
-        ),
-      ),
-
-      // ── Campaign create — auth required, no bottom nav ────────────────────
-      GoRoute(
-        path: '/campaigns/new',
-        builder: (context, state) => const CampaignCreateScreen(),
-      ),
-
-      // ── Campaign revenue report — creator only ────────────────────────────
-      GoRoute(
-        path: '/campaign/:id/revenue',
-        builder: (context, state) {
-          final campaign = state.extra as Campaign?;
-          return CampaignRevenueScreen(
-            campaignId: state.pathParameters['id']!,
-            campaignTitle: campaign?.title ?? 'Campaign',
-            isSimulated: campaign?.isSimulated ?? true,
-          );
-        },
-      ),
-
-      // ── Backer earnings dashboard ─────────────────────────────────────────
-      GoRoute(
-        path: '/campaigns/earnings',
-        builder: (context, state) => const CampaignEarningsScreen(),
-      ),
-
-      // ── Campaign proposals list ───────────────────────────────────────────
-      GoRoute(
-        path: '/campaign/:id/proposals',
-        builder: (context, state) {
-          final extra = state.extra as Map<String, dynamic>?;
-          return CampaignProposalsScreen(
-            campaignId: state.pathParameters['id']!,
-            isCreator: extra?['isCreator'] as bool? ?? false,
-            escrowBalanceCents: extra?['escrowBalanceCents'] as int? ?? 0,
-          );
-        },
-      ),
-
-      // ── Create proposal — creator only ────────────────────────────────────
-      GoRoute(
-        path: '/campaign/:id/proposals/new',
-        builder: (context, state) => CampaignProposalCreateScreen(
-          campaignId: state.pathParameters['id']!,
-          escrowBalanceCents: state.extra as int? ?? 0,
-        ),
-      ),
-
-      // ── Single proposal detail ────────────────────────────────────────────
-      GoRoute(
-        path: '/campaign/:id/proposals/:proposalId',
-        builder: (context, state) => CampaignProposalDetailScreen(
-          proposalId: state.pathParameters['proposalId']!,
-        ),
-      ),
-
-      // ── Campaign updates feed ─────────────────────────────────────────────
-      GoRoute(
-        path: '/campaign/:id/updates',
-        builder: (context, state) => CampaignUpdatesScreen(
-          campaignId: state.pathParameters['id']!,
-          isCreator: state.extra as bool? ?? false,
-        ),
+        redirect: (context, state) => '/plan',
+        routes: [
+          GoRoute(
+            path: ':rest',
+            redirect: (context, state) => '/plan',
+          ),
+        ],
       ),
 
       // ── Public routes (no bottom nav) ─────────────────────────────────────
@@ -537,10 +472,6 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => BattleMatchScreen(
               matchId: state.pathParameters['matchId']!,
             ),
-          ),
-          GoRoute(
-            path: '/campaigns',
-            builder: (context, state) => const CampaignsListScreen(),
           ),
         ],
       ),

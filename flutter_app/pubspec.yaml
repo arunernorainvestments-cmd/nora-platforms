@@ -54,6 +54,7 @@ flutter:
   assets:
     - .env
     - assets/images/launch_bg.png
+    - assets/video/
     - assets/battle/sprites/
     - assets/battle/lottie/
     - assets/battle/backgrounds/

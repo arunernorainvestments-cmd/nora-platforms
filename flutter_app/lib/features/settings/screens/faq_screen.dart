@@ -18,14 +18,14 @@ class _FaqScreenState extends State<FaqScreen> {
     'Tokens & Wallet',
     'Markets',
     'Arena',
-    'Campaigns',
+    'Moments Cards',
   ];
 
   static const _faqs = {
     'General': [
       _FAQ(
         question: 'What is N.O.R.A. Platforms?',
-        answer: 'N.O.R.A. (Network of Royalties & Analytics) Platforms is a prediction market and live battle platform for creator economies. You can bet on creator metrics, compete in live Arena matches, and invest in creator royalty campaigns — all under one wallet.',
+        answer: 'N.O.R.A. Platforms is a prediction market and card-battle platform for creator economies. You can bet on creator metrics, mint collectible "moment" cards from viral posts you own, battle with them, and support community systems like the Emergency Fund — all under one wallet.',
       ),
       _FAQ(
         question: 'Is N.O.R.A. available in my country?',
@@ -61,7 +61,7 @@ class _FaqScreenState extends State<FaqScreen> {
     'Tokens & Wallet': [
       _FAQ(
         question: 'What are NORA tokens?',
-        answer: 'NORA tokens are the in-platform currency used for placing bets in Markets, backing creators in Arena, and investing in Campaigns. During beta, all tokens are simulated and have no real monetary value.',
+        answer: 'NORA tokens are the in-platform currency used for placing bets in Markets and backing creators in Arena. During beta, all tokens are simulated and have no real monetary value.',
       ),
       _FAQ(
         question: 'How do I earn tokens?',
@@ -73,7 +73,7 @@ class _FaqScreenState extends State<FaqScreen> {
       ),
       _FAQ(
         question: 'Can I transfer tokens to another user?',
-        answer: 'Direct token transfers between users are not currently supported. Tokens move through platform activities like Markets, Arena, and Campaigns.',
+        answer: 'Direct token transfers between users are not currently supported. Tokens move through platform activities like Markets and Arena.',
       ),
     ],
     'Markets': [
@@ -108,22 +108,26 @@ class _FaqScreenState extends State<FaqScreen> {
         answer: 'If a match is cancelled before completion, all backer tokens are refunded in full. You\'ll see the refund in your wallet within a few minutes.',
       ),
     ],
-    'Campaigns': [
+    'Moments Cards': [
       _FAQ(
-        question: 'What are Campaigns?',
-        answer: 'Campaigns allow creators to raise funds by offering backers a share of their future royalties. It\'s a form of royalty crowdfunding. During beta, Campaigns run in simulation mode — no real money changes hands.',
+        question: 'What is a moment card?',
+        answer: 'A moment card (a "moment chit") is a collectible playing card minted from a real viral moment — a social post you own. The card gets stylized art, a tier (F up to S) based on how viral the moment was, and battle stats derived from that tier. Cards are game collectibles, not financial products.',
+      ),
+      _FAQ(
+        question: 'How do I mint a card?',
+        answer: 'Link a social account you own (TikTok, Instagram, or YouTube) from your Profile, pick one of your posts, and follow the minting flow. Every mint goes through content moderation before and after generation, and you preview the card in a practice battle before it\'s finalized.',
+      ),
+      _FAQ(
+        question: 'Who owns a card and its likeness?',
+        answer: 'You can only mint from posts you own, and you give explicit consent at minting. Your handle stays attached to the card as the original minter, even if it changes hands later in a wager match. You keep ownership of your underlying content — the card is a licensed, in-game representation of that one moment.',
       ),
       _FAQ(
         question: 'What is KYC and why is it required?',
-        answer: 'KYC (Know Your Customer) is an identity verification process required before investing in Campaigns. It helps us comply with financial regulations and protect all users on the platform.',
+        answer: 'KYC (Know Your Customer) is an identity verification step. It\'s required to become a Market Maker and for matches with real-money prediction markets. It keeps the platform compliant and prevents duplicate accounts.',
       ),
       _FAQ(
-        question: 'How are royalty distributions calculated?',
-        answer: 'Distributions are based on your proportional ownership stake in a campaign. When a creator reports revenue, your share is calculated as (your stake / total raised) × reported revenue × royalty percentage.',
-      ),
-      _FAQ(
-        question: 'What is SIM mode?',
-        answer: 'SIM (simulation) mode means the campaign is running with simulated data for beta testing purposes. All investment flows and distributions work the same way they will in live mode, but no real money is involved.',
+        question: 'What is a wager match?',
+        answer: 'A wager match is an optional battle mode where each player stakes a card from their collection. The winner takes the loser\'s staked card. Regular matches never put your cards at risk.',
       ),
     ],
   };
