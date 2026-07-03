@@ -221,11 +221,11 @@ is as-specced (mig 117, ledger-backed). Unity should code against `moment_chits`
 
 | Platforms provides | Arena consumes | Status |
 |---|---|---|
-| `moment_chits` cinematic fields: `match_cut_template_id`, `anchor_plate_version`, `prompt_template_version`, `generation_seed`, `mp4_cutscene_url`, `card_art_url`, `original_minter_handle`, `source_platform` | full-card view (minter handle at top); selects the local `MatchCutAnchor` by template id; validates plate version | 🔴 C0 |
-| `match_cut_templates` (~6, role-keyed: ground_slam / sky_descent / projectile_strike / radial_burst / aura_surge / counter_veil; entry/exit framing, duration, stage transition) | one authored `MatchCutAnchor` (camera pose + stage dim) per template | 🔴 C0/C1 |
-| `match_cut_anchor_plates` (versioned start/end plate pair per template, 16:9, house style) | anchor camera poses are authored to match these plates (`final_frame_camera` is DEPRECATED — Unity owns the pose) | 🔴 C1 |
-| cutscene MP4s in **`battle-media`** (opens on start-plate, closes on end-plate; never provider URLs) | Addressables → `VideoPlayer`, mounted on the anchor, preloaded at match load | 🔴 C2 |
-| `match_cut_prompt_templates` + `generation_seed` | n/a — generation-side only | 🔴 C0/C1 |
+| `moment_chits` cinematic fields: `match_cut_template_id`, `anchor_plate_version`, `prompt_template_version`, `generation_seed`, `mp4_cutscene_url`, `card_art_url`, `original_minter_handle`, `source_platform` | full-card view (minter handle at top); selects the local `MatchCutAnchor` by template id; validates plate version | 🟢 platform-side BUILT (migs 138/140; populated by `cinematic-mint`) |
+| `match_cut_templates` (~6, role-keyed: ground_slam / sky_descent / projectile_strike / radial_burst / aura_surge / counter_veil; entry/exit framing, duration, stage transition) | one authored `MatchCutAnchor` (camera pose + stage dim) per template | 🟢 platform-side BUILT (mig 138, 6 templates seeded) |
+| `match_cut_anchor_plates` (versioned start/end plate pair per template, 16:9, house style) | anchor camera poses are authored to match these plates (`final_frame_camera` is DEPRECATED — Unity owns the pose) | 🟡 draft plates v1 (mig 139, sim); live regen + visual sign-off pending SEGMIND_API_KEY |
+| cutscene MP4s in **`battle-media`** (opens on start-plate, closes on end-plate; never provider URLs) | Addressables → `VideoPlayer`, mounted on the anchor, preloaded at match load | 🟢 platform-side BUILT (mig 140 + `cinematic-mint`, sim E2E-proven; live pending SEGMIND_API_KEY) |
+| `match_cut_prompt_templates` + `generation_seed` | n/a — generation-side only | 🟢 BUILT (migs 138/139) |
 | one **self-minted** chit per user; swap = warn → delete old chit + media → mint new | swap warning UI | 🔴 P4 |
 | **`wager_match`** type: chit escrow at start, winner receives loser's chit, `original_minter_handle` survives transfer | wager mode UI + resolution reveal | 🔴 P4 |
 | `profiles.avatar_loadout` (JSON; Platforms persists, never edits) | Dressing Room read/write; round-trip verified | 🔴 P5 |
@@ -236,3 +236,10 @@ Minting is **web-only** (Companion-App model — off the 30% store fee; mobile d
 Consent stack unchanged from the Minting spec: OAuth-owned posts only, TikTok/IG/YT allowlist, mandatory
 pre-gen (minor-safety absolute) + post-gen moderation. Generation vendor: Seedance 2.0 via Segmind
 (fallback BytePlus ModelArk) — invisible to Arena; Arena only ever sees `battle-media` MP4s.
+
+**M-P1 status (2026-07-03):** the consent/ingestion stack is BUILT + deployed (mig 141 + `moment-ingest`):
+URL-shape allowlist (TikTok/IG/YT only), OAuth-link ownership gate over `platform_connections`, official-API
+metadata ingest (handle/engagement/thumbnail), pre-gen vision moderation with the minor-safety screen absolute
+(escalations queue server-side, invisible to clients). TikTok + Instagram providers are wired into
+`oauth-initiate`/`oauth-callback` but return 503 until app credentials exist; ingest runs `MINT_INGEST_MODE=sim`
+until then. Arena impact: none directly — minting stays web-only; mobile deep-links to the web mint flow.

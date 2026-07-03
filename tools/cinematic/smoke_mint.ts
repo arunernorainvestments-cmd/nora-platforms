@@ -23,8 +23,11 @@ const created = await admin.auth.admin.createUser({ email: EMAIL, password: PASS
 if (created.data.user) userId = created.data.user.id;
 else {
   const { data } = await admin.auth.admin.listUsers();
-  userId = data.users.find((u) => u.email === EMAIL)?.id ?? fail('cannot create/find smoke user');
-  await admin.auth.admin.updateUserById(userId, { password: PASS });
+  userId = data?.users?.find((u) => u.email === EMAIL)?.id ??
+    Deno.env.get('SMOKE_USER_ID') ??
+    fail('cannot create/find smoke user (set SMOKE_USER_ID)');
+  const upd = await admin.auth.admin.updateUserById(userId, { password: PASS });
+  if (upd.error) fail(`password reset: ${upd.error.message}`);
 }
 
 // 2. moment: recorded + handle + PRE-GEN moderation approved (60k engagement → tier C)

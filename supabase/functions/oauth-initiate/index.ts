@@ -13,9 +13,11 @@ const corsHeaders = {
 };
 
 interface InitiateRequest {
-  platform: 'youtube' | 'twitch' | 'x' | 'spotify';
+  platform: 'youtube' | 'twitch' | 'x' | 'spotify' | 'tiktok' | 'instagram';
   user_id: string;
 }
+
+const SUPPORTED_PLATFORMS = ['youtube', 'twitch', 'x', 'spotify', 'tiktok', 'instagram'] as const;
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') {
@@ -53,7 +55,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: 'Missing required fields: platform, user_id' }, 400, corsHeaders);
   }
 
-  if (platform !== 'youtube' && platform !== 'twitch' && platform !== 'x' && platform !== 'spotify') {
+  if (!SUPPORTED_PLATFORMS.includes(platform)) {
     return json({ error: `OAuth not configured for platform: ${platform}` }, 400, corsHeaders);
   }
 
@@ -102,6 +104,35 @@ Deno.serve(async (req: Request): Promise<Response> => {
       state,
     });
     authUrl = `https://twitter.com/i/oauth2/authorize?${params.toString()}`;
+  } else if (platform === 'tiktok') {
+    // tiktok — minting consent link (M-P1): profile + own-video read for the
+    // ownership gate; creds pending app approval, degrade clearly until set.
+    const clientKey = Deno.env.get('TIKTOK_CLIENT_KEY') ?? '';
+    if (!clientKey) {
+      return json({ error: 'TikTok OAuth is not configured yet (TIKTOK_CLIENT_KEY missing)' }, 503, corsHeaders);
+    }
+    const params = new URLSearchParams({
+      client_key: clientKey,
+      redirect_uri: callbackUri,
+      response_type: 'code',
+      scope: 'user.info.basic,user.info.profile,video.list',
+      state,
+    });
+    authUrl = `https://www.tiktok.com/v2/auth/authorize/?${params.toString()}`;
+  } else if (platform === 'instagram') {
+    // instagram — Instagram API with Instagram Login (professional accounts).
+    const clientId = Deno.env.get('INSTAGRAM_CLIENT_ID') ?? '';
+    if (!clientId) {
+      return json({ error: 'Instagram OAuth is not configured yet (INSTAGRAM_CLIENT_ID missing)' }, 503, corsHeaders);
+    }
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: callbackUri,
+      response_type: 'code',
+      scope: 'instagram_business_basic',
+      state,
+    });
+    authUrl = `https://www.instagram.com/oauth/authorize?${params.toString()}`;
   } else {
     // spotify
     const clientId = Deno.env.get('SPOTIFY_CLIENT_ID') ?? '';

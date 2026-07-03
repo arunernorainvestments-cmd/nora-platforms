@@ -15,10 +15,12 @@
   card/chit marketplaces, celebrity integration, KYC flow, Emergency Fund (sim), Licensing Marketplace
   (backend + Flutter merged). Battle (1v1 turn-based, Phases A–C + matchmaking) + legacy Arena exist but
   are **superseded by the v3 card-battler** (see Retired).
-- **Migration ledger:** remote DB in sync at **137** (verified `supabase migration list`, 2026-07-02). Next
-  new migration = **138**. 080–106 = redesign Docs 1–4 + integrity/chit/KYC. 107–113 = Licensing. 114/115 =
+- **Migration ledger:** remote DB in sync at **141** (applied via `supabase db push`, 2026-07-03). Next
+  new migration = **142**. 080–106 = redesign Docs 1–4 + integrity/chit/KYC. 107–113 = Licensing. 114/115 =
   mobile prep. 116–137 = v3 phases (116–121 asset layer · 122–125 tier ladder/effects/fusion · 126–129 CCG
   engine · 130–131 Vibe · 132–134 real-money rail · 135–136 minting + ascension · 137 fusion expansion).
+  138–141 = cinematic/minting track (138 registries · 139 plates/prompts · 140 generation pipeline ·
+  141 ingestion consent + pre-gen moderation).
 - **`flutter analyze`:** clean as of the last redesign session.
 - **v3 status:** P0–P6 BUILT + applied to prod; P7 partial (fusion expansion + balance pass, commit 6028765).
 - **NEW TRACK (2026-07-02): Minting + Match Cut + Cinematic Engine** — see section below; specs
@@ -65,14 +67,17 @@ gate; confirm the rule before real-money go-live.
 
 ---
 
-> **⏸️ SESSION CHECKPOINT — 2026-07-02 21:20 UTC (Claude: read this first on resume).**
-> Paused for usage-limit reset mid-track, per user. Phase 0 + C0 + C1 + C2 are DONE — committed +
-> pushed through `84ba092`, migrations 138–140 applied to prod, `cinematic-mint` deployed, E2E mint
-> smoke PASSED (sim). **Resume at M-P1** (OAuth consent + oEmbed ingest + pre-gen vision moderation),
-> then M-P4 → M-P5 → C3. Full state in auto-memory `project_cinematic_engine.md`.
-> Waiting on user: SEGMIND_API_KEY · TikTok/IG OAuth app creds · visual sign-off on the 12 plates
-> (then re-run `tools/cinematic/generate_anchor_plates.ts` live with FORCE=1 and flip rows to
-> 'signed_off'). Remove this note when the track completes.
+> **⏸️ SESSION CHECKPOINT — 2026-07-03 (Claude: read this first on resume).**
+> Phase 0 + C0 + C1 + C2 + **M-P1** are DONE — mig 141 applied to prod, `moment-ingest` deployed
+> (+ `oauth-initiate`/`oauth-callback` redeployed with TikTok/IG wiring), M-P1 E2E smoke PASSED and
+> C2 mint smoke re-PASSED (sim). **Resume at M-P4** (one-active-card + `wager_match`), then M-P5 → C3.
+> Full state in auto-memory `project_cinematic_engine.md`.
+> Waiting on user: SEGMIND_API_KEY · TikTok/IG OAuth app creds (backend wired; `oauth-initiate`
+> returns 503 for them until `TIKTOK_CLIENT_KEY`/`INSTAGRAM_CLIENT_ID` secrets are set; then flip
+> `MINT_INGEST_MODE=live`) · ANTHROPIC_API_KEY as an edge secret + `MODERATION_MODE=live` for live
+> vision moderation · visual sign-off on the 12 plates (then re-run
+> `tools/cinematic/generate_anchor_plates.ts` live with FORCE=1 and flip rows to 'signed_off').
+> Remove this note when the track completes.
 
 ## Minting + Match Cut + Cinematic Engine track (specs added 2026-07-02)
 
@@ -80,17 +85,17 @@ The web-side minting pipeline + the cutscene generation engine. Naming: the spec
 `moment_chits` (RECONCILIATION §7). Vendor final: Seedance 2.0 via Segmind (fallback BytePlus ModelArk);
 sim-first behind `CINEMATIC_MODE` per governance. Build order:
 
-- [ ] **C0 — Registries + tool wiring** (mig 138): `match_cut_templates` (6 role-keyed geometries),
+- [x] **C0 — Registries + tool wiring** (mig 138): `match_cut_templates` (6 role-keyed geometries),
       `match_cut_anchor_plates` + `match_cut_prompt_templates` (versioned), cinematic/minting columns on
       `moment_chits` + `moments`; Segmind client module (image + Seedance Fast/standard, seed capture,
       draft-vs-final config, sim mode); `battle-media` bucket; round-trip smoke test.
-- [ ] **C1 — Author plates + prompts**: 6 motion prompt templates (§4 grammar, style-lock fixed) seeded;
+- [x] **C1 — Author plates + prompts** *(built; plate visual sign-off pending)*: 6 motion prompt templates (§4 grammar, style-lock fixed) seeded;
       12 anchor plates generated 16:9 house-style (**needs `SEGMIND_API_KEY`**); versions registered.
       **Gate: user visual sign-off against the Arena anchor poses before C2 finalization.**
-- [ ] **C2 — Generation pipeline**: classify→template select→illustration→Seedance cutscene (plate
+- [x] **C2 — Generation pipeline** (mig 140 + `cinematic-mint`): classify→template select→illustration→Seedance cutscene (plate
       bookends, fixed seed)→post-gen moderation (reject → adjust `{SUBJECT_DESC}` only, re-run)→preview
       battle→store `battle-media`→write chit fields. End-to-end mint proof.
-- [ ] **M-P1 — OAuth consent + ingestion**: extend platform linking with TikTok + Instagram (**needs
+- [x] **M-P1 — OAuth consent + ingestion** (mig 141 + `moment-ingest`, 2026-07-03; TikTok/IG OAuth wired, creds pending): extend platform linking with TikTok + Instagram (**needs
       OAuth app credentials — external**; YouTube exists via `oauth-initiate`); ownership gate; oEmbed
       ingestion; pre-gen vision moderation (minor-safety absolute, Hard Rule 37).
 - [ ] **M-P4 — One-active-card + `wager_match`**: `self_minted` limit + swap flow (never delete before

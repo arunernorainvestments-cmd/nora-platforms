@@ -210,6 +210,52 @@ async function exchangeCode(
     });
     if (!res.ok) throw new Error(`X token exchange ${res.status}: ${await res.text()}`);
     return res.json();
+  } else if (platform === 'tiktok') {
+    const res = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_key: Deno.env.get('TIKTOK_CLIENT_KEY') ?? '',
+        client_secret: Deno.env.get('TIKTOK_CLIENT_SECRET') ?? '',
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+      }),
+    });
+    if (!res.ok) throw new Error(`TikTok token exchange ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    if (data.error) throw new Error(`TikTok token exchange error: ${data.error}`);
+    return data;
+  } else if (platform === 'instagram') {
+    // Instagram API with Instagram Login: short-lived exchange, then upgrade to a
+    // long-lived (~60d) token so minting doesn't force hourly re-links.
+    const clientId = Deno.env.get('INSTAGRAM_CLIENT_ID') ?? '';
+    const clientSecret = Deno.env.get('INSTAGRAM_CLIENT_SECRET') ?? '';
+    const shortRes = await fetch('https://api.instagram.com/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUri,
+        grant_type: 'authorization_code',
+      }),
+    });
+    if (!shortRes.ok) throw new Error(`Instagram token exchange ${shortRes.status}: ${await shortRes.text()}`);
+    const short = await shortRes.json();
+    const longRes = await fetch(
+      'https://graph.instagram.com/access_token?grant_type=ig_exchange_token' +
+      `&client_secret=${encodeURIComponent(clientSecret)}` +
+      `&access_token=${encodeURIComponent(short.access_token)}`,
+    );
+    if (!longRes.ok) {
+      // Long-lived upgrade failed — the short-lived token still works for ~1h.
+      console.warn('[oauth-callback] Instagram long-lived exchange failed:', longRes.status);
+      await longRes.body?.cancel();
+      return { access_token: short.access_token, expires_in: 3600 };
+    }
+    return longRes.json();
   } else {
     // spotify — Basic auth with client_id:client_secret
     const clientId = Deno.env.get('SPOTIFY_CLIENT_ID') ?? '';
@@ -275,6 +321,25 @@ async function fetchPlatformUser(
     const user = data.data;
     if (!user) throw new Error('No X user found');
     return { id: user.id as string, username: user.username as string };
+  } else if (platform === 'tiktok') {
+    const res = await fetch(
+      'https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,display_name,username',
+      { headers: { Authorization: `Bearer ${accessToken}` } },
+    );
+    if (!res.ok) throw new Error(`TikTok user fetch ${res.status}`);
+    const data = await res.json();
+    const u = data.data?.user;
+    if (!u?.open_id) throw new Error('No TikTok user found');
+    return { id: u.open_id as string, username: (u.username ?? u.display_name ?? u.open_id) as string };
+  } else if (platform === 'instagram') {
+    const res = await fetch(
+      `https://graph.instagram.com/v23.0/me?fields=user_id,username&access_token=${encodeURIComponent(accessToken)}`,
+    );
+    if (!res.ok) throw new Error(`Instagram user fetch ${res.status}`);
+    const data = await res.json();
+    const id = data.user_id ?? data.id;
+    if (!id) throw new Error('No Instagram user found');
+    return { id: String(id), username: (data.username ?? String(id)) as string };
   } else {
     // spotify
     const res = await fetch('https://api.spotify.com/v1/me', {
