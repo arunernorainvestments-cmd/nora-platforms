@@ -42,6 +42,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     moment_id?: string; family?: Family; chit_type?: 'creature' | 'spell_moment';
     subject_desc?: string; timing_type?: string; effect_template_id?: string;
     name?: string; keywords?: string[]; vibe_gate?: number; rerun_of_generation_id?: string;
+    swap_of_chit_id?: string; swap_confirm?: boolean;
   };
   try { body = await req.json(); } catch { return json({ error: 'Invalid JSON body' }, 400); }
   const { moment_id, family, chit_type, subject_desc } = body;
@@ -61,6 +62,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: 'Moment has not passed pre-generation moderation' }, 409);
   }
   if (moment.minted_chit_id) return json({ error: 'Moment already minted' }, 409);
+
+  // ── one active self-minted chit (minting spec P4) — fail fast, before generation ──
+  // Occupied slot: the client must re-call with the explicit swap confirmation. The
+  // old chit is retired IN THE SAME TX as the new mint (mig 142) — never before the
+  // new mint confirms; its media is deleted below only after that tx succeeds.
+  const { data: slotChit } = await db.rpc('self_mint_slot', { p_user: user.id });
+  if (slotChit && (!body.swap_confirm || body.swap_of_chit_id !== slotChit)) {
+    return json({
+      error: 'self_mint_slot_occupied',
+      occupied_chit_id: slotChit,
+      warning: 'You already have a self-minted card. Minting a new one permanently ' +
+        'deletes the current card and its cutscene media. To proceed, re-call with ' +
+        'swap_of_chit_id set to the occupied chit and swap_confirm: true.',
+    }, 409);
+  }
+  const swapOf: string | null = slotChit && body.swap_confirm ? slotChit : null;
+  let oldMomentId: string | null = null;
+  if (swapOf) {
+    const { data: oldChit } = await db.from('moment_chits').select('moment_id').eq('id', swapOf).single();
+    oldMomentId = oldChit?.moment_id ?? null;
+  }
 
   // ── tier (engagement-derived — Hard Rule 34) + template selection ────────────────
   const { data: tier, error: tErr } = await db.rpc('tier_for_engagement', { p_engagement: moment.engagement_count });
@@ -175,7 +197,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (moderation !== 'auto') {
     return json({
       status: 'pending_moderation', generation_id: gen.id,
-      detail: 'Post-generation moderation verdict required before the chit is created',
+      detail: 'Post-generation moderation verdict required before the chit is created' +
+        (swapOf ? '; the swap is NOT executed yet — pass swap_of_chit_id again at completion' : ''),
     }, 202);
   }
   const { error: modErr } = await db.rpc('cinematic_moderation_verdict', {
@@ -195,8 +218,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
     p_vibe_gate: body.vibe_gate ?? null,
     p_card_art_url: artUrl,
     p_mp4_url: mp4Url,
+    p_swap_of: swapOf,
   });
   if (cErr) return json({ error: 'mint completion failed', detail: cErr.message }, 500);
+
+  // ── swap aftermath: the old chit is retired (same tx as the mint above); its
+  // media goes now — only after the new mint is confirmed (minting spec P4).
+  let swappedMediaDeleted = 0;
+  if (swapOf && oldMomentId) {
+    try {
+      swappedMediaDeleted = await deleteMomentMedia(db, oldMomentId);
+    } catch (err) {
+      console.warn(`cinematic-mint: old media cleanup failed (chit already retired):`, err);
+    }
+  }
 
   return json({
     status: 'pending_preview',
@@ -207,6 +242,29 @@ Deno.serve(async (req: Request): Promise<Response> => {
     seed: cut.seed,
     card_art_url: artUrl,
     mp4_cutscene_url: mp4Url,
+    ...(swapOf ? { swapped_out_chit_id: swapOf, swapped_media_deleted: swappedMediaDeleted } : {}),
     next: 'Play the preview battle, then call chit_record_preview + chit_finalize_preview',
   });
 });
+
+// Remove every battle-media object under moments/<momentId> (card art + all
+// cutscene attempts). Storage list() marks folders with a null id.
+async function deleteMomentMedia(
+  db: { storage: ReturnType<typeof createClient>['storage'] }, momentId: string,
+): Promise<number> {
+  const root = `moments/${momentId}`;
+  const files: string[] = [];
+  const { data: entries } = await db.storage.from('battle-media').list(root, { limit: 100 });
+  for (const e of entries ?? []) {
+    if (e.id) files.push(`${root}/${e.name}`);
+    else {
+      const { data: sub } = await db.storage.from('battle-media').list(`${root}/${e.name}`, { limit: 100 });
+      for (const s of sub ?? []) if (s.id) files.push(`${root}/${e.name}/${s.name}`);
+    }
+  }
+  if (files.length > 0) {
+    const { error } = await db.storage.from('battle-media').remove(files);
+    if (error) throw new Error(error.message);
+  }
+  return files.length;
+}

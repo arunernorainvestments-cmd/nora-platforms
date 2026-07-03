@@ -30,6 +30,24 @@ else {
   if (upd.error) fail(`password reset: ${upd.error.message}`);
 }
 
+// 1b. clear the self-mint slot (mig 142 one-active-card rule) so re-runs pass:
+//     retire any live self-minted chit left by a previous smoke (dev-only cleanup).
+for (let i = 0; i < 5; i++) {
+  const { data: slot } = await admin.rpc('self_mint_slot', { p_user: userId });
+  if (!slot) break;
+  const { data: held } = await admin.from('chit_ownership')
+    .select('quantity').eq('user_id', userId).eq('chit_id', slot).single();
+  if ((held?.quantity ?? 0) > 0) {
+    await admin.rpc('chit_grant', {
+      p_user_id: userId, p_chit_id: slot, p_quantity: -held!.quantity,
+      p_reason: 'platform_correction',
+    });
+  }
+  await admin.from('moment_chits')
+    .update({ is_active: false, retired_at: new Date().toISOString(), retired_reason: 'admin' })
+    .eq('id', slot);
+}
+
 // 2. moment: recorded + handle + PRE-GEN moderation approved (60k engagement → tier C)
 const { data: momentId, error: mErr } = await admin.rpc('moment_record', {
   p_owner: userId, p_platform: 'youtube', p_external_id: 'c2-e2e-' + crypto.randomUUID(),

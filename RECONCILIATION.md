@@ -226,8 +226,8 @@ is as-specced (mig 117, ledger-backed). Unity should code against `moment_chits`
 | `match_cut_anchor_plates` (versioned start/end plate pair per template, 16:9, house style) | anchor camera poses are authored to match these plates (`final_frame_camera` is DEPRECATED — Unity owns the pose) | 🟡 draft plates v1 (mig 139, sim); live regen + visual sign-off pending SEGMIND_API_KEY |
 | cutscene MP4s in **`battle-media`** (opens on start-plate, closes on end-plate; never provider URLs) | Addressables → `VideoPlayer`, mounted on the anchor, preloaded at match load | 🟢 platform-side BUILT (mig 140 + `cinematic-mint`, sim E2E-proven; live pending SEGMIND_API_KEY) |
 | `match_cut_prompt_templates` + `generation_seed` | n/a — generation-side only | 🟢 BUILT (migs 138/139) |
-| one **self-minted** chit per user; swap = warn → delete old chit + media → mint new | swap warning UI | 🔴 P4 |
-| **`wager_match`** type: chit escrow at start, winner receives loser's chit, `original_minter_handle` survives transfer | wager mode UI + resolution reveal | 🔴 P4 |
+| one **self-minted** chit per user; swap = warn → delete old chit + media → mint new | swap warning UI | 🟢 platform-side BUILT (mig 142; `cinematic-mint` returns the 409 warning contract + `swap_of_chit_id`/`swap_confirm`) |
+| **`wager_match`** type: chit escrow at start, winner receives loser's chit, `original_minter_handle` survives transfer | wager mode UI + resolution reveal | 🟢 platform-side BUILT (mig 142: `ccg_create_wager_match` + settle-on-finish; abandoned matches return stakes) |
 | `profiles.avatar_loadout` (JSON; Platforms persists, never edits) | Dressing Room read/write; round-trip verified | 🔴 P5 |
 | `is_monetized` on the match per G-MON (both players KYC'd) | gates the spectator bet UI | 🔴 P5 |
 | USD spectator-bet RPC — **built today as `ccg_place_bet(p_market_id, …)` (mig 133)**; a match-scoped wrapper `battle_place_spectator_bet_usd(p_match_id, …)` will be exposed for `SpectatorMarketService` (resolves the `battle_outcome` market from the match). Extends R3: this is the canonical mobile path; legacy mig-062 RPC still not deleted. | `SpectatorMarketService` calls the wrapper | 🔴 P5 |
