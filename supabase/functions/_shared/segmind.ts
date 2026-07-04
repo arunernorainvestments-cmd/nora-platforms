@@ -34,7 +34,7 @@ export function cinematicConfigFromEnv(env: (k: string) => string | undefined = 
     mode,
     renderTier,
     apiKey: env('SEGMIND_API_KEY') ?? null,
-    imageModel: env('SEGMIND_IMAGE_MODEL') ?? 'seedream-v4',
+    imageModel: env('SEGMIND_IMAGE_MODEL') ?? 'seedream-4',
     seedanceFastModel: env('SEGMIND_SEEDANCE_FAST_MODEL') ?? 'seedance-2.0-fast',
     seedanceStandardModel: env('SEGMIND_SEEDANCE_MODEL') ?? 'seedance-2.0',
     baseUrl: env('SEGMIND_BASE_URL') ?? 'https://api.segmind.com/v1',

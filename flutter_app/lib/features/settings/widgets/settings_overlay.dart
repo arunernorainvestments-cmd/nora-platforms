@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/providers/theme_mode_provider.dart';
 
@@ -265,9 +266,15 @@ class _SecurityTab extends StatelessWidget {
         _SecurityItem(
           icon: Icons.verified_user_outlined,
           label: 'Know Your Customer (KYC)',
-          description: 'Verify your identity to invest in Campaigns',
-          onTap: () => Navigator.of(context).pop(),
-          trailing: const _ComingSoonChip(),
+          description:
+              'Verify your identity to unlock Market Maker status and real-money match features',
+          onTap: () {
+            // Capture the router before popping — the sheet context is gone
+            // after pop and can't be used for navigation.
+            final router = GoRouter.of(context);
+            Navigator.of(context).pop();
+            router.push('/verify-identity');
+          },
         ),
         const SizedBox(height: 8),
         const _SecurityItem(

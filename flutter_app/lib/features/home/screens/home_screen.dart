@@ -292,14 +292,22 @@ class _Header extends ConsumerWidget {
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(8)),
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 10),
+                        horizontal: 12, vertical: 10),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  child: const Text(
-                    'What is N.O.R.A.? How it works →',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                  // Scale down on narrow phones instead of wrapping — a wrapped
+                  // label balloons the header's height.
+                  child: const FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Text(
+                      'What is N.O.R.A.? How it works →',
+                      maxLines: 1,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),

@@ -1,23 +1,32 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/utils/open_url.dart';
 
 void showHelpOverlay(BuildContext context) {
   showModalBottomSheet(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
-    builder: (_) => _HelpSheet(parentContext: context),
+    builder: (_) => const _HelpSheet(),
   );
 }
 
 class _HelpSheet extends StatelessWidget {
-  final BuildContext parentContext;
-  const _HelpSheet({required this.parentContext});
+  const _HelpSheet();
 
   void _navigate(BuildContext sheetContext, String path) {
+    // Grab the router before popping — the sheet's opener may itself be gone
+    // by now (e.g. the drawer closes when the sheet opens), so its context
+    // can't be used for navigation.
+    final router = GoRouter.of(sheetContext);
     Navigator.of(sheetContext).pop();
-    parentContext.push(path);
+    router.push(path);
+  }
+
+  void _openLegal(BuildContext sheetContext, String url) {
+    Navigator.of(sheetContext).pop();
+    openUrlInBrowser(url);
   }
 
   @override
@@ -98,7 +107,7 @@ class _HelpSheet extends StatelessWidget {
                 iconColor: AppTheme.textSecondary,
                 label: 'Privacy Policy',
                 description: 'How we collect, use, and protect your data',
-                onTap: () => _navigate(context, '/privacy'),
+                onTap: () => _openLegal(context, 'https://noraplatforms.com/privacy'),
               ),
               const SizedBox(height: 8),
               _HelpTile(
@@ -106,7 +115,7 @@ class _HelpSheet extends StatelessWidget {
                 iconColor: AppTheme.textSecondary,
                 label: 'Terms of Service',
                 description: 'Platform rules, eligibility, and user responsibilities',
-                onTap: () => _navigate(context, '/terms'),
+                onTap: () => _openLegal(context, 'https://noraplatforms.com/terms'),
               ),
             ],
           ),

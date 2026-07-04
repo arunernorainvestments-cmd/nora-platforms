@@ -22,8 +22,6 @@ import '../../features/launch/screens/launch_screen.dart';
 import '../../features/explore/screens/celebrity_heat_screen.dart';
 import '../../features/explore/screens/celebrity_profile_screen.dart';
 import '../../features/hot_topic/screens/hot_topic_screen.dart';
-import '../../features/legal/screens/privacy_policy_screen.dart';
-import '../../features/legal/screens/terms_of_service_screen.dart';
 import '../../features/profile/screens/score_dashboard_screen.dart';
 import '../../features/arena/screens/arena_screen.dart';
 import '../../features/arena/screens/arena_match_screen.dart';
@@ -239,15 +237,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const PlanScreen(),
       ),
 
-      // ── Legal routes (public, no auth) ───────────────────────────────────
-      GoRoute(
-        path: '/privacy',
-        builder: (context, state) => const PrivacyPolicyScreen(),
-      ),
-      GoRoute(
-        path: '/terms',
-        builder: (context, state) => const TermsOfServiceScreen(),
-      ),
+      // Legal pages (/privacy, /terms) are static HTML served by Vercel
+      // rewrites, not Flutter routes — link out via openUrlInBrowser.
 
       // ── Help & settings routes (public, no auth) ──────────────────────────
       GoRoute(
