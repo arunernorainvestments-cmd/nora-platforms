@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/utils/open_url.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/battlechit_cta.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../challenges/widgets/badges_shelf.dart';
 import '../../promotions/widgets/promotions_sheet.dart';
@@ -314,6 +315,10 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                       ),
                     ),
                   ),
+                const SizedBox(height: 16),
+
+                // ── Create Your BattleChit (the /mint workflow) ────────────
+                const BattleChitBanner(),
                 const SizedBox(height: 16),
 
                 // ── Badges shelf ──────────────────────────────────────────

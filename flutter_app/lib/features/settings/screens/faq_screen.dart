@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/battlechit_cta.dart';
 
 class FaqScreen extends StatefulWidget {
   const FaqScreen({super.key});
@@ -115,7 +116,7 @@ class _FaqScreenState extends State<FaqScreen> {
       ),
       _FAQ(
         question: 'How do I mint a card?',
-        answer: 'Link a social account you own (TikTok, Instagram, or YouTube) from your Profile, pick one of your posts, and follow the minting flow. Every mint goes through content moderation before and after generation, and you preview the card in a practice battle before it\'s finalized.',
+        answer: 'Tap "Create Your BattleChit" (on Home, your Profile, or below), link a social account you own (TikTok, Instagram, or YouTube), and paste a link to one of your posts. Because the platforms don\'t let us download your video, you\'ll upload the clip from your device and trim the exact 1–15 seconds that is the moment. Every mint goes through content moderation before and after generation.',
       ),
       _FAQ(
         question: 'Who owns a card and its likeness?',
@@ -184,10 +185,16 @@ class _FaqScreenState extends State<FaqScreen> {
 
           // FAQ list
           Expanded(
-            child: ListView.builder(
+            child: ListView(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-              itemCount: _faqs[_activeCategory]!.length,
-              itemBuilder: (context, i) => _FaqTile(faq: _faqs[_activeCategory]![i]),
+              children: [
+                if (_activeCategory == 'Moments Cards')
+                  const Padding(
+                    padding: EdgeInsets.only(bottom: 12),
+                    child: BattleChitButton(),
+                  ),
+                ..._faqs[_activeCategory]!.map((f) => _FaqTile(faq: f)),
+              ],
             ),
           ),
         ],

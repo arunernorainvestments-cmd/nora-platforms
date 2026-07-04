@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/battlechit_cta.dart';
 import '../providers/marketplace_providers.dart';
 
 class MarketplaceScreen extends ConsumerStatefulWidget {
@@ -432,6 +433,9 @@ class _ChitsEarnTab extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        // The modern card asset is the minted BattleChit — always one tap away.
+        const BattleChitBanner(compact: true),
+        const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(

@@ -27,9 +27,11 @@ import '../../features/legal/screens/terms_of_service_screen.dart';
 import '../../features/profile/screens/score_dashboard_screen.dart';
 import '../../features/arena/screens/arena_screen.dart';
 import '../../features/arena/screens/arena_match_screen.dart';
+import '../../features/battle/screens/battle_hub_screen.dart';
 import '../../features/battle/screens/battle_lobby_screen.dart';
 import '../../features/battle/screens/battle_match_screen.dart';
 import '../../features/battle/screens/battle_matchmaking_screen.dart';
+import '../../features/battle/screens/battle_spectate_screen.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/mint/screens/mint_moment_screen.dart';
 import '../../features/home/screens/plan_screen.dart';
@@ -459,9 +461,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/hot-topic',
             builder: (context, state) => const HotTopicScreen(),
           ),
+          // Battle under the two-app structure: web = companion hub (mint +
+          // spectate live NORA Arena matches). Legacy web lobby kept for dev.
           GoRoute(
             path: '/battle',
-            builder: (context, state) => const BattleLobbyScreen(),
+            builder: (context, state) => const BattleHubScreen(),
           ),
           // Minting v2 §1 — "Create Your BattleChit" (auth-required).
           GoRoute(
@@ -472,6 +476,16 @@ final routerProvider = Provider<GoRouter>((ref) {
             // Must precede '/battle/:matchId' so it isn't captured as a matchId.
             path: '/battle/matchmaking',
             builder: (context, state) => const BattleMatchmakingScreen(),
+          ),
+          GoRoute(
+            path: '/battle/legacy',
+            builder: (context, state) => const BattleLobbyScreen(),
+          ),
+          GoRoute(
+            path: '/battle/spectate/:matchId',
+            builder: (context, state) => BattleSpectateScreen(
+              matchId: state.pathParameters['matchId']!,
+            ),
           ),
           GoRoute(
             path: '/battle/:matchId',

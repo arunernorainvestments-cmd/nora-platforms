@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/battlechit_cta.dart';
 import '../providers/arena_providers.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../markets/providers/markets_providers.dart';
@@ -39,6 +40,10 @@ class ArenaScreen extends ConsumerWidget {
             children: [
               _HeroBlock(),
               const SizedBox(height: 20),
+              const _TwoAppBanner(),
+              const SizedBox(height: 28),
+              const _SectionLabel('CREATOR ARENA (WEB)'),
+              const SizedBox(height: 12),
               _FindMatchButton(),
               const SizedBox(height: 16),
               const _LiveBattlesSection(),
@@ -150,6 +155,71 @@ class _HeroBlock extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+// ─── Two-app structure banner ─────────────────────────────────────────────────
+// The Moments card-battler is PLAYED in the NORA Arena mobile app; the web app
+// is the companion (mint chits, spectate live matches). The creator-vs-creator
+// web arena below stays available.
+
+class _TwoAppBanner extends StatelessWidget {
+  const _TwoAppBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF1A1050), Color(0xFF0D2A24)],
+        ),
+        border: Border.all(color: AppTheme.secondary, width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(children: [
+            Icon(Icons.smartphone, color: AppTheme.secondary, size: 20),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text('NORA Arena — the card-battler app',
+                  style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800)),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          const Text(
+            'Moments card battles are played in the NORA Arena mobile app. '
+            'Here on the web you mint BattleChits, manage your collection, and '
+            'spectate live Arena matches in real time.',
+            style: TextStyle(
+                color: AppTheme.textSecondary, fontSize: 13, height: 1.5),
+          ),
+          const SizedBox(height: 14),
+          Row(children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => context.go('/battle'),
+                icon: const Icon(Icons.visibility_outlined, size: 16),
+                label: const Text('Watch live matches'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppTheme.secondary,
+                  side: const BorderSide(color: AppTheme.secondary),
+                ),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 8),
+          const BattleChitButton(),
+        ],
+      ),
     );
   }
 }

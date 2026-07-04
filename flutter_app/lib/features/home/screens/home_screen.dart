@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/battlechit_cta.dart';
 import '../../../core/widgets/n_card.dart';
 import '../../../core/widgets/n_glass_sheet.dart';
 import '../../../core/utils/open_url.dart';
@@ -117,6 +118,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                             ),
                     ),
                     const SliverToBoxAdapter(child: _Divider()),
+                    const SliverToBoxAdapter(
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(16, 0, 16, 24),
+                        child: BattleChitBanner(),
+                      ),
+                    ),
                     const SliverToBoxAdapter(child: _PollLeadersStrip()),
                     const SliverToBoxAdapter(child: _CommunitySection()),
                     const SliverToBoxAdapter(child: _RisingSection()),
@@ -2465,6 +2472,14 @@ class _SideDrawer extends ConsumerWidget {
                         _navTo(context, ref, '/battle', requiresAuth: true),
                   ),
                   _DrawerNavItem(
+                    icon: Icons.auto_awesome,
+                    label: 'Create BattleChit',
+                    subtitle: 'Mint your moment into a card',
+                    badge: 'NEW',
+                    onTap: () =>
+                        _navTo(context, ref, '/mint', requiresAuth: true),
+                  ),
+                  _DrawerNavItem(
                     icon: Icons.search_outlined,
                     label: 'Search',
                     subtitle: 'Find creators',
@@ -2910,12 +2925,16 @@ class _MomentsBannerCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
+              const BattleChitButton(),
+              const SizedBox(height: 8),
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 decoration: BoxDecoration(
-                  color: AppTheme.primary,
+                  color: AppTheme.primary.withValues(alpha: 0.18),
                   borderRadius: BorderRadius.circular(10),
+                  border: Border.all(
+                      color: AppTheme.primary.withValues(alpha: 0.5)),
                 ),
                 child: const Text(
                   'See how it works →',
