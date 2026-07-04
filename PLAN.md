@@ -77,11 +77,39 @@ gate; confirm the rule before real-money go-live.
 ---
 
 > **⏸️ SESSION CHECKPOINT — 2026-07-04 (Claude: read this first on resume).**
-> **Minting v2 §1 is SHIPPED** (the `/mint` flow, mig 146/147, CTAs, spectate hub — all deployed +
-> pushed to main). **The next build track is Minting v2 §2–§4** (V2V middle → agnostic bridges →
-> stitch + audio dub), buildable NOW in sim mode; the Segmind key only unlocks real renders.
+> **Minting v2 §1 is SHIPPED** (the `/mint` flow, mig 146/147, CTAs, spectate hub). **Since then
+> (2026-07-04, PRs #5 + #6 MERGED to main):** the mint flow is now wired **end-to-end** —
+> `moment-classify` (recommend/classify stage, deployed, `MOMENT_CLASSIFY_MODE=sim`) → `cinematic-mint`
+> (sim) → **web Preview** → `chit_record_preview`/`chit_finalize_preview` → **`/collection`**; the
+> **`CardFace`** display component matches the 5 reference cards (chip frame + violet→teal piping +
+> per-family accent glow); `illustrationPrompt` v2 (portrait, `{FAMILY_GLOW}`, clean/no-frame); and the
+> **two agnostic plates are wired** (uploaded to `battle-media/plates/agnostic/v1/*`, all 6
+> `match_cut_anchor_plates` rows repointed + `signed_off`).
+> **Two remaining build tracks:** (A) the **card-face follow-ups** below (classify rules/flavor/serial +
+> `{VIDEO_DESC}` node), and (B) **Minting v2 §2–§4** (V2V middle → agnostic bridges → stitch), buildable
+> in sim now; the Segmind key only unlocks real renders.
 > Full state in auto-memory `project_cinematic_engine.md`; governing doc `Minting_Workflow.md`
 > (where it conflicts with the two older specs, it wins — Hard Rules 37/39 amended 2026-07-04).
+>
+> **Resume-here next steps (card face + pipeline, 2026-07-04):**
+> 1. **`moment-classify` extension** → also emit a **flavor line** (AI, per card), **compose the rules
+>    text** deterministically from the effect fields (`timing_type` + effect_kind + magnitude + keywords,
+>    so printed rules always match mechanics), and mint a **serial** (`NORA-####` from a sequence). These
+>    populate the already-wired optional `CardFace` slots (rulesText/flavor/serial).
+> 2. **`{VIDEO_DESC}` pipeline node** — a Vision-LLM whole-clip description of the selected 1–15s clip,
+>    generated AFTER clip moderation passes (it's another CSAM checkpoint), sanitized into a **variable
+>    slot** in the V2V prompt where the constant STYLE-LOCK/CONSTRAINTS always win (Hard Rule 39). Feeds
+>    the **V2V core node ONLY — never the agnostic bridges** (that wall preserves the agnostic guarantee).
+>    Share subject grounding with the illustration so card + cutscene read as the same creature. **Persist
+>    `video_desc` on `cinematic_generations`** for reproducible re-runs.
+> 3. **Redeploy `cinematic-mint`** (illustration v2 is committed but the prod deploy was guard-blocked;
+>    no effect until `CINEMATIC_MODE=live`, so low-urgency — needs deploy authorization).
+> 4. **Browser-verify `CardFace`** once web deploys (#6); tune spacing/hex shapes/pins against the 5 refs
+>    (`Gemini_Generated_Image_*.png` in repo root). Not yet visually checked — analyze-clean only.
+> 5. **Open design decisions** (defaults chosen, easy to change): accent hue = **family-keyed** (tier =
+>    letter + glow intensity); rules = **composed-from-effect** + AI flavor. Confirm or flip.
+> 6. **Rotate the `service_role` key** post-launch (it appeared in a session transcript; not in any
+>    file/commit).
 > **Waiting on user (external unblocks):**
 > - `SEGMIND_API_KEY` → real generation (V2V + bridges) + first-render validation of the agnostic plates.
 > - TikTok/IG OAuth app creds (`TIKTOK_CLIENT_KEY`/`INSTAGRAM_CLIENT_ID` secrets; then `MINT_INGEST_MODE=live`).
@@ -112,9 +140,10 @@ Unity, per-template plates are a future expansion).
       drawer + Moments banner), Profile, FAQ Moments Cards, Marketplace chits tab, Battle hub, Arena banner.
 
 **Next steps (§2–§4 — the generation back half; build sim-first behind `CINEMATIC_MODE`):**
-- [ ] **Plate registry wiring**: upload the two agnostic plates to storage and register them (versioned)
-      in `match_cut_anchor_plates` (or a successor agnostic-plates row shape); mark the 12 per-template
-      draft slots (mig 139) as deferred/future — do NOT generate them for launch.
+- [x] **Plate registry wiring** (2026-07-04, `tools/cinematic/wire_agnostic_plates.ts`): the two agnostic
+      plates are uploaded to `battle-media/plates/agnostic/v1/{start,end}.png` and all 6
+      `match_cut_anchor_plates` rows repointed at the shared pair + `signed_off`. The per-template draft
+      slots are effectively retired (every template now serves the same agnostic pair).
 - [ ] **§2 V2V stylization**: staged clip (`clip_status='attached'`) → Wan-class video-to-video via
       Segmind → cel-shaded `Core_Clip.mp4`. Style prompt = frame-derived `{SUBJECT_DESC}` (Vision LLM)
       + the house style-lock block (never user-influenced). Persist seeds/versions per stage.
