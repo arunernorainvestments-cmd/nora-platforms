@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui_web' as ui_web;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:web/web.dart' as web;
@@ -7,13 +8,17 @@ import '../services/mint_service.dart';
 import '../services/trim_interop.dart';
 import '../widgets/clip_trimmer.dart';
 
-/// "Create Your BattleChit" — minting v2 §1 (Minting_Workflow.md).
+/// "Create Your BattleChit" — minting v2 §1 (Minting_Workflow.md) end to end.
 ///
 /// Step 1  link an owned post (moment-ingest: OAuth ownership + source moderation).
 /// Step 2  the platform APIs can't hand us the file, so the user uploads the clip
 ///         from their device and trims it to 1–15s in-browser (ffmpeg.wasm).
 /// Step 3  trimmed mp4 + 4 sample frames upload to mint-staging; moment-clip-attach
-///         re-moderates + similarity-checks, then the clip is staged for generation.
+///         re-moderates + similarity-checks, then the clip is staged.
+/// Step 4  review: moment-classify recommends family (locked, content-derived) + a
+///         name + subject; the user confirms, then cinematic-mint generates the card.
+/// Step 5  preview: the generated card art + cutscene; finalizing adds it to the
+///         collection (web preview stands in for the practice-battle gate for now).
 class MintMomentScreen extends StatefulWidget {
   const MintMomentScreen({super.key});
 
@@ -21,11 +26,12 @@ class MintMomentScreen extends StatefulWidget {
   State<MintMomentScreen> createState() => _MintMomentScreenState();
 }
 
-enum _Step { link, clip, processing, result }
+enum _Step { link, clip, processing, review, generating, preview, done }
 
 class _MintMomentScreenState extends State<MintMomentScreen> {
   _Step _step = _Step.link;
   final _urlController = TextEditingController();
+  final _nameController = TextEditingController();
   bool _busy = false;
   String? _error;
 
@@ -46,9 +52,17 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
   double? _progress;
   Map<String, dynamic>? _attachResult;
 
+  // Step-4 state.
+  Map<String, dynamic>? _classify;
+  String _chitType = 'creature';
+
+  // Step-5 state.
+  Map<String, dynamic>? _mint;
+
   @override
   void dispose() {
     _urlController.dispose();
+    _nameController.dispose();
     _revokeObjectUrl();
     super.dispose();
   }
@@ -130,7 +144,7 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
     }
   }
 
-  // ── Step 3: trim → upload → attach ────────────────────────────────────────
+  // ── Step 3: trim → upload → attach → (on clean attach) classify ───────────
   Future<void> _processAndUpload() async {
     final objectUrl = _objectUrl;
     final momentId = _moment?['moment_id'] as String?;
@@ -173,10 +187,13 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         keepAudio: _keepAudio,
       );
       if (!mounted) return;
-      setState(() {
-        _attachResult = res;
-        _step = _Step.result;
-      });
+      _attachResult = res;
+      if (res['clip_status'] == 'attached') {
+        await _startReview(momentId); // straight into recommend/classify
+      } else {
+        // similarity_flagged / rejected are terminal, handled by the result card.
+        setState(() => _step = _Step.done);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -184,6 +201,136 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         _step = _Step.clip;
       });
     }
+  }
+
+  // ── Step 4: classify (recommend) then let the user confirm ────────────────
+  Future<void> _startReview(String momentId) async {
+    setState(() {
+      _step = _Step.processing;
+      _phase = 'Reading your moment…';
+      _progress = null;
+    });
+    try {
+      final c = await MintService.classify(momentId);
+      if (!mounted) return;
+      _nameController.text = (c['suggested_name'] ?? '').toString();
+      setState(() {
+        _classify = c;
+        _chitType = (c['chit_type'] ?? 'creature').toString();
+        _step = _Step.review;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is MintException ? e.message : 'Could not read your moment — $e';
+        _step = _Step.clip;
+      });
+    }
+  }
+
+  Future<void> _generate({String? swapOfChitId, bool swapConfirm = false}) async {
+    final momentId = _moment?['moment_id'] as String?;
+    final c = _classify;
+    if (momentId == null || c == null) return;
+    setState(() {
+      _step = _Step.generating;
+      _error = null;
+    });
+    try {
+      final res = await MintService.generate(
+        momentId: momentId,
+        family: c['family'].toString(),
+        chitType: _chitType,
+        subjectDesc: c['subject_desc'].toString(),
+        name: _nameController.text,
+        swapOfChitId: swapOfChitId,
+        swapConfirm: swapConfirm,
+      );
+      if (!mounted) return;
+      if (res['error'] == 'self_mint_slot_occupied') {
+        setState(() => _step = _Step.review);
+        await _confirmSwap(res['occupied_chit_id']?.toString());
+        return;
+      }
+      setState(() {
+        _mint = res;
+        _step = _Step.preview;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = e is MintException ? e.message : 'Generation failed — $e';
+        _step = _Step.review;
+      });
+    }
+  }
+
+  Future<void> _confirmSwap(String? occupiedChitId) async {
+    if (occupiedChitId == null) return;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Replace your current BattleChit?',
+            style: TextStyle(color: AppTheme.textPrimary)),
+        content: const Text(
+          'You can have one self-minted card at a time. Minting this one permanently '
+          'deletes your current card and its cutscene. This can\'t be undone.',
+          style: TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep current'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Replace it'),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) {
+      await _generate(swapOfChitId: occupiedChitId, swapConfirm: true);
+    }
+  }
+
+  // ── Step 5: finalize the previewed chit into the collection ───────────────
+  Future<void> _finalize() async {
+    final chitId = _mint?['chit_id'] as String?;
+    if (chitId == null) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await MintService.recordPreview(chitId);
+      await MintService.finalizePreview(chitId);
+      if (!mounted) return;
+      setState(() => _step = _Step.done);
+    } catch (e) {
+      if (mounted) setState(() => _error = 'Could not finalize — $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  void _reset() {
+    setState(() {
+      _step = _Step.link;
+      _moment = null;
+      _attachResult = null;
+      _classify = null;
+      _mint = null;
+      _fileName = null;
+      _probe = null;
+      _filmstrip = const [];
+      _chitType = 'creature';
+      _urlController.clear();
+      _nameController.clear();
+      _revokeObjectUrl();
+    });
   }
 
   @override
@@ -199,15 +346,89 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
           constraints: const BoxConstraints(maxWidth: 560),
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(20),
-            child: switch (_step) {
-              _Step.link => _buildLinkStep(),
-              _Step.clip => _buildClipStep(),
-              _Step.processing => _buildProcessingStep(),
-              _Step.result => _buildResultStep(),
-            },
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _stepper(),
+                const SizedBox(height: 20),
+                switch (_step) {
+                  _Step.link => _buildLinkStep(),
+                  _Step.clip => _buildClipStep(),
+                  _Step.processing => _buildProcessingStep(),
+                  _Step.review => _buildReviewStep(),
+                  _Step.generating => _buildGeneratingStep(),
+                  _Step.preview => _buildPreviewStep(),
+                  _Step.done => _buildDoneStep(),
+                },
+              ],
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  // ── walkthrough: the whole journey, always visible ────────────────────────
+  static const _stepLabels = ['Verify', 'Upload', 'Safety', 'Review', 'Preview'];
+
+  int get _activeStepIndex => switch (_step) {
+        _Step.link => 0,
+        _Step.clip => 1,
+        _Step.processing => 2,
+        _Step.review => 3,
+        _Step.generating => 4,
+        _Step.preview => 4,
+        _Step.done => 4,
+      };
+
+  Widget _stepper() {
+    final active = _activeStepIndex;
+    return Row(
+      children: List.generate(_stepLabels.length, (i) {
+        final done = i < active || _step == _Step.done;
+        final current = i == active && _step != _Step.done;
+        final color = done
+            ? AppTheme.success
+            : current
+                ? AppTheme.primary
+                : AppTheme.cardBorder;
+        return Expanded(
+          child: Column(
+            children: [
+              Row(children: [
+                Expanded(
+                    child: Container(
+                        height: 2,
+                        color: i == 0 ? Colors.transparent : color)),
+                CircleAvatar(
+                  radius: 12,
+                  backgroundColor: color,
+                  child: done
+                      ? const Icon(Icons.check, size: 14, color: Colors.white)
+                      : Text('${i + 1}',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: current
+                                  ? Colors.white
+                                  : AppTheme.textSecondary)),
+                ),
+                Expanded(
+                    child: Container(
+                        height: 2,
+                        color: i == _stepLabels.length - 1
+                            ? Colors.transparent
+                            : (i < active ? AppTheme.success : AppTheme.cardBorder))),
+              ]),
+              const SizedBox(height: 4),
+              Text(_stepLabels[i],
+                  style: TextStyle(
+                      fontSize: 10,
+                      color: current ? AppTheme.textPrimary : AppTheme.textSecondary)),
+            ],
+          ),
+        );
+      }),
     );
   }
 
@@ -243,8 +464,15 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
               fontWeight: FontWeight.w700)),
       const SizedBox(height: 8),
       const Text(
-        'Paste a link to a TikTok, Instagram, or YouTube post you own. '
-        'Your engagement on the post sets the card\'s tier.',
+        'Here\'s how it works: verify a post you own → upload & trim that clip → '
+        'we run safety checks → review the card we recommend → preview it and add '
+        'it to your collection. Takes about a minute.',
+        style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+      ),
+      const SizedBox(height: 16),
+      const Text(
+        'Paste a link to a TikTok, Instagram, or YouTube post you own. It has to be '
+        'on an account you\'ve linked, and your engagement on it sets the card\'s tier.',
         style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
       ),
       const SizedBox(height: 16),
@@ -252,7 +480,7 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         controller: _urlController,
         style: const TextStyle(color: AppTheme.textPrimary),
         decoration: const InputDecoration(
-          hintText: 'https://www.tiktok.com/@you/video/…',
+          hintText: 'https://www.youtube.com/watch?v=…',
           hintStyle: TextStyle(color: AppTheme.textSecondary),
         ),
         onSubmitted: (_) => _ingest(),
@@ -289,19 +517,7 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
               style: const TextStyle(
                   color: AppTheme.textPrimary, fontWeight: FontWeight.w600)),
         ),
-        if (tier != null)
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            decoration: BoxDecoration(
-              color: AppTheme.primary.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(999),
-            ),
-            child: Text('Tier $tier',
-                style: const TextStyle(
-                    color: AppTheme.primary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700)),
-          ),
+        if (tier != null) _tierChip(tier),
       ]),
       const SizedBox(height: 16),
       const Text('2 · Upload that clip from your device',
@@ -370,9 +586,7 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       const SizedBox(height: 20),
       Center(
         child: Text(
-          _progress == null
-              ? _phase
-              : '$_phase ${(_progress! * 100).round()}%',
+          _progress == null ? _phase : '$_phase ${(_progress! * 100).round()}%',
           style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
         ),
       ),
@@ -385,31 +599,174 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
     ]);
   }
 
-  Widget _buildResultStep() {
+  Widget _buildReviewStep() {
+    final c = _classify ?? const {};
+    final family = (c['family'] ?? '').toString();
+    final tier = _moment?['projected_tier'];
+    return _card(children: [
+      Row(children: [
+        const Expanded(
+          child: Text('4 · Review your card',
+              style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700)),
+        ),
+        if (tier != null) _tierChip(tier),
+      ]),
+      const SizedBox(height: 12),
+      Row(children: [
+        _lockedChip(Icons.category_outlined, 'Family: $family'),
+      ]),
+      const SizedBox(height: 4),
+      const Text('Family is set by your content — it decides the card\'s effect style.',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+      const SizedBox(height: 16),
+      const Text('Card name',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+      const SizedBox(height: 6),
+      TextField(
+        controller: _nameController,
+        maxLength: 40,
+        style: const TextStyle(color: AppTheme.textPrimary),
+        decoration: const InputDecoration(counterText: ''),
+      ),
+      const SizedBox(height: 12),
+      const Text('Card type',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+      const SizedBox(height: 6),
+      SegmentedButton<String>(
+        segments: const [
+          ButtonSegment(value: 'creature', label: Text('Creature')),
+          ButtonSegment(value: 'spell_moment', label: Text('Spell')),
+        ],
+        selected: {_chitType},
+        onSelectionChanged: (s) => setState(() => _chitType = s.first),
+      ),
+      const SizedBox(height: 16),
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceLight,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          '“${c['subject_desc'] ?? ''}”',
+          style: const TextStyle(
+              color: AppTheme.textSecondary,
+              fontSize: 13,
+              fontStyle: FontStyle.italic),
+        ),
+      ),
+      const SizedBox(height: 16),
+      FilledButton.icon(
+        onPressed: _generate,
+        icon: const Icon(Icons.movie_filter_outlined),
+        label: const Text('Generate my BattleChit'),
+      ),
+      _errorBanner(),
+    ]);
+  }
+
+  Widget _buildGeneratingStep() {
+    return _card(children: [
+      const SizedBox(height: 8),
+      const Center(
+        child: SizedBox(
+          width: 56,
+          height: 56,
+          child: CircularProgressIndicator(color: AppTheme.secondary),
+        ),
+      ),
+      const SizedBox(height: 20),
+      const Center(
+        child: Text('Generating your cutscene…',
+            style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+      ),
+      const SizedBox(height: 8),
+      const Center(
+        child: Text('Rendering the card art and match-cut — this can take a moment.',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+      ),
+      const SizedBox(height: 8),
+    ]);
+  }
+
+  Widget _buildPreviewStep() {
+    final art = _mint?['card_art_url']?.toString();
+    final mp4 = _mint?['mp4_cutscene_url']?.toString();
+    final tier = _mint?['tier'];
+    return _card(children: [
+      Row(children: [
+        const Expanded(
+          child: Text('5 · Preview & finalize',
+              style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700)),
+        ),
+        if (tier != null) _tierChip(tier),
+      ]),
+      const SizedBox(height: 12),
+      if (art != null)
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.network(art,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox.shrink()),
+        ),
+      if (mp4 != null) ...[
+        const SizedBox(height: 12),
+        AspectRatio(aspectRatio: 16 / 9, child: _CutsceneVideo(url: mp4)),
+      ],
+      const SizedBox(height: 8),
+      Text(_nameController.text.trim().isEmpty ? 'Your BattleChit' : _nameController.text.trim(),
+          style: const TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 16,
+              fontWeight: FontWeight.w700)),
+      const SizedBox(height: 16),
+      FilledButton.icon(
+        onPressed: _busy ? null : _finalize,
+        icon: _busy
+            ? const SizedBox(
+                width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.check_circle_outline),
+        label: const Text('Looks good — add to my collection'),
+      ),
+      _errorBanner(),
+    ]);
+  }
+
+  Widget _buildDoneStep() {
+    // Terminal states: finalized chit, or a flagged/rejected attach.
     final status = _attachResult?['clip_status']?.toString();
-    final (icon, color, title, detail) = switch (status) {
-      'attached' => (
-          Icons.check_circle,
-          AppTheme.success,
-          'Clip staged!',
-          'Your moment passed safety checks. The generation pipeline takes it '
-              'from here — your BattleChit cutscene will appear in your collection.',
-        ),
-      'similarity_flagged' => (
-          Icons.hourglass_top,
-          AppTheme.secondary,
-          'Staged — pending review',
-          'The clip didn\'t visually match the post you linked, so a human will '
-              'take a quick look before generation runs.',
-        ),
-      _ => (
-          Icons.cancel,
-          AppTheme.danger,
-          'Clip rejected',
-          _attachResult?['detail']?.toString() ??
-              'This clip did not pass content moderation.',
-        ),
-    };
+    final finalized = _step == _Step.done && _mint != null;
+    final (icon, color, title, detail) = finalized
+        ? (
+            Icons.check_circle,
+            AppTheme.success,
+            'BattleChit minted!',
+            'It\'s in your collection now. Preview it in a practice battle to lock '
+                'it into your deck.',
+          )
+        : switch (status) {
+            'similarity_flagged' => (
+                Icons.hourglass_top,
+                AppTheme.secondary,
+                'Staged — pending review',
+                'The clip didn\'t visually match the post you linked, so a human will '
+                    'take a quick look before generation runs.',
+              ),
+            _ => (
+                Icons.cancel,
+                AppTheme.danger,
+                'Clip rejected',
+                _attachResult?['detail']?.toString() ??
+                    'This clip did not pass content moderation.',
+              ),
+          };
     return _card(children: [
       Icon(icon, color: color, size: 48),
       const SizedBox(height: 12),
@@ -423,29 +780,81 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       const SizedBox(height: 8),
       Text(detail,
           textAlign: TextAlign.center,
-          style:
-              const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
       const SizedBox(height: 20),
-      FilledButton(
-        onPressed: () => context.go('/battle'),
-        child: const Text('Back to the Arena'),
-      ),
+      if (finalized)
+        FilledButton(
+          onPressed: () => context.go('/collection'),
+          child: const Text('View my collection'),
+        )
+      else
+        FilledButton(
+          onPressed: () => context.go('/battle'),
+          child: const Text('Back to the Arena'),
+        ),
       TextButton(
-        onPressed: () {
-          setState(() {
-            _step = _Step.link;
-            _moment = null;
-            _attachResult = null;
-            _fileName = null;
-            _probe = null;
-            _filmstrip = const [];
-            _urlController.clear();
-            _revokeObjectUrl();
-          });
-        },
+        onPressed: _reset,
         child: const Text('Mint another moment',
             style: TextStyle(color: AppTheme.secondary)),
       ),
     ]);
+  }
+
+  Widget _tierChip(Object tier) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: AppTheme.primary.withValues(alpha: 0.18),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text('Tier $tier',
+            style: const TextStyle(
+                color: AppTheme.primary,
+                fontSize: 12,
+                fontWeight: FontWeight.w700)),
+      );
+
+  Widget _lockedChip(IconData icon, String label) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: AppTheme.surfaceLight,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 14, color: AppTheme.secondary),
+          const SizedBox(width: 6),
+          Text(label,
+              style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600)),
+        ]),
+      );
+}
+
+/// Embeds the generated cutscene MP4 as an autoplaying, muted, looping HTML5
+/// video (Flutter web has no native video widget without extra plugins).
+class _CutsceneVideo extends StatelessWidget {
+  const _CutsceneVideo({required this.url});
+  final String url;
+
+  @override
+  Widget build(BuildContext context) {
+    final viewType = 'cutscene-${url.hashCode}';
+    // Registering the same viewType twice is a harmless no-op across rebuilds.
+    ui_web.platformViewRegistry.registerViewFactory(viewType, (int _) {
+      final video = web.HTMLVideoElement()
+        ..src = url
+        ..autoplay = true
+        ..muted = true
+        ..loop = true
+        ..controls = true
+        ..setAttribute('playsinline', 'true')
+        ..style.width = '100%'
+        ..style.height = '100%'
+        ..style.borderRadius = '12px'
+        ..style.objectFit = 'cover';
+      return video;
+    });
+    return HtmlElementView(viewType: viewType);
   }
 }

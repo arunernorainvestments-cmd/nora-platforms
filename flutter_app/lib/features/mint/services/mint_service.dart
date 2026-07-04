@@ -72,6 +72,71 @@ class MintService {
     }
   }
 
+  /// The recommend/classify stage: derives the creative inputs generation needs.
+  /// Returns { family, suggested_name, subject_desc, chit_type }. Family is
+  /// content-derived (Hard Rule 34) — the UI shows it locked.
+  static Future<Map<String, dynamic>> classify(String momentId) async {
+    try {
+      final res = await _client.functions.invoke(
+        'moment-classify',
+        body: {'moment_id': momentId},
+      );
+      return Map<String, dynamic>.from(res.data as Map);
+    } on FunctionException catch (e) {
+      throw MintException(_messageFrom(e));
+    }
+  }
+
+  /// Runs the cinematic generation pipeline for the reviewed card. Returns the
+  /// mint payload (status, chit_id, card_art_url, mp4_cutscene_url, tier, ...) or,
+  /// when a self-minted card already occupies the single slot, an
+  /// `error: self_mint_slot_occupied` payload with `occupied_chit_id` for the
+  /// swap-confirm flow. HTTP-level failures still surface as [MintException].
+  static Future<Map<String, dynamic>> generate({
+    required String momentId,
+    required String family,
+    required String chitType,
+    required String subjectDesc,
+    String? name,
+    String? swapOfChitId,
+    bool swapConfirm = false,
+  }) async {
+    try {
+      final res = await _client.functions.invoke(
+        'cinematic-mint',
+        body: {
+          'moment_id': momentId,
+          'family': family,
+          'chit_type': chitType,
+          'subject_desc': subjectDesc,
+          if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
+          if (swapOfChitId != null) 'swap_of_chit_id': swapOfChitId,
+          if (swapConfirm) 'swap_confirm': true,
+        },
+      );
+      return Map<String, dynamic>.from(res.data as Map);
+    } on FunctionException catch (e) {
+      // The 409 slot-occupied response carries a structured body we want to read
+      // rather than a bare message — surface it to the caller as data.
+      final d = e.details;
+      if (d is Map && d['error'] == 'self_mint_slot_occupied') {
+        return Map<String, dynamic>.from(d);
+      }
+      throw MintException(_messageFrom(e));
+    }
+  }
+
+  /// Marks the chit as previewed (Hard Rule 39 gate) — called once the user has
+  /// seen the generated card + cutscene in the web preview.
+  static Future<void> recordPreview(String chitId) async {
+    await _client.rpc('chit_record_preview', params: {'p_chit_id': chitId});
+  }
+
+  /// Activates the previewed chit into the user's collection.
+  static Future<void> finalizePreview(String chitId) async {
+    await _client.rpc('chit_finalize_preview', params: {'p_chit_id': chitId});
+  }
+
   static String _messageFrom(FunctionException e) {
     final d = e.details;
     if (d is Map) {
