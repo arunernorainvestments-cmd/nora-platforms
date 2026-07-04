@@ -31,6 +31,7 @@ import '../../features/battle/screens/battle_lobby_screen.dart';
 import '../../features/battle/screens/battle_match_screen.dart';
 import '../../features/battle/screens/battle_matchmaking_screen.dart';
 import '../../features/home/screens/home_screen.dart';
+import '../../features/mint/screens/mint_moment_screen.dart';
 import '../../features/home/screens/plan_screen.dart';
 import '../../features/settings/screens/support_screen.dart';
 import '../../features/settings/screens/faq_screen.dart';
@@ -129,7 +130,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       const protectedRoutes = [
         '/markets', '/profile', '/wallet', '/mybets', '/arena', '/battle',
         '/marketplace', '/verify-identity',
-        '/my-licenses', '/create-listing',
+        '/my-licenses', '/create-listing', '/mint',
       ];
       // sub-paths are also protected
       final isProtected = protectedRoutes.contains(loc) ||
@@ -461,6 +462,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/battle',
             builder: (context, state) => const BattleLobbyScreen(),
+          ),
+          // Minting v2 §1 — "Create Your BattleChit" (auth-required).
+          GoRoute(
+            path: '/mint',
+            builder: (context, state) => const MintMomentScreen(),
           ),
           GoRoute(
             // Must precede '/battle/:matchId' so it isn't captured as a matchId.
