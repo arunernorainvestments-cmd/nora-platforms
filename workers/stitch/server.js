@@ -19,7 +19,8 @@
 //     width?, height?, fps?,                      // default 1280x720@30
 //     upload: { bucket, path }                    // destination for final MP4
 //   } -> { ok, path, duration_s }
-//   GET /healthz -> ok
+//   GET /status -> ok   (NOT /healthz — Cloud Run's frontend reserves that
+//                        path on run.app domains and 404s it before the app)
 
 const http = require('node:http');
 const { spawn } = require('node:child_process');
@@ -213,7 +214,7 @@ async function handleStitch(body) {
 
 // ── server ──────────────────────────────────────────────────────────────────
 http.createServer(async (req, res) => {
-  if (req.method === 'GET' && req.url === '/healthz') return json(res, 200, { ok: true });
+  if (req.method === 'GET' && req.url === '/status') return json(res, 200, { ok: true });
   if (req.method !== 'POST') return json(res, 405, { error: 'POST only' });
   if (!STITCH_SECRET || req.headers['x-stitch-secret'] !== STITCH_SECRET) {
     return json(res, 401, { error: 'unauthorized' });

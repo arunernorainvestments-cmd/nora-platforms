@@ -34,7 +34,8 @@ secrets (`STITCH_WORKER_URL`, `STITCH_SECRET`) so `cinematic-mint` can call it.
 
 ## API
 
-`GET /healthz` → `{ok:true}`
+`GET /status` → `{ok:true}` (not `/healthz` — Cloud Run reserves that path on
+run.app domains and answers 404 itself)
 
 `POST /frames` — extract JPEG frames
 ```json
