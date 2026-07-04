@@ -131,9 +131,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // ── illustration (card art; also the cutscene subject reference) ─────────────────
   const illo = await generateIllustration(cfg, {
-    prompt: illustrationPrompt(subject_desc),
+    prompt: illustrationPrompt(subject_desc, family),
     referenceImageUrl: moment.thumbnail_url ?? undefined,
     seed,
+    width: 1024,   // portrait 4:5 card-art window — the app frames it, not 16:9
+    height: 1280,
   });
   if (!illo.ok) {
     console.warn(`cinematic-mint illustration: ${illo.reason}`);

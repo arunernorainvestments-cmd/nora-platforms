@@ -126,6 +126,20 @@ class MintService {
     }
   }
 
+  /// Loads the freshly minted chit's full row (tier-derived aura/atk/hp/keywords)
+  /// so the preview can render the complete card face. Owner-scoped by RLS.
+  static Future<Map<String, dynamic>?> fetchChit(String chitId) async {
+    final res = await _client
+        .from('moment_chits')
+        .select(
+            'id, name, chit_type, archetype_family, tier, aura_cost, atk, hp, '
+            'keywords, card_art_url, mp4_cutscene_url, original_minter_handle, '
+            'source_platform')
+        .eq('id', chitId)
+        .maybeSingle();
+    return res == null ? null : Map<String, dynamic>.from(res);
+  }
+
   /// Marks the chit as previewed (Hard Rule 39 gate) — called once the user has
   /// seen the generated card + cutscene in the web preview.
   static Future<void> recordPreview(String chitId) async {
