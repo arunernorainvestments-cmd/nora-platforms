@@ -82,10 +82,41 @@ export function assembleMotionPrompt(
     .replaceAll('{TIER_INTENSITY}', slots.tierIntensity);
 }
 
+// Per-family accent glow — the "variability within uniformity" for the card art
+// (the frame's violet→teal piping is the fixed brand constant; the illustration's
+// glow shifts per classified family). hex mirrors the Flutter CardFace accent so the
+// AI glow and the app-rendered chrome read as the same hue. House-owned: the family
+// is classified from content (Hard Rule 34), never user-picked.
+export const FAMILY_ACCENT: Record<Family, { hex: string; phrase: string }> = {
+  athlete: { hex: '#FF5A1F', phrase: 'fiery orange-red' },
+  musician: { hex: '#FF3DBE', phrase: 'magenta violet-pink' },
+  artist: { hex: '#B15CFF', phrase: 'vivid violet-purple' },
+  scientist: { hex: '#2BE0C8', phrase: 'teal-cyan' },
+  comedian: { hex: '#B6E62E', phrase: 'yellow-green' },
+  influencer: { hex: '#FF4D9D', phrase: 'hot rose-pink' },
+  politician: { hex: '#FF3B3B', phrase: 'commanding crimson' },
+  business: { hex: '#FFC53D', phrase: 'golden amber' },
+  gamer: { hex: '#39FF14', phrase: 'neon green' },
+  actor: { hex: '#E8D9A0', phrase: 'silver-gold spotlight' },
+};
+
 // Fixed house illustration script (cinematic spec §3.3) — the card-art prompt.
-export function illustrationPrompt(subjectDesc: string): string {
-  return `Stylized trading-card illustration of ${sanitizeSubjectDesc(subjectDesc)}, ` +
-    'cel-shaded anime, bold ink outlines, flat shadows, house palette with #6C63FF and ' +
-    '#03DAC6 accent lighting, dynamic hero pose, dark arena backdrop, 16:9, ' +
-    'no text, no logos, no photographic realism';
+// Three bands, mirroring assembleMotionPrompt's discipline: a CONSTANT style-lock
+// (never user-influenced), the VARIABLE post-derived subject (sanitized), and the
+// VARIABLE house-mapped family glow — then CONSTRAINTS that keep the asset CLEAN
+// (no frame, no text): the chip frame + all card text are rendered by the app/Unity
+// over this illustration, never baked in by the model (avoids AI text garble and lets
+// stats/localization change without regenerating art).
+export function illustrationPrompt(subjectDesc: string, family: Family): string {
+  const accent = FAMILY_ACCENT[family];
+  return [
+    'Stylized trading-card character illustration,',
+    'cel-shaded anime, bold black ink outlines, flat cel shadows,',
+    'dynamic hero pose, centered subject, dark studio void background,',
+    'portrait 4:5 composition,',
+    `subject: ${sanitizeSubjectDesc(subjectDesc)},`,
+    `${accent.phrase} accent rim-light and energy glow around the subject,`,
+    'no text, no words, no letters, no logos, no card frame, no border, no UI panels,',
+    'no photographic realism',
+  ].join(' ');
 }
