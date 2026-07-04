@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:web/web.dart' as web;
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/card_face.dart';
 import '../services/mint_service.dart';
 import '../services/trim_interop.dart';
 import '../widgets/clip_trimmer.dart';
@@ -58,6 +59,7 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
 
   // Step-5 state.
   Map<String, dynamic>? _mint;
+  Map<String, dynamic>? _chitRow;
 
   @override
   void dispose() {
@@ -252,8 +254,19 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         await _confirmSwap(res['occupied_chit_id']?.toString());
         return;
       }
+      // Pull the full chit row (tier-derived stats) so the preview shows a
+      // complete card face — best-effort; the preview still renders without it.
+      Map<String, dynamic>? chit;
+      final chitId = res['chit_id'] as String?;
+      if (chitId != null) {
+        try {
+          chit = await MintService.fetchChit(chitId);
+        } catch (_) {/* preview falls back to review data */}
+      }
+      if (!mounted) return;
       setState(() {
         _mint = res;
+        _chitRow = chit;
         _step = _Step.preview;
       });
     } catch (e) {
@@ -323,6 +336,7 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       _attachResult = null;
       _classify = null;
       _mint = null;
+      _chitRow = null;
       _fileName = null;
       _probe = null;
       _filmstrip = const [];
@@ -694,39 +708,35 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
   }
 
   Widget _buildPreviewStep() {
-    final art = _mint?['card_art_url']?.toString();
     final mp4 = _mint?['mp4_cutscene_url']?.toString();
-    final tier = _mint?['tier'];
     return _card(children: [
-      Row(children: [
-        const Expanded(
-          child: Text('5 · Preview & finalize',
-              style: TextStyle(
-                  color: AppTheme.textPrimary,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700)),
+      const Text('5 · Preview & finalize',
+          style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 18,
+              fontWeight: FontWeight.w700)),
+      const SizedBox(height: 4),
+      const Text('Here\'s your card. Give it a look, then add it to your collection.',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+      const SizedBox(height: 16),
+      Center(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 320),
+          child: _previewCardFace(),
         ),
-        if (tier != null) _tierChip(tier),
-      ]),
-      const SizedBox(height: 12),
-      if (art != null)
-        ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: Image.network(art,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const SizedBox.shrink()),
-        ),
+      ),
       if (mp4 != null) ...[
-        const SizedBox(height: 12),
+        const SizedBox(height: 20),
+        const Row(children: [
+          Icon(Icons.movie_outlined, size: 16, color: AppTheme.textSecondary),
+          SizedBox(width: 6),
+          Text('Summon cutscene',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+        ]),
+        const SizedBox(height: 8),
         AspectRatio(aspectRatio: 16 / 9, child: _CutsceneVideo(url: mp4)),
       ],
-      const SizedBox(height: 8),
-      Text(_nameController.text.trim().isEmpty ? 'Your BattleChit' : _nameController.text.trim(),
-          style: const TextStyle(
-              color: AppTheme.textPrimary,
-              fontSize: 16,
-              fontWeight: FontWeight.w700)),
-      const SizedBox(height: 16),
+      const SizedBox(height: 20),
       FilledButton.icon(
         onPressed: _busy ? null : _finalize,
         icon: _busy
@@ -737,6 +747,23 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       ),
       _errorBanner(),
     ]);
+  }
+
+  Widget _previewCardFace() {
+    final c = _chitRow;
+    return CardFace(
+      name: (c?['name'] ?? _nameController.text).toString(),
+      chitType: (c?['chit_type'] ?? _chitType).toString(),
+      family: (c?['archetype_family'] ?? _classify?['family'] ?? '').toString(),
+      tier: (c?['tier'] ?? _mint?['tier'] ?? '').toString(),
+      auraCost: (c?['aura_cost'] as num?)?.toInt() ?? 0,
+      atk: (c?['atk'] as num?)?.toInt(),
+      hp: (c?['hp'] as num?)?.toInt(),
+      keywords: (c?['keywords'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+      cardArtUrl: (c?['card_art_url'] ?? _mint?['card_art_url'])?.toString(),
+      minterHandle: c?['original_minter_handle']?.toString(),
+      sourcePlatform: c?['source_platform']?.toString(),
+    );
   }
 
   Widget _buildDoneStep() {

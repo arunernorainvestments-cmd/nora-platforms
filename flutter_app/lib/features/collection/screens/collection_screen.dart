@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/card_face.dart';
 import '../providers/collection_providers.dart';
 
 /// "My BattleChits" — the minted moment chits the user owns. This is where a
@@ -53,18 +54,63 @@ class CollectionScreen extends ConsumerWidget {
         mainAxisSpacing: 14,
       ),
       itemCount: chits.length,
-      itemBuilder: (_, i) => _ChitCard(chit: chits[i]),
+      itemBuilder: (ctx, i) => _ChitCard(
+        chit: chits[i],
+        onTap: () => _showCard(ctx, chits[i]),
+      ),
+    );
+  }
+
+  void _showCard(BuildContext context, CollectionChit chit) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 360),
+                child: CardFace(
+                  name: chit.name,
+                  chitType: chit.chitType,
+                  family: chit.family,
+                  tier: chit.tier,
+                  auraCost: chit.auraCost,
+                  atk: chit.atk,
+                  hp: chit.hp,
+                  keywords: chit.keywords,
+                  cardArtUrl: chit.cardArtUrl,
+                  minterHandle: chit.minterHandle,
+                  sourcePlatform: chit.sourcePlatform,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Close',
+                  style: TextStyle(color: AppTheme.textPrimary)),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
 
 class _ChitCard extends StatelessWidget {
-  const _ChitCard({required this.chit});
+  const _ChitCard({required this.chit, this.onTap});
   final CollectionChit chit;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
       decoration: BoxDecoration(
         color: AppTheme.surface,
         borderRadius: BorderRadius.circular(14),
@@ -136,6 +182,7 @@ class _ChitCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
       ),
     );
   }

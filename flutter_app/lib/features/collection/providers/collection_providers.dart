@@ -18,6 +18,8 @@ class CollectionChit {
     required this.isActive,
     required this.previewed,
     required this.minterHandle,
+    required this.sourcePlatform,
+    required this.keywords,
   });
 
   final String id;
@@ -33,6 +35,8 @@ class CollectionChit {
   final bool isActive;
   final bool previewed;
   final String? minterHandle;
+  final String? sourcePlatform;
+  final List<String> keywords;
 
   /// Owned but not yet finalized into the deck (Hard Rule 39 preview gate).
   bool get isPending => !isActive;
@@ -51,6 +55,8 @@ class CollectionChit {
         isActive: r['is_active'] == true,
         previewed: r['previewed_at'] != null,
         minterHandle: r['original_minter_handle'] as String?,
+        sourcePlatform: r['source_platform'] as String?,
+        keywords: (r['keywords'] as List?)?.map((e) => e.toString()).toList() ?? const [],
       );
 }
 
@@ -78,8 +84,8 @@ final myCollectionProvider =
       .from('moment_chits')
       .select(
           'id, name, chit_type, archetype_family, tier, aura_cost, atk, hp, '
-          'card_art_url, mp4_cutscene_url, is_active, previewed_at, '
-          'original_minter_handle, created_at')
+          'keywords, card_art_url, mp4_cutscene_url, is_active, previewed_at, '
+          'original_minter_handle, source_platform, created_at')
       .inFilter('id', ids)
       .order('created_at', ascending: false);
 
