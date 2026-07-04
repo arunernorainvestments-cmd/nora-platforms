@@ -1,5 +1,5 @@
 # NORA Platforms — PLAN.md
-# Where we're going. Last updated: 2026-07-03.
+# Where we're going. Last updated: 2026-07-04 (launch night).
 # Rules for HOW to build any of this live in CLAUDE.md ("Building future work safely").
 # Full specs / schemas / history for anything referenced here live in ARCHIVE.md.
 #
@@ -9,56 +9,64 @@
 
 ---
 
-## Status snapshot (where we are, 2026-07-01)
+## Status snapshot (where we are, 2026-07-04)
 
 - **Live & built (v2.x base, mostly reused by v3):** Markets, Hot Topic, Likeness Cards + stat sheets +
   card/chit marketplaces, celebrity integration, KYC flow, Emergency Fund (sim), Licensing Marketplace
   (backend + Flutter merged). Battle (1v1 turn-based, Phases A–C + matchmaking) + legacy Arena exist but
   are **superseded by the v3 card-battler** (see Retired).
-- **Migration ledger:** remote DB in sync at **145** (applied via `supabase db push`, 2026-07-03). Next
-  new migration = **146**. 080–106 = redesign Docs 1–4 + integrity/chit/KYC. 107–113 = Licensing. 114/115 =
+- **Migration ledger:** remote DB in sync at **147** (applied via `supabase db push`, 2026-07-04). Next
+  new migration = **148**. 080–106 = redesign Docs 1–4 + integrity/chit/KYC. 107–113 = Licensing. 114/115 =
   mobile prep. 116–137 = v3 phases (116–121 asset layer · 122–125 tier ladder/effects/fusion · 126–129 CCG
   engine · 130–131 Vibe · 132–134 real-money rail · 135–136 minting + ascension · 137 fusion expansion).
   138–145 = cinematic/minting track (138 registries · 139 plates/prompts · 140 generation pipeline ·
   141 ingestion consent + pre-gen moderation · 142 one-active-card + wager escrow · 143/144 latent
   P3/P1 bug fixes surfaced by the wager smoke · 145 M-P5 glue: avatar_loadout / is_monetized / bet RPC).
-- **`flutter analyze`:** clean as of the last redesign session.
+  146 = mint-staging device-clip upload (minting v2 §1) · 147 = CCG spectator read path + realtime.
+- **`flutter analyze`:** clean (2026-07-04).
 - **v3 status:** P0–P6 BUILT + applied to prod; P7 partial (fusion expansion + balance pass, commit 6028765).
-- **NEW TRACK (2026-07-02): Minting + Match Cut + Cinematic Engine** — see section below; specs
-  `NORA_PLATFORMS_MINTING_MATCHCUT_SPEC.md` + `NORA_PLATFORMS_CINEMATIC_ENGINE_SPEC.md`, contract in
-  RECONCILIATION §7, Hard Rules 37–39. ← *current*
+- **Cinematic Engine v1 track (2026-07-02→03): COMPLETE build-wise** (Phase 0, C0–C3, M-P1/P4/P5) —
+  its generation approach is now **superseded by Minting v2** below; consent/moderation/wager/glue all carry over.
+- **SHIPPED 2026-07-04 (launch night, commits 820a394 + d4a0618):** Minting v2 §1 — the `/mint`
+  "Create Your BattleChit" flow (post verify → device-clip upload → in-browser ffmpeg.wasm trimmer 1–15s →
+  `mint-staging` + `moment-clip-attach` re-moderation/similarity gate); BattleChit CTAs on Home/Profile/
+  FAQ/Marketplace; two-app conversion — `/battle` = companion hub with LIVE spectating of NORA Arena ccg
+  matches (`/battle/spectate/:id`, mig 147), legacy web lobby at `/battle/legacy`, Arena page banner.
+- **NEXT TRACK: Minting v2 §2–§4 (generation back half)** — see "Minting v2" section below. ← *current*
 
 ---
 
 ## v3 build plan — P0→P7 (detail + checklists in NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md)
+**Status: P0–P6 DONE + applied to prod (migs 116–137); P7 PARTIAL — fusion expansion/balance done,
+launch hygiene (archival retirements + pre-launch reset + dev-tooling removal) still outstanding.**
 
 Work in order; each phase = one atomic PR. `flutter analyze` zero issues before/after each. Migrations only
 via `supabase db push`. Integer USD cents. Append-only ledgers INSERT-only. Honor every DO-NOT.
 
 - **P0 — Canonical model + governance** (docs only). Rewrite CLAUDE/PLAN/RECONCILIATION/ARCHIVE to the
-  card-battler; add Hard Rules 33–36; reconcile the moment-chit vs legacy-powerup naming. ← *current*
-- **P1 — Chit catalog + collection + deck + barter.** `moment_chits` catalog (distinct from legacy
+  card-battler; add Hard Rules 33–36; reconcile the moment-chit vs legacy-powerup naming. ✅ DONE
+- **P1 — Chit catalog + collection + deck + barter.** ✅ DONE. `moment_chits` catalog (distinct from legacy
   `battle_chit_definitions`), `chit_ownership` + append-only acquisition ledger, `decks`/`deck_chits`
   (size 20 / max 2), `chit-barter` (KYC only on licensed-crossover swaps), premium packs on `lkn_*`.
   Archive `battle_abilities` move-sets; remove license-per-character eligibility.
-- **P2 — Tier ladder + effects + fusion DATA** ⭐ *critical path.* `tier_ladder` (cost-banded) +
+- **P2 — Tier ladder + effects + fusion DATA** ⭐ *critical path.* ✅ DONE. `tier_ladder` (cost-banded) +
   `engagement_tier_thresholds`, `effect_templates` (family × timing, tier-scaled), timing types +
   keywords + families enumerated, `fusion_rules` (tag-based patterns + starter set), and the
   `(family,timing,tier)→(cost,atk,hp,effect)` derivation function.
-- **P3 — CCG combat engine** (`process_battle_turn` rebuilt) — largest build. Board-state engine (Life/
+- **P3 — CCG combat engine** (`process_battle_turn` rebuilt) — largest build. ✅ DONE. Board-state engine (Life/
   Aura/hand/deck/field ≤3/Vibe), turn resolution, fusion detection/resolution, match-start stat snapshot,
   ordered `battle_events` with `*_after` reconciliation.
-- **P4 — Vibe Meter backend** (parallel w/ P3). `process_battle_vibe_tick` + `match_vibe` (no legacy
+- **P4 — Vibe Meter backend** (parallel w/ P3). ✅ DONE. `process_battle_vibe_tick` + `match_vibe` (no legacy
   dependency), multi-factor floored Vibe over Realtime; engine reads thresholds at round boundary.
-- **P5 — Real-money rail + G-MON gating + payout.** `currency` on markets/bets + branched settlement
+- **P5 — Real-money rail + G-MON gating + payout.** ✅ BUILT (gate live; G-MON confirmation + live-flip prereqs outstanding). `currency` on markets/bets + branched settlement
   (token→balances, USD→Treasury); market created **iff both players KYC'd**; rewrite `match_revenue_config`
   split routing creator/passive slices to **moment-owners of played chits**; wire Stripe Connect/Treasury
   behind config. **Live-flip prereqs:** merge `doc6-mobile-iap-confirm` (mig 115) + rotate
   `NORA_SIGNING_PRIVATE_KEY`.
-- **P6 — Minting pipeline + tier-ascension.** link→recommend→animate→classify→tier-assign→moderate→mint
+- **P6 — Minting pipeline + tier-ascension.** ✅ DONE (v1; generation middle superseded by Minting v2). link→recommend→animate→classify→tier-assign→moderate→mint
   (`moment_chits`); ascension job (weekly, ≤1/7d/user, one-directional, definition-level, between-matches
   only) + authenticity/moderation guards + large-jump review queue. *(Build mint before P5 payout wiring.)*
-- **P7 — Fusion expansion + deprecation cleanup + Fund + launch hygiene.** Expand `fusion_rules`; execute
+- **P7 — Fusion expansion + deprecation cleanup + Fund + launch hygiene.** ⏳ PARTIAL (fusion expansion done; hygiene outstanding). Expand `fusion_rules`; execute
   the retirements below; weekly polls/multipliers → DORMANT; Emergency Fund live behind config; pre-launch
   reset (ARCHIVE §A8) + remove dev tooling; smoke tests.
 
@@ -68,32 +76,84 @@ gate; confirm the rule before real-money go-live.
 
 ---
 
-> **⏸️ SESSION CHECKPOINT — 2026-07-03 (Claude: read this first on resume).**
-> **ALL build phases of this track are DONE** (Phase 0, C0–C3, M-P1, M-P4, M-P5) — migs 138–145
-> applied to prod, `cinematic-mint` (swap flow) + `moment-ingest` deployed, every smoke PASSED
-> (M-P1 ingest · M-P4 wager/swap · M-P5 loadout round-trip · C2 mint regression). What remains is
-> EXTERNAL (below) + the next tracks in "Cross-cutting work" / v3 P7 launch hygiene.
-> Full state in auto-memory `project_cinematic_engine.md`.
-> Waiting on user: SEGMIND_API_KEY · TikTok/IG OAuth app creds (backend wired; `oauth-initiate`
-> returns 503 for them until `TIKTOK_CLIENT_KEY`/`INSTAGRAM_CLIENT_ID` secrets are set; then flip
-> `MINT_INGEST_MODE=live`) · ANTHROPIC_API_KEY as an edge secret + `MODERATION_MODE=live` for live
-> vision moderation · visual sign-off on the 12 plates (then re-run
-> `tools/cinematic/generate_anchor_plates.ts` live with FORCE=1 and flip rows to 'signed_off').
-> Remove this note when the track completes.
+> **⏸️ SESSION CHECKPOINT — 2026-07-04 (Claude: read this first on resume).**
+> **Minting v2 §1 is SHIPPED** (the `/mint` flow, mig 146/147, CTAs, spectate hub — all deployed +
+> pushed to main). **The next build track is Minting v2 §2–§4** (V2V middle → agnostic bridges →
+> stitch + audio dub), buildable NOW in sim mode; the Segmind key only unlocks real renders.
+> Full state in auto-memory `project_cinematic_engine.md`; governing doc `Minting_Workflow.md`
+> (where it conflicts with the two older specs, it wins — Hard Rules 37/39 amended 2026-07-04).
+> **Waiting on user (external unblocks):**
+> - `SEGMIND_API_KEY` → real generation (V2V + bridges) + first-render validation of the agnostic plates.
+> - TikTok/IG OAuth app creds (`TIKTOK_CLIENT_KEY`/`INSTAGRAM_CLIENT_ID` secrets; then `MINT_INGEST_MODE=live`).
+> - `ANTHROPIC_API_KEY` edge secret + `MODERATION_MODE=live` (live vision moderation; sim until then).
+> - §4 stitch vendor decision (recommended: Shotstack/Creatomate cloud stitch; alternatives: client-side
+>   ffmpeg.wasm during preview, or a small Cloud Run FFMPEG worker).
+> - G-MON confirmation before real-money go-live (unchanged).
+> Remove this note when §2–§4 complete.
 
-## Minting + Match Cut + Cinematic Engine track (specs added 2026-07-02)
+## Minting v2 — device-clip pipeline (Minting_Workflow.md, ADOPTED 2026-07-04) ← *current track*
 
-The web-side minting pipeline + the cutscene generation engine. Naming: the specs' `battle_chits` = our
-`moment_chits` (RECONCILIATION §7). Vendor final: Seedance 2.0 via Segmind (fallback BytePlus ModelArk);
-sim-first behind `CINEMATIC_MODE` per governance. Build order:
+The governing minting architecture: OAuth-verified post selection + **device-clip upload** (platform APIs
+never hand out video files — Hard Rule 37 as amended), in-browser trim, then a three-stage generation:
+V2V-stylized middle bracketed by **two character-AGNOSTIC anchor plates** (Hard Rule 39 as amended;
+Unity zooms into the glowing card to enter and plays an impact flash to exit — lead-in variety lives in
+Unity, per-template plates are a future expansion).
+
+**Done (§1 + plates, 2026-07-04):**
+- [x] **§1 Selector + trimmer + staging** (mig 146 + `moment-clip-attach` + `/mint` flow): paste owned
+      post URL → `moment-ingest` → device picker → ffmpeg.wasm trimmer (1–15s, filmstrip, segment
+      preview, audio toggle, frame-accurate H.264/1280 re-encode) → upload to private `mint-staging`
+      ({uid}/{moment_id}/clip.mp4 + f0..f3.jpg) → `moment-clip-attach` (ownership/approval gates,
+      re-moderation of actual upload frames — minor-safety absolute, dHash thumbnail-similarity check
+      in `MINT_CLIP_MODE=live`, mismatch → human review). ffmpeg.wasm vendored (`web/vendor/ffmpeg`).
+- [x] **Agnostic plates v1 designed + in repo**: `assets/plates/agnostic_{start,end}_plate_v1_16x9.png`
+      (16:9 center-crops of the user's renders; start plate text-free). No further design work pending.
+- [x] **BattleChit CTAs everywhere** (`core/widgets/battlechit_cta.dart` → `/mint`): Home (banner +
+      drawer + Moments banner), Profile, FAQ Moments Cards, Marketplace chits tab, Battle hub, Arena banner.
+
+**Next steps (§2–§4 — the generation back half; build sim-first behind `CINEMATIC_MODE`):**
+- [ ] **Plate registry wiring**: upload the two agnostic plates to storage and register them (versioned)
+      in `match_cut_anchor_plates` (or a successor agnostic-plates row shape); mark the 12 per-template
+      draft slots (mig 139) as deferred/future — do NOT generate them for launch.
+- [ ] **§2 V2V stylization**: staged clip (`clip_status='attached'`) → Wan-class video-to-video via
+      Segmind → cel-shaded `Core_Clip.mp4`. Style prompt = frame-derived `{SUBJECT_DESC}` (Vision LLM)
+      + the house style-lock block (never user-influenced). Persist seeds/versions per stage.
+- [ ] **§3 Bridges**: Intro (Kling-class I2V: `image` = agnostic START plate, `image_tail` = Core_Clip
+      frame 0) + Outro (`image` = last frame, `image_tail` = agnostic END plate), 1–2s each, seeded.
+- [ ] **§4 Stitch + audio dub**: concat Intro + Core + Outro; overlay ORIGINAL clip audio on the middle
+      segment only, honoring `clip_keep_audio`. **Vendor decision pending (user)** — recommended
+      Shotstack/Creatomate (one HTTPS call, also does the precise server-side cut from
+      `clip_trim_start/end_ms`). Audio-licensing exposure = accepted OPEN issue (revisit before live).
+- [ ] **Finalize + write**: post-gen moderation on the finished MP4 (mandatory — clean bookends never
+      vouch for the middle) → card art from the stylized clip → store `battle-media` → preview battle →
+      write `moment_chits` via the existing C2 `cinematic_complete_mint` path (rewired to v2 output).
+- [ ] **First-render validation** (needs `SEGMIND_API_KEY`): confirm the glowing-card start plate and
+      impact-flash end plate condition cleanly; iterate plate v2 only if renders demand it.
+- [ ] **Live flips when creds land**: `MINT_INGEST_MODE=live` (OAuth creds) · `MODERATION_MODE=live`
+      (Anthropic key) · `MINT_CLIP_MODE=live` (enables the real similarity check) · `CINEMATIC_MODE=live`
+      (Segmind key).
+- [ ] **Spectate follow-ups** (from the 2026-07-04 two-app conversion): surface the spectator bet UI on
+      monetized matches (`battle_place_spectator_bet_usd` exists, KYC-gated — G-MON confirm first);
+      optional dev command to run a visible non-test match for demoing `/battle`.
+
+---
+
+## Cinematic Engine v1 track (2026-07-02→03) — COMPLETE; generation approach superseded by Minting v2
+
+The v1 pipeline (Seedance first/last-frame conditioning on 6 per-template plate pairs). Naming: the specs'
+`battle_chits` = our `moment_chits` (RECONCILIATION §7). **Everything below is BUILT and stays load-bearing
+(consent, moderation, one-active-card, wager, glue) — only the §3-equivalent generation middle is replaced
+by Minting v2 above.** Build order was:
 
 - [x] **C0 — Registries + tool wiring** (mig 138): `match_cut_templates` (6 role-keyed geometries),
       `match_cut_anchor_plates` + `match_cut_prompt_templates` (versioned), cinematic/minting columns on
       `moment_chits` + `moments`; Segmind client module (image + Seedance Fast/standard, seed capture,
       draft-vs-final config, sim mode); `battle-media` bucket; round-trip smoke test.
-- [x] **C1 — Author plates + prompts** *(built; plate visual sign-off pending)*: 6 motion prompt templates (§4 grammar, style-lock fixed) seeded;
-      12 anchor plates generated 16:9 house-style (**needs `SEGMIND_API_KEY`**); versions registered.
-      **Gate: user visual sign-off against the Arena anchor poses before C2 finalization.**
+- [x] **C1 — Author plates + prompts** *(prompt templates seeded; the 12 per-template plates are
+      SUPERSEDED by the two agnostic plates — Hard Rule 39 as amended 2026-07-04. Draft plate slots
+      stay in `match_cut_anchor_plates` marked deferred; do not generate them for launch. The old
+      "visual sign-off on 12 plates" gate is retired; first-render validation of the agnostic pair
+      replaces it — see Minting v2.)*
 - [x] **C2 — Generation pipeline** (mig 140 + `cinematic-mint`): classify→template select→illustration→Seedance cutscene (plate
       bookends, fixed seed)→post-gen moderation (reject → adjust `{SUBJECT_DESC}` only, re-run)→preview
       battle→store `battle-media`→write chit fields. End-to-end mint proof.
