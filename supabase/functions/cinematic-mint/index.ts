@@ -88,15 +88,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const { data: tier, error: tErr } = await db.rpc('tier_for_engagement', { p_engagement: moment.engagement_count });
   if (tErr || !tier) return json({ error: 'Tier derivation failed', detail: tErr?.message }, 500);
 
+  // The effect is the one moment-classify selected + persisted on the moment (Hard Rule 34 —
+  // never client-supplied). Read it (+ the keywords it stamps) here; the client body's effect
+  // fields are ignored.
+  const effectTemplateId: string | null = moment.selected_effect_template_id ?? null;
+  const effectTiming: string | null = moment.selected_timing ?? null;
   let effectKind: string | null = null, target: string | null = null;
-  if (body.effect_template_id) {
+  let grantKeywords: string[] = [];
+  if (effectTemplateId) {
     const { data: eff } = await db.from('effect_templates')
-      .select('effect_kind,target').eq('id', body.effect_template_id).single();
+      .select('effect_kind,target,grants_keywords').eq('id', effectTemplateId).single();
     effectKind = eff?.effect_kind ?? null;
     target = eff?.target ?? null;
+    grantKeywords = (eff?.grants_keywords as string[] | null) ?? [];
   }
   const templateId = selectTemplate({
-    chitType: chit_type, tier: tier as Tier, timing: body.timing_type, effectKind, target,
+    chitType: chit_type, tier: tier as Tier, timing: effectTiming ?? undefined, effectKind, target,
   });
 
   // ── plates + prompt (latest versions; live requires signed-off plates) ───────────
@@ -219,10 +226,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     p_generation_id: gen.id,
     p_family: family,
     p_chit_type: chit_type,
-    p_timing: body.timing_type ?? null,
-    p_effect_template_id: body.effect_template_id ?? null,
+    p_timing: effectTiming,
+    p_effect_template_id: effectTemplateId,
     p_name: body.name ?? null,
-    p_keywords: body.keywords ?? [],
+    p_keywords: grantKeywords,
     p_vibe_gate: body.vibe_gate ?? null,
     p_card_art_url: artUrl,
     p_mp4_url: mp4Url,
