@@ -15,8 +15,9 @@
   card/chit marketplaces, celebrity integration, KYC flow, Emergency Fund (sim), Licensing Marketplace
   (backend + Flutter merged). Battle (1v1 turn-based, Phases A–C + matchmaking) + legacy Arena exist but
   are **superseded by the v3 card-battler** (see Retired).
-- **Migration ledger:** remote DB in sync at **147** (applied via `supabase db push`, 2026-07-04). Next
-  new migration = **148**. 080–106 = redesign Docs 1–4 + integrity/chit/KYC. 107–113 = Licensing. 114/115 =
+- **Migration ledger:** remote DB in sync at **149** (applied via `supabase db push`, 2026-07-05:
+  148 = chit display fields, 149 = clip `{VIDEO_DESC}`). Next new migration = **150**. 080–106 = redesign
+  Docs 1–4 + integrity/chit/KYC. 107–113 = Licensing. 114/115 =
   mobile prep. 116–137 = v3 phases (116–121 asset layer · 122–125 tier ladder/effects/fusion · 126–129 CCG
   engine · 130–131 Vibe · 132–134 real-money rail · 135–136 minting + ascension · 137 fusion expansion).
   138–145 = cinematic/minting track (138 registries · 139 plates/prompts · 140 generation pipeline ·
@@ -92,18 +93,28 @@ gate; confirm the rule before real-money go-live.
 > (where it conflicts with the two older specs, it wins — Hard Rules 37/39 amended 2026-07-04).
 >
 > **Resume-here next steps (card face + pipeline, 2026-07-04):**
-> 1. **`moment-classify` extension** → also emit a **flavor line** (AI, per card), **compose the rules
->    text** deterministically from the effect fields (`timing_type` + effect_kind + magnitude + keywords,
->    so printed rules always match mechanics), and mint a **serial** (`NORA-####` from a sequence). These
->    populate the already-wired optional `CardFace` slots (rulesText/flavor/serial).
-> 2. **`{VIDEO_DESC}` pipeline node** — a Vision-LLM whole-clip description of the selected 1–15s clip,
->    generated AFTER clip moderation passes (it's another CSAM checkpoint), sanitized into a **variable
->    slot** in the V2V prompt where the constant STYLE-LOCK/CONSTRAINTS always win (Hard Rule 39). Feeds
->    the **V2V core node ONLY — never the agnostic bridges** (that wall preserves the agnostic guarantee).
->    Share subject grounding with the illustration so card + cutscene read as the same creature. **Persist
->    `video_desc` on `cinematic_generations`** for reproducible re-runs.
-> 3. **Redeploy `cinematic-mint`** (illustration v2 is committed but the prod deploy was guard-blocked;
->    no effect until `CINEMATIC_MODE=live`, so low-urgency — needs deploy authorization).
+> 1. ✅ **DONE (2026-07-05, mig 148 applied + verified):** `rules_text` / `flavor_text` / `card_serial`
+>    now populate the `CardFace` slots. Implemented NOT in `moment-classify` (the effect fields don't
+>    exist yet at classify time) but as a **write-time trigger `moment_chit_fill_display` on `moment_chits`**
+>    so mint, ascension (re-derives magnitude), pack-grant and seed all stay correct: `rules_text` is
+>    **composed deterministically** from timing + effect-template kind/target + `effect_magnitude` +
+>    keywords + `vibe_gate` (always recomputed → printed rules always match mechanics; verified: tier B
+>    "+6 ATK" vs tier C "+4 ATK" on the same template); `flavor_text` is a deterministic sim line (filled
+>    only when NULL, so a future AI line survives); `card_serial` = `NORA-####` from a sequence, assigned
+>    once. Flutter collection provider + `MintService.fetchChit` + both `CardFace` call sites now read them.
+> 2. ✅ **DONE (2026-07-05, mig 149 applied + `moment-clip-attach`/`cinematic-mint` deployed):**
+>    `{VIDEO_DESC}` node. `moment-clip-attach` now generates a sanitized whole-clip description
+>    (`describeClipFrames`, `_shared/cinematic_directives.ts` — sim deterministic / live Claude vision,
+>    Hard Rule 8 rate-skip, best-effort so it never blocks a mint) **only after moderation passes + the
+>    clip is `attached`** (another CSAM checkpoint), persisted on `moments.clip_video_desc` via the
+>    service-only `moment_set_clip_video_desc` RPC. `assembleMotionPrompt` gained a `{VIDEO_DESC}` **variable
+>    slot** (STYLE-LOCK/CONSTRAINTS still win; the agnostic bridge templates carry no placeholder → a bridge
+>    prompt is a no-op replace, so the agnostic guarantee holds — Hard Rule 39). `cinematic-mint` copies
+>    `clip_video_desc` → `cinematic_generations.video_desc` for reproducible re-runs and feeds the slot.
+>    *Consumed by §2 V2V once that node exists — the slot is wired and inert until then.*
+> 3. **Redeploy `cinematic-mint`** — ✅ redeployed 2026-07-05 (picked up the `{VIDEO_DESC}` wiring;
+>    illustration v2 already in the merged build). No visible effect until `CINEMATIC_MODE=live` (sim uses
+>    placeholder media).
 > 4. **Browser-verify `CardFace`** once web deploys (#6); tune spacing/hex shapes/pins against the 5 refs
 >    (`Gemini_Generated_Image_*.png` in repo root). Not yet visually checked — analyze-clean only.
 > 5. **Open design decisions** (defaults chosen, easy to change): accent hue = **family-keyed** (tier =

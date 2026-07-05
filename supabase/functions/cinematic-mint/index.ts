@@ -151,8 +151,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ── cutscene: bracketed by the plates, seeded, style-locked ──────────────────────
   const fAction = familyAction(family, templateId);
   const intensity = TIER_INTENSITY[tier as Tier];
+  // {VIDEO_DESC} is the attached clip's description (moment-clip-attach) — a VARIABLE
+  // slot for the V2V core only; the agnostic bridge templates carry no placeholder for
+  // it (Hard Rule 39). Absent (e.g. link-only ingest, no clip) → the slot collapses.
+  const videoDesc = (moment.clip_video_desc as string | null) ?? null;
   const motionPrompt = assembleMotionPrompt(promptTpl.prompt_body, {
     subjectDesc: subject_desc, familyAction: fAction, tierIntensity: intensity,
+    videoDesc,
   });
   const durationS = Math.round(((tpl?.duration_min_s ?? 4) + (tpl?.duration_max_s ?? 6)) / 2);
   const cut = await generateCutscene(cfg, {
@@ -181,6 +186,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     anchor_plate_version: plate.version,
     prompt_template_version: promptTpl.version,
     subject_desc: sanitizeSubjectDesc(subject_desc),
+    video_desc: videoDesc,
     family_action: fAction,
     tier_intensity: intensity,
     generation_seed: cut.seed,
