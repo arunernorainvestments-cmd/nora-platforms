@@ -763,6 +763,9 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       cardArtUrl: (c?['card_art_url'] ?? _mint?['card_art_url'])?.toString(),
       minterHandle: c?['original_minter_handle']?.toString(),
       sourcePlatform: c?['source_platform']?.toString(),
+      rulesText: c?['rules_text']?.toString(),
+      flavor: c?['flavor_text']?.toString(),
+      serial: c?['card_serial']?.toString(),
     );
   }
 

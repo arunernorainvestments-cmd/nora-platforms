@@ -74,12 +74,89 @@ export function sanitizeSubjectDesc(raw: string): string {
 
 export function assembleMotionPrompt(
   promptBody: string,
-  slots: { subjectDesc: string; familyAction: string; tierIntensity: string },
+  slots: {
+    subjectDesc: string;
+    familyAction: string;
+    tierIntensity: string;
+    videoDesc?: string | null;
+  },
 ): string {
+  // {VIDEO_DESC} is a VARIABLE slot filled only for the V2V core node (Hard Rule 39:
+  // the constant STYLE-LOCK/CONSTRAINTS still win; the agnostic bridge templates carry
+  // no {VIDEO_DESC} placeholder, so a bridge prompt is a no-op replace and stays
+  // character-agnostic). Absent description → the slot collapses to empty.
   return promptBody
     .replaceAll('{SUBJECT_DESC}', sanitizeSubjectDesc(slots.subjectDesc))
     .replaceAll('{FAMILY_ACTION}', slots.familyAction)
-    .replaceAll('{TIER_INTENSITY}', slots.tierIntensity);
+    .replaceAll('{TIER_INTENSITY}', slots.tierIntensity)
+    .replaceAll('{VIDEO_DESC}', slots.videoDesc ? sanitizeSubjectDesc(slots.videoDesc) : '');
+}
+
+// ── {VIDEO_DESC} generation: a Vision-LLM read of the clip's sampled frames ───────
+// Produced by moment-clip-attach AFTER pre-gen moderation approves the upload (it is
+// another CSAM checkpoint — never described otherwise). sim → a deterministic stub so
+// the pipeline is testable with no spend; live → Claude vision over the same frames the
+// moderator saw. Best-effort: a failure returns null and the pipeline proceeds on
+// {SUBJECT_DESC} alone (never blocks minting). Reuses ModerationConfig's mode/key/model.
+export interface ClipDescribeConfig {
+  mode: 'sim' | 'live';
+  apiKey: string | null;
+  model: string;
+}
+
+const CLIP_DESCRIBE_SYSTEM =
+  'You describe the visible ACTION in a short social-video clip for a stylized ' +
+  'video-restyle prompt. Respond with ONE vivid sentence, present tense, no names of ' +
+  'real people or brands, no quotes, no preamble — just the sentence. Describe motion ' +
+  'and subject only (what moves and how), never text overlays or watermarks.';
+
+export async function describeClipFrames(
+  cfg: ClipDescribeConfig,
+  frameUrls: string[],
+  simHint?: string,
+): Promise<string | null> {
+  if (cfg.mode === 'sim' || !cfg.apiKey) {
+    const hint = (simHint ?? '').trim();
+    return sanitizeSubjectDesc(hint || 'the subject moves through their signature moment');
+  }
+  if (frameUrls.length === 0) return null;
+
+  const content: unknown[] = frameUrls.slice(0, 4).map((url) => ({
+    type: 'image', source: { type: 'url', url },
+  }));
+  content.push({ type: 'text', text: 'Describe the action across these clip frames now.' });
+
+  let res: Response;
+  try {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'x-api-key': cfg.apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: cfg.model, max_tokens: 150, system: CLIP_DESCRIBE_SYSTEM,
+        messages: [{ role: 'user', content }],
+      }),
+    });
+  } catch (err) {
+    console.warn('describeClipFrames call failed:', err instanceof Error ? err.message : String(err));
+    return null;
+  }
+  // Hard Rule 8: rate-limited → skip cleanly (pipeline continues without a description).
+  if (res.status === 429) { await res.body?.cancel(); console.warn('describeClipFrames rate-limited'); return null; }
+  if (!res.ok) { await res.body?.cancel(); return null; }
+
+  try {
+    const data = await res.json();
+    const text: string = data.content?.find((b: { type: string }) => b.type === 'text')?.text ?? '';
+    const cleaned = sanitizeSubjectDesc(text);
+    return cleaned || null;
+  } catch (err) {
+    console.warn('describeClipFrames parse failed:', err instanceof Error ? err.message : String(err));
+    return null;
+  }
 }
 
 // Per-family accent glow — the "variability within uniformity" for the card art

@@ -134,7 +134,7 @@ class MintService {
         .select(
             'id, name, chit_type, archetype_family, tier, aura_cost, atk, hp, '
             'keywords, card_art_url, mp4_cutscene_url, original_minter_handle, '
-            'source_platform')
+            'source_platform, rules_text, flavor_text, card_serial')
         .eq('id', chitId)
         .maybeSingle();
     return res == null ? null : Map<String, dynamic>.from(res);
