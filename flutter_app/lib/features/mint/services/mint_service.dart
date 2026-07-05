@@ -151,6 +151,16 @@ class MintService {
     await _client.rpc('chit_finalize_preview', params: {'p_chit_id': chitId});
   }
 
+  /// Discards a pending (un-finalized) chit from the Preview step: retires it, frees
+  /// the one self-mint slot, and deletes its media. A finalized chit is refused (409).
+  static Future<void> cancelMint(String chitId) async {
+    try {
+      await _client.functions.invoke('mint-cancel', body: {'chit_id': chitId});
+    } on FunctionException catch (e) {
+      throw MintException(_messageFrom(e));
+    }
+  }
+
   static String _messageFrom(FunctionException e) {
     final d = e.details;
     if (d is Map) {

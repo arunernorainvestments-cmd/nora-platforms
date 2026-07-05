@@ -248,6 +248,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     template_id: templateId,
     tier,
     seed: cut.seed,
+    // sim mode returns placeholder bytes (1x1 png / non-playable mp4 stub) — the client
+    // shows an honest "renders when the cinematic engine is live" state instead of a
+    // blank card window + dead <video>. Real art/video only when CINEMATIC_MODE=live.
+    mode: cfg.mode,
+    media_placeholder: cfg.mode === 'sim',
     card_art_url: artUrl,
     mp4_cutscene_url: mp4Url,
     ...(swapOf ? { swapped_out_chit_id: swapOf, swapped_media_deleted: swappedMediaDeleted } : {}),
