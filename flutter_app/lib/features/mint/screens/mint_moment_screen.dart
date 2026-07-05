@@ -329,6 +329,56 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
     }
   }
 
+  // ── Step 5: cancel — discard the pending chit (Hard Rule 39 blocks going back
+  // through Safety/Review to re-generate, but backing out entirely is always allowed).
+  Future<void> _cancelMint() async {
+    final chitId = _mint?['chit_id'] as String?;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Discard this card?',
+            style: TextStyle(color: AppTheme.textPrimary)),
+        content: const Text(
+          'This cancels the mint and permanently deletes the generated card and its '
+          'cutscene. Your original moment stays linked, so you can mint it again. '
+          'This can\'t be undone.',
+          style: TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Keep editing'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Discard'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    // No chit id (shouldn't happen at Preview) → just reset the wizard locally.
+    if (chitId == null) { _reset(); return; }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      await MintService.cancelMint(chitId);
+      if (!mounted) return;
+      _reset();
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e is MintException ? e.message : 'Could not discard — $e';
+          _busy = false;
+        });
+      }
+    }
+  }
+
   void _reset() {
     setState(() {
       _step = _Step.link;
@@ -707,6 +757,11 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
     ]);
   }
 
+  /// sim mode returns placeholder media (a 1x1 png + a non-playable mp4 stub), so we
+  /// don't try to render them as real art/video — we show an honest "coming when live"
+  /// state. Real art + cutscene arrive when CINEMATIC_MODE=live (Segmind).
+  bool get _mediaPlaceholder => _mint?['media_placeholder'] == true;
+
   Widget _buildPreviewStep() {
     final mp4 = _mint?['mp4_cutscene_url']?.toString();
     return _card(children: [
@@ -725,17 +780,20 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
           child: _previewCardFace(),
         ),
       ),
-      if (mp4 != null) ...[
-        const SizedBox(height: 20),
-        const Row(children: [
-          Icon(Icons.movie_outlined, size: 16, color: AppTheme.textSecondary),
-          SizedBox(width: 6),
-          Text('Summon cutscene',
-              style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
-        ]),
-        const SizedBox(height: 8),
+      const SizedBox(height: 20),
+      const Row(children: [
+        Icon(Icons.movie_outlined, size: 16, color: AppTheme.textSecondary),
+        SizedBox(width: 6),
+        Text('Summon cutscene',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+      ]),
+      const SizedBox(height: 8),
+      if (_mediaPlaceholder)
+        _mediaComingSoon('Your cutscene renders here once the cinematic engine is '
+            'switched on. The card art + animation are generated from your clip at '
+            'that point.')
+      else if (mp4 != null)
         AspectRatio(aspectRatio: 16 / 9, child: _CutsceneVideo(url: mp4)),
-      ],
       const SizedBox(height: 20),
       FilledButton.icon(
         onPressed: _busy ? null : _finalize,
@@ -745,8 +803,42 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
             : const Icon(Icons.check_circle_outline),
         label: const Text('Looks good — add to my collection'),
       ),
+      const SizedBox(height: 8),
+      TextButton.icon(
+        onPressed: _busy ? null : _cancelMint,
+        icon: const Icon(Icons.close, size: 18, color: AppTheme.danger),
+        label: const Text('Cancel & discard this card',
+            style: TextStyle(color: AppTheme.danger)),
+      ),
       _errorBanner(),
     ]);
+  }
+
+  /// The 16:9 "renders when live" placeholder used for the cutscene (and mirrored as
+  /// the card-art caption) in sim mode.
+  Widget _mediaComingSoon(String message) {
+    return AspectRatio(
+      aspectRatio: 16 / 9,
+      child: Container(
+        decoration: BoxDecoration(
+          color: AppTheme.background,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.auto_awesome, color: AppTheme.primary, size: 28),
+            const SizedBox(height: 10),
+            Text(message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                    color: AppTheme.textSecondary, fontSize: 12, height: 1.35)),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _previewCardFace() {
@@ -760,7 +852,11 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       atk: (c?['atk'] as num?)?.toInt(),
       hp: (c?['hp'] as num?)?.toInt(),
       keywords: (c?['keywords'] as List?)?.map((e) => e.toString()).toList() ?? const [],
-      cardArtUrl: (c?['card_art_url'] ?? _mint?['card_art_url'])?.toString(),
+      // In sim mode the stored art is a 1x1 placeholder — pass null so CardFace shows
+      // its clean fallback glyph instead of a blank window.
+      cardArtUrl: _mediaPlaceholder
+          ? null
+          : (c?['card_art_url'] ?? _mint?['card_art_url'])?.toString(),
       minterHandle: c?['original_minter_handle']?.toString(),
       sourcePlatform: c?['source_platform']?.toString(),
       rulesText: c?['rules_text']?.toString(),
