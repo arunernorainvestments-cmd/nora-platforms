@@ -32,6 +32,53 @@
 # distilled redesign design docs (doc1–doc6). The full SQL for everything below 080
 # lives in supabase/migrations/.
 
+# ---------------------------------------------------------------------------
+# 2026-07-02→05 — Cinematic engine + minting v2 + effect library (SHIPPED)
+# ---------------------------------------------------------------------------
+# The web-side minting pipeline is now END-TO-END and cards carry real, balanced effects.
+# Governing specs: NORA_PLATFORMS_MINTING_MATCHCUT_SPEC.md + NORA_PLATFORMS_CINEMATIC_ENGINE_SPEC.md
+# + Minting_Workflow.md (device-clip pivot, wins on conflict) + NORA_CHIT_EFFECT_DESIGN_FRAMEWORK.md
+# + NORA_CHIT_EFFECT_LIBRARY_WAVE1.md + NORA_INTERACTION_LAYER_SPEC.md. Migration ledger 138–152.
+#
+# Cinematic engine v1 (migs 138–145, COMPLETE build-wise; generation middle superseded by Minting v2):
+#   • C0 (138) registries: match_cut_templates (6 role-keyed), anchor_plates + prompt_templates (versioned),
+#     cinematic cols on moment_chits/moments, battle-media bucket, _shared/segmind.ts (sim-first).
+#   • C1 (139) 6 motion prompts + plate slots. C2 (140 + cinematic-mint fn) generation pipeline:
+#     classify→template select→illustration→Seedance cutscene (plate bookends, seeded)→post-gen moderation
+#     →cinematic_complete_mint (chit inactive until preview→finalize).
+#   • M-P1 (141 + moment-ingest) OAuth-owned-post ingest (TikTok/IG/YT allowlist) + pre-gen vision moderation
+#     (MODERATION_MODE sim|live, minor-safety absolute, fail-closed, moderation_escalations service-only).
+#   • M-P4 (142–144 + swap flow) one active self-minted chit + swap-retire-in-tx; ccg_wager_escrow +
+#     ccg_create_wager_match + settle-on-finish (attribution survives). 143/144 fixed latent P3/P1 bugs.
+#   • M-P5 (145) profiles.avatar_loadout, ccg_matches.is_monetized (G-MON) + spectator read,
+#     battle_place_spectator_bet_usd wrapper. C3 = RECONCILIATION §7 mirror kept current.
+#
+# Minting v2 §1 + agnostic plates (migs 146/147, commits 820a394/d4a0618): /mint "Create Your BattleChit"
+#   (post verify → device-clip upload → ffmpeg.wasm trim 1–15s → mint-staging → moment-clip-attach
+#   re-moderation + dHash similarity gate); BattleChit CTAs; /battle companion hub + live ccg spectating
+#   (/battle/spectate/:id); two agnostic anchor plates wired (all 6 plate rows repointed + signed_off).
+#   Cloud Run ffmpeg stitch worker (workers/stitch, service nora-stitch, us-east1) live for §4.
+#
+# Mint pipeline completion (2026-07-04→05, migs 148–150, PRs #5–#8): moment-classify fn (family/name/
+#   subject/chit_type) → cinematic-mint (sim) → web Preview → chit_record/finalize_preview → /collection.
+#   CardFace widget (core/widgets/card_face.dart) + rules_text/flavor_text/card_serial via write-time trigger
+#   (mig 148, composed deterministically, reprints on ascension); {VIDEO_DESC} node (mig 149, moment-clip-attach
+#   describes clip post-moderation → cinematic_generations.video_desc, feeds V2V core slot only, HR39);
+#   mint Cancel/discard (mig 150 chit_discard_pending + mint-cancel fn — frees the self_mint_slot) + honest
+#   sim-mode media placeholders (cinematic-mint returns mode/media_placeholder).
+#
+# Effect library Wave 1 (migs 151/152, PR #9): 7 additive effect_templates cols (cycle_key, grants_keywords,
+#   complexity, min_tier_band, stat_lean, family_signature, magnitude_scales) + moments.selected_effect_*;
+#   derive_chit_stats honors stat_lean (ATK/HP bias) + magnitude_scales (count effects tier-flat). 20 new
+#   single-clause templates (10 families × 3, authored by cycle vs the §1 identity matrix; timing spread
+#   16/10/3/1). moment-classify now SELECTS an effect from the family's authored candidates (sim hash / live
+#   LLM allowlist) + persists on the moment; cinematic-mint reads it from the moment (never client — HR34).
+#   compose_chit_rules then prints matching rules. Guardrail: AI selects an authored option; power = tier.
+#
+# Live config at hand-off: MINT_INGEST_MODE=live · MOMENT_CLASSIFY_MODE=sim · CINEMATIC_MODE=sim (unset) ·
+#   MODERATION_MODE=sim (unset) · MINT_CLIP_MODE=sim · SEGMIND_API_KEY set · TikTok SANDBOX creds · IG none.
+#   G-MON not yet confirmed. NEXT tracks live in PLAN.md ("Where we're going next").
+#
 # ===========================================================================
 # TABLE OF CONTENTS
 # ===========================================================================
