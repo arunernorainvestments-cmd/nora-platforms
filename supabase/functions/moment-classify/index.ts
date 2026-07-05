@@ -15,7 +15,7 @@
 // live → Claude (claude-sonnet-4-6), reusing the call shape in _shared/moderation.ts.
 // Deployed --no-verify-jwt (ES256 project); auth via supabase.auth.getUser().
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { sanitizeSubjectDesc, type Family } from '../_shared/cinematic_directives.ts';
 
 const corsHeaders = {
@@ -105,13 +105,106 @@ Deno.serve(async (req: Request): Promise<Response> => {
     };
   }
 
-  // ── persist the content-derived family (Hard Rule 34) ─────────────────────────────
+  // ── select the effect from the family's authored library (Hard Rule 34) ───────────
+  // The effect is chosen from the classified family's balanced templates and PERSISTED on
+  // the moment — cinematic-mint reads it from here, never from the client (a client-supplied
+  // effect_template_id would be a power-selection tamper vector). The AI only *selects* an
+  // authored option; magnitude comes from the tier (engagement), never from the description.
+  const effect = await selectEffectTemplate(
+    db, result.family, result.chit_type, result.subject_desc, mode,
+    Deno.env.get('ANTHROPIC_API_KEY') ?? null,
+    Deno.env.get('MODERATION_MODEL') ?? 'claude-sonnet-4-6',
+  );
+
+  // ── persist the content-derived family + selected effect (Hard Rule 34) ───────────
   const { error: upErr } = await db.from('moments')
-    .update({ archetype_family: result.family }).eq('id', momentId);
+    .update({
+      archetype_family: result.family,
+      selected_effect_template_id: effect?.effect_template_id ?? null,
+      selected_timing: effect?.timing_type ?? null,
+    }).eq('id', momentId);
   if (upErr) return json({ error: 'classify_persist_failed', detail: upErr.message }, 500);
 
-  return json(result);
+  return json({
+    ...result,
+    effect_template_id: effect?.effect_template_id ?? null,
+    effect_timing: effect?.timing_type ?? null,
+    effect_name: effect?.name ?? null,
+  });
 });
+
+// ── effect selection: pick one authored template from the family's candidates ───────
+// Candidate set = the classified family's active, single-clause (Wave 1), non-fusion
+// templates, timing-filtered for spell-moments (one-shot: on_summon/activated only). sim →
+// deterministic hash of the subject description (stable, no spend, gives variety once the
+// library has >1 per family); live → an LLM allowlist pick with the deterministic fallback.
+interface EffectPick { effect_template_id: string; timing_type: string; name: string }
+
+async function selectEffectTemplate(
+  db: SupabaseClient,
+  family: Family, chitType: 'creature' | 'spell_moment', subjectDesc: string,
+  mode: 'sim' | 'live', apiKey: string | null, model: string,
+): Promise<EffectPick | null> {
+  const { data: rows } = await db.from('effect_templates')
+    .select('id, key, name, timing_type, effect_kind, target, description')
+    .eq('archetype_family', family).eq('is_active', true)
+    .eq('is_fusion', false).eq('complexity', 1)
+    .order('key');
+  let list = (rows ?? []) as Array<{
+    id: string; key: string; name: string; timing_type: string;
+    effect_kind: string; target: string; description: string | null;
+  }>;
+  if (chitType === 'spell_moment') {
+    list = list.filter((c) => c.timing_type === 'on_summon' || c.timing_type === 'activated');
+  }
+  if (list.length === 0) return null;
+
+  // Deterministic default (also the live fallback).
+  let chosen: { id: string; timing_type: string; name: string } =
+    list[fnv1a(subjectDesc || family) % list.length];
+
+  if (mode === 'live' && apiKey) {
+    const live = await liveSelectEffect(apiKey, model, subjectDesc, list);
+    if (live) chosen = live;
+  }
+  return { effect_template_id: chosen.id, timing_type: chosen.timing_type, name: chosen.name };
+}
+
+function fnv1a(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return h >>> 0;
+}
+
+const EFFECT_SELECT_SYSTEM =
+  'You pick the single battle effect that best fits a social moment, from a fixed list. ' +
+  'Respond with ONLY the chosen template key (one token from the list), no prose.';
+
+async function liveSelectEffect(
+  apiKey: string, model: string, subjectDesc: string,
+  list: Array<{ id: string; key: string; name: string; timing_type: string; effect_kind: string; description: string | null }>,
+): Promise<{ id: string; key: string; name: string; timing_type: string } | null> {
+  const menu = list.map((c) => `- ${c.key}: ${c.name} — ${c.description ?? c.effect_kind}`).join('\n');
+  let res: Response;
+  try {
+    res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model, max_tokens: 40, system: EFFECT_SELECT_SYSTEM,
+        messages: [{ role: 'user', content: `Moment: ${subjectDesc}\n\nOptions:\n${menu}\n\nBest key:` }],
+      }),
+    });
+  } catch { return null; }
+  if (res.status === 429) { await res.body?.cancel(); return null; }   // Hard Rule 8
+  if (!res.ok) { await res.body?.cancel(); return null; }
+  try {
+    const data = await res.json();
+    const text: string = data.content?.find((b: { type: string }) => b.type === 'text')?.text ?? '';
+    const key = text.trim().replace(/[^a-z0-9_]/gi, '');
+    return list.find((c) => c.key === key) ?? null;   // allowlist — unknown → fallback
+  } catch { return null; }
+}
 
 // Title-case a handle into a readable card name ("lifeofruner" → "Lifeofruner").
 function prettyName(handle: string): string {
