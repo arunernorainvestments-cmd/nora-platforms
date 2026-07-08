@@ -53,7 +53,7 @@ published contract.
 | RPC `battle_place_spectator_bet(p_match_id, p_team_number, p_tokens_wagered)` | mig 062 | **see §R3 — this is the legacy path** |
 | RPC `check_battle_eligibility(p_user_id, p_creator_id)`, `get_eligible_characters(p_user_id)`, `battle_get_archetype_speed(...)` | mig 082/083/062 | see §R1, §R2 |
 | `nora-arena-api-token-balance` / `nora-arena-api-market` | mig 114 era | bet-sheet convenience fns (deployed) |
-| `mobile_iap_confirm(product_id, purchase_token)` + `mobile_iap_receipts` idempotency | mig 115 (branch) | RevenueCat → token grant; same `token_transactions` |
+| `mobile_iap_confirm(product_id, purchase_token)` + `mobile_iap_receipts` idempotency | mig 115 (merged + deployed, 2f09ddc) | RevenueCat → token grant; same `token_transactions` |
 | `profiles.fcm_token_mobile` | mig 114 | push token sink |
 | Shared models (`// SHARED MODEL`): BattleEvent, BattleParticipant, BattleMatch, BattleSpectatorBet, StatSheet, UnlockedCharacter, VerifiedLicense | — | keep JSON keys identical on any column change |
 
@@ -164,8 +164,8 @@ lives here; their actionable forms should be mirrored into PLAN.md.
 
 ## 5. v3 CCG pivot — new client contracts (added 2026-07-01)
 
-The game pivoted to the **"Moments" card-battler** (`NORA_PLATFORMS_BUILD_SPEC_v3.md`; phased in
-`NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md`). This **replaces** the character-select / 1v1 fighter contract
+The game pivoted to the **"Moments" card-battler** (`NORA_PLATFORMS_BUILD_SPEC_v3.md`; P0–P6 shipped,
+P7 remainder tracked in PLAN.md). This **replaces** the character-select / 1v1 fighter contract
 with a collectible-card-game contract. The §1 table above stays valid for what's already deployed (licensing,
 FCM, IAP, auth); the rows below are the **new/changed** contracts the Unity client must consume as each phase
 lands. Backbone rule unchanged: nora-arena is frontend-only and server-authoritative.
@@ -243,3 +243,25 @@ metadata ingest (handle/engagement/thumbnail), pre-gen vision moderation with th
 (escalations queue server-side, invisible to clients). TikTok + Instagram providers are wired into
 `oauth-initiate`/`oauth-callback` but return 503 until app credentials exist; ingest runs `MINT_INGEST_MODE=sim`
 until then. Arena impact: none directly — minting stays web-only; mobile deep-links to the web mint flow.
+
+---
+
+## 8. Chit marketplace contract (added 2026-07-08 — M1+M2 shipped, migs 153–156)
+
+Spec: `NORA_PLATFORMS_MARKETPLACE_SPEC.md`. **The marketplace is web-only** (Companion-App model, same
+as minting — off the 30% store fee): mobile renders reads and deep-links to the web `/market` surface
+for any list/buy/delist action. Do NOT wire IAP to marketplace purchases.
+
+| Platforms provides | Arena consumes | Status |
+|---|---|---|
+| `marketplace_listings` read model — public-read `status='active'` rows: `chit_id`, `seller_user_id`, `currency`, `tier_snapshot`, `price_snapshot` (tokens), `usd_cents_snapshot` (integer cents), `fee_bps_snapshot`, `created_at`; join `moment_chits` for the card face | browse/render listings (CardFace parity via `rules_text`/`flavor_text`/`card_serial`) | 🟢 BUILT (mig 154) |
+| `marketplace_tier_pricing` read model — fixed price per tier F–S (config, public-read) | show fixed prices; never compute or imply market pricing | 🟢 BUILT (mig 153) |
+| RPCs `marketplace_list_chit(p_chit_id[, p_currency])` · `marketplace_buy_chit(p_listing_id)` · `marketplace_delist_chit(p_listing_id)` (authenticated; server-authoritative; idempotent buy) | **do not call from mobile** — deep-link to web; listed here so the client knows the vocabulary | 🟢 BUILT (migs 155/156) |
+| Fee/burn semantics: A/S sales burn `fee_bps` of gross (tokens leave supply — never platform income); `marketplace_sales` is the append-only receipt | display "net to seller" honestly if surfaced | 🟢 BUILT |
+| One-active-listing rule (`marketplace_listing_allowance()`, default 1) + escrow side-effects: a listed chit is HELD (out of holdings, not wagerable, not deck-playable at entry, ascension frozen, self-mint slot still occupied) | reflect "listed" state on the card in collection views | 🟢 BUILT |
+| `chit_acquisition_ledger.acquired_currency` provenance stamp + **provenance lock** (token-bought → token-resale-only) | surface why a USD listing is refused, if mobile ever shows the sell entry point | 🟢 BUILT (M2) |
+| USD lane: OFF behind `platform_integrity_settings.marketplace_usd_lane` (founder gate); sim settlement on the mig-132 rail; KYC-on-USD both sides | treat USD listings as nonexistent until the flag flips | 🟢 BUILT, gated |
+
+**Currency wall (Hard Rule 33) restated for the client:** a token sale never touches USD state; a USD
+sale never touches `token_transactions`. The client must never convert or display one as the other
+(the 100🪙=$1 peg is display copy only, never an exchange).

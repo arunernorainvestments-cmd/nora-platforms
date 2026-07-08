@@ -1,14 +1,26 @@
 # NORA Platforms — Chit Marketplace Build Spec (Fixed-Price, Token-First)
-**For Claude Code. Phased. Read CLAUDE.md, ARCHIVE.md, PLAN.md, RECONCILIATION.md, HANDOFF.md in full before touching any file.**
+**For Claude Code. Phased. Read CLAUDE.md, ARCHIVE.md, PLAN.md, RECONCILIATION.md in full before touching any file.**
 Compiled: 2026-07-08 · Adds the public **fixed-price marketplace** for minted moment chits (token lane live; USD lane shaped-but-stubbed behind the P5 switch).
+
+> **Status (2026-07-08): M1 + M2 SHIPPED to prod** — migs 153–156, apply-time smokes green, Hard Rule 40
+> added to CLAUDE.md, cross-repo contract mirrored into RECONCILIATION.md §8. **M3 (Flutter `/market`) is
+> next** — tracked as PLAN.md Track C, alongside the §6 economy decisions (founder sign-off). M4 stays gated.
 
 > Scope discipline: this is the **bare fixed-price mechanics** — list a card, buy a card, delist. **No** supply/demand pricing, **no** card-balancing economy, **no** value accrual. Fixed prices from a config table; the platform takes a fee on A/S sales. Everything is built token-first and USD-ready so the live flip is a config change, not a rewrite.
 
 ---
 
-## 0. How to use this document + ground-truth reconciliation
+## 0. How to use this document + ground-truth reconciliation (AS BUILT, 2026-07-08)
 
-[To be written — verify-don't-assume checklist before building; migration ledger next = **153** (`supabase db push` only); the Hard Rules in play (27 moment_chits≠battle_chit_definitions · 29 append-only ledgers · 33 currency wall / integer cents-no-floats · 34 stats ladder-derived · 30 no fabricated legal language · G-CARDVAL parking — fixed price only, no appreciation/investment language). Inspect what already exists before writing: `chit-marketplace-{buy,list}` edge fns, `chit-barter` (mig 119), `chit_packs` (mig 120), `chit_ownership` + acquisition ledger (mig 117), one-active-self-minted + swap-delete (mig 142), `battle_payments_mode()` switch (mig 132–134). Decide extend-vs-rebuild per what's found.]
+Hard Rules in play: 27 (`moment_chits` ≠ `battle_chit_definitions`) · 29 (append-only ledgers) · 33 (currency wall, integer minor units, no floats) · 34 (stats ladder-derived) · **40** (the marketplace invariants, added with M1) · G-CARDVAL parking (fixed price only — no appreciation/investment language, ever). Migrations only via `supabase db push`.
+
+**Ground-truth findings that shaped the build (recorded so M3+ doesn't re-derive them):**
+- `chit-marketplace-{buy,list}` edge fns = the **legacy powerup** lane (`battle_chit_definitions` / `user_battle_chits` / `chit_marketplace_listings`) — HR27, left untouched. The moment-chit marketplace is a **fresh `marketplace_*` build, RPC-only, no edge functions**.
+- Escrow reuses the **mig-142 wager pattern**: negative acquisition-ledger delta + a status row + partial-unique open index. The listing row plays the status-row role.
+- `chit_ownership` is trigger-derived from the append-only `chit_acquisition_ledger` (mig 117); transfer = new ledger rows; the buy inserts directly (not via `chit_grant`) to carry the `acquired_currency` stamp.
+- Token legs mirror `_barter_move_tokens` (mig 119): tx types `chit_purchase`/`chit_sale`, seller credit via `increment_token_balance`.
+- Integration seams that had to be patched (all in mig 155): `self_mint_slot` counts listed chits (else listing frees the slot → double self-mint); `chit_swap_retire` blocked while listed; ascension **frozen** while escrowed (`moment_chit_rederive` guard + `chit_ascension_refresh` skip). Wager-staking a listed chit is blocked automatically (quantity=0 after escrow). Deck enforcement rides `deck_validate`'s ownership re-check at match entry (same as wager escrow — no purge on sale, matching wager-loss precedent).
+- Listings require `finalized_at IS NOT NULL` — covers "pending preview / swap-pending" (migs 140/150).
 
 ---
 
@@ -32,12 +44,20 @@ Compiled: 2026-07-08 · Adds the public **fixed-price marketplace** for minted m
 
 ## 2. Decision gates & locked decisions
 
-[To be written — table of what's LOCKED (one listing/user · unique-card · pricing scale · peg · A/S fee-as-burn A10/S15 · signup grant 500🪙 · route `/market`) vs what needs live/founder sign-off (USD lane flip, buyer/seller KYC on USD, challenge-emission governance edit to CLAUDE.md).]
+| LOCKED (built or committed) | Needs founder sign-off (NOT built / NOT flipped) |
+|---|---|
+| One active listing per user (`marketplace_listing_allowance()`, default 1) | **USD lane flip** — `marketplace_usd_lane=TRUE` (mechanics shipped in M2, gate OFF) |
+| Unique-card listings; attribution + `card_serial` survive transfer | Live money — `battle_payments_mode='live'` (Stripe Treasury/Connect, mig-132 stub) |
+| Pricing scale §1 + peg 100🪙=$1 (display-only, never cash-out) | **Signup grant 500🪙** (currently 100) + §6 challenge-emission budget → CLAUDE.md currency-model edit |
+| A/S fee-as-burn (A 10% / S 15%) | M4 battle pass / subscription (§7) |
+| Provenance lock: token-bought → token-resale-only (ACTIVE since M2) | USD fee disposition at live (burn vs retain — decide at the flip) |
+| KYC-on-USD both sides (enforced whenever the lane opens) | Route `/market` UX shape (M3 build) |
 
 ---
 
-## PHASE M1 — Listing + fixed-price token sale (LIVE)
-**Effort:** L · **Depends:** shipped mint pipeline + `chit_ownership` (117) + `battle_payments_mode` (132) · **Migrations:** 153–155 · **PR:** `mkt-m1-token-listings`
+## PHASE M1 — Listing + fixed-price token sale (LIVE) — ✅ SHIPPED 2026-07-08
+**Effort:** L · **Depends:** shipped mint pipeline + `chit_ownership` (117) + `battle_payments_mode` (132) · **Migrations:** 153–155 · **PR:** `mkt-m1-token-listings` (#11, merged)
+**Prod smoke:** `MKT M1 smoke OK: sold S fee_burned=1500, delist returned escrow`. Note: RPCs shipped as auth wrappers over service-only `_internal(p_user, …)` fns (mig-101 pattern) so the apply-time smoke exercises real logic.
 
 **Goal:** a user lists one owned chit at its fixed tier price, another user buys it with tokens, ownership transfers atomically with attribution intact, and the platform burns a fee on A/S sales. Token lane is **live**; the USD columns exist but are inert until M2.
 
@@ -60,25 +80,33 @@ Compiled: 2026-07-08 · Adds the public **fixed-price marketplace** for minted m
 - [NEW] mig 155 seeds two dev users + one dev chit, runs list → buy → asserts (ownership moved, attribution preserved, seller credited `price − fee`, `fee_burned` correct on an S-tier, buyer slot untouched, listing `sold`), then a second list → delist → asserts (escrow returned, listing `delisted`). Synthetic rows auto-deleted; swept by the P7 reset. Log `MKT M1 smoke OK: sold S fee_burned=1500, delist returned escrow`.
 
 **Deliverables**
-- [ ] `marketplace_tier_pricing` seeded (7 tiers, USD cents + token price + A/S fee_bps) — mig 153.
-- [ ] `marketplace_listings` + `marketplace_sales` (append-only) + escrow reuse + RLS (public-read active; server-only writes) — mig 154.
-- [ ] `marketplace_listing_allowance()` (default 1) gating concurrent listings — mig 154.
-- [ ] `marketplace_list_chit` / `marketplace_buy_chit` / `marketplace_delist_chit` — atomic, idempotent, attribution-preserving, A/S fee **burned** — mig 155.
-- [ ] `acquired_currency='token'` stamped on every bought chit (provenance seam for M2).
-- [ ] USD lane RAISEs (columns present, inert); apply-time smoke green; `deno check` clean; no Dart yet → `flutter analyze` unaffected.
+- [x] `marketplace_tier_pricing` seeded (7 tiers, USD cents + token price + A/S fee_bps) — mig 153.
+- [x] `marketplace_listings` + `marketplace_sales` (append-only) + escrow reuse + RLS (public-read active; server-only writes) — mig 154.
+- [x] `marketplace_listing_allowance()` (default 1) gating concurrent listings — mig 154.
+- [x] `marketplace_list_chit` / `marketplace_buy_chit` / `marketplace_delist_chit` — atomic, idempotent, attribution-preserving, A/S fee **burned** — mig 155.
+- [x] `acquired_currency='token'` stamped on every bought chit (provenance seam for M2).
+- [x] USD lane RAISEs (columns present, inert); apply-time smoke green on prod; no Dart yet → `flutter analyze` unaffected.
 
 **DO NOT** mutate `chit_ownership` acquisition-ledger rows or `marketplace_sales` (INSERT + status-sibling only, Rule 29) · let a chit be listed while wager-staked/playable/swap-pending, or stay ascendable while escrowed · credit the A/S fee anywhere (it is a **burn**, not platform income) · use floats for price or fee (integer tokens; integer cents when USD lands — Rule 33) · strip `original_minter_handle`/`card_serial` on transfer · let a bought card eat the buyer's self-mint slot · bypass `increment_token_balance`/receipt-ledger idempotency · allow any client-side write to a marketplace table · enable the USD path in M1.
 
 ---
 
-## PHASE M2 — USD-ready seam (BUILT LIKE-LIVE, SIM BEHIND SWITCH)
+## PHASE M2 — USD-ready seam (BUILT LIKE-LIVE, SIM BEHIND SWITCH) — ✅ SHIPPED 2026-07-08
+**Migration:** 156 · **PR:** `mkt-m2-usd-seam`
+**Prod smoke:** `MKT M2 smoke OK: lane gated, KYC gated, provenance locked, sim USD sale 10000c (fee 1500c withheld), currency wall intact` (the smoke flips the lane ON inside its transaction and restores it — end state OFF).
 
-[To be written — `currency` branch on listings/sales; fee-in-**integer cents**; Stripe Connect seller payout / `sim_usd_balances` sim path behind `battle_payments_mode`; **activate the provenance lock** (token-bought → token-resale-only); KYC-on-USD-seller gate stub. Deliverables + DO NOT.]
+Two independent gates, both OFF/founder-owned:
+1. **`platform_integrity_settings.marketplace_usd_lane`** (NEW, default FALSE) + helper `marketplace_usd_enabled()` — whether the marketplace accepts USD at all. This is the §2 "USD lane flip".
+2. **`battle_payments_mode()`** (mig 132) — sim settles against `sim_usd_balances` via `ccg_usd_debit`/`ccg_usd_credit`; `live` RAISEs until Stripe Treasury/Connect lands. The live flip is config + the mig-132 Treasury work, not a marketplace rewrite.
 
-**Deliverables**
-- [ ] [placeholder]
+**Deliverables (all shipped)**
+- [x] `currency` branch on list/buy: USD gross = `usd_cents_snapshot` (frozen at list), fee in **integer cents**, floor division; delist unchanged (no money moves).
+- [x] **Provenance lock ACTIVE**: any token-stamped acquisition of the chit by the seller ⇒ token-resale-only. One-directional — USD-bought copies may relist for tokens (money → tokens is a sink, safe). Free emission structurally cannot reach USD.
+- [x] KYC-on-USD: seller `is_eligible_for_real_money` to list, buyer to buy (KYC in sim; +18/jurisdiction activate with live mode). Token lane stays KYC-free.
+- [x] **Currency wall smoke-asserted**: a USD sale writes `sim_usd_transactions` only — never `token_transactions` (HR33).
+- [x] `acquired_currency='usd'` stamped on USD purchases; wrapper became `marketplace_list_chit(p_chit_id, p_currency DEFAULT 'token')` (old 1-arg dropped — no PostgREST overload ambiguity).
 
-**DO NOT** [placeholder]
+**DO NOT** flip `marketplace_usd_lane` without founder sign-off · flip `battle_payments_mode` to live before the Treasury/Connect branch + key rotations land · let a USD movement touch `token_transactions` (or vice versa) · weaken the provenance lock to per-copy heuristics (the (seller, chit) grain is deliberately conservative) · credit the USD fee anywhere in sim (live disposition is a founder decision at the flip).
 
 ---
 
@@ -142,7 +170,10 @@ Model both against the §6 emission budget before choosing. **A is the default.*
 
 ## Cross-repo contract (mirror into RECONCILIATION.md)
 
-[To be written — what nora-arena (Unity) consumes: marketplace listing read model, buy/list/delist RPC names, `acquired_currency` field, fee/burn semantics, one-listing rule. Minting/marketplace stay web-only (Companion-App model); mobile deep-links to web.]
+✅ Mirrored 2026-07-08 — see **RECONCILIATION.md §8** (the living copy; this spec does not duplicate it).
+Summary: marketplace is **web-only** (Companion-App model, like minting); Unity consumes the public-read
+listing/pricing read models and deep-links to web `/market` for any action; RPC names + `acquired_currency`
++ fee/burn + one-listing semantics documented there. Never wire IAP to marketplace purchases.
 
 ---
 
