@@ -23,6 +23,7 @@ class CollectionChit {
     required this.rulesText,
     required this.flavor,
     required this.serial,
+    this.listingId,
   });
 
   final String id;
@@ -44,10 +45,22 @@ class CollectionChit {
   final String? flavor;
   final String? serial;
 
+  /// Active marketplace listing holding this chit in escrow (mig 154), if any.
+  final String? listingId;
+
   /// Owned but not yet finalized into the deck (Hard Rule 39 preview gate).
   bool get isPending => !isActive;
 
-  factory CollectionChit.fromRow(Map<String, dynamic> r) => CollectionChit(
+  /// Escrowed in an active fixed-price listing — held, not free (Hard Rule 40).
+  bool get isListed => listingId != null;
+
+  /// Eligible for the marketplace Sell action: finalized, live, not already
+  /// listed. (The server re-checks everything; this only drives the UI.)
+  bool get isSellable => isActive && !isListed;
+
+  factory CollectionChit.fromRow(Map<String, dynamic> r,
+          {String? listingId}) =>
+      CollectionChit(
         id: r['id'] as String,
         name: (r['name'] ?? 'BattleChit').toString(),
         chitType: (r['chit_type'] ?? 'creature').toString(),
@@ -66,6 +79,7 @@ class CollectionChit {
         rulesText: r['rules_text'] as String?,
         flavor: r['flavor_text'] as String?,
         serial: r['card_serial'] as String?,
+        listingId: listingId,
       );
 }
 
@@ -73,6 +87,11 @@ class CollectionChit {
 /// `moment_chits_select_active` RLS policy would otherwise expose every active
 /// chit; scoping to `chit_ownership` returns only what this user owns (active or
 /// still pending preview).
+///
+/// Also includes chits the user has LISTED on the marketplace: a listed chit's
+/// copy leaves `chit_ownership` (escrow, mig 154) but it is still theirs until
+/// sold — hiding it here would read as "my card vanished." Those come back
+/// flagged with their `listingId` so the UI can show Listed/Delist.
 final myCollectionProvider =
     FutureProvider.autoDispose<List<CollectionChit>>((ref) async {
   final user = ref.watch(currentUserProvider);
@@ -87,7 +106,19 @@ final myCollectionProvider =
   final ids = (owned as List)
       .map((e) => (e as Map)['chit_id'] as String)
       .toList();
-  if (ids.isEmpty) return [];
+
+  final listed = await client
+      .from('marketplace_listings')
+      .select('id, chit_id')
+      .eq('seller_user_id', user.id)
+      .eq('status', 'active');
+  final listingByChit = <String, String>{
+    for (final e in listed as List)
+      (e as Map)['chit_id'] as String: e['id'] as String,
+  };
+
+  final allIds = {...ids, ...listingByChit.keys}.toList();
+  if (allIds.isEmpty) return [];
 
   final rows = await client
       .from('moment_chits')
@@ -96,10 +127,11 @@ final myCollectionProvider =
           'keywords, card_art_url, mp4_cutscene_url, is_active, previewed_at, '
           'original_minter_handle, source_platform, created_at, '
           'rules_text, flavor_text, card_serial')
-      .inFilter('id', ids)
+      .inFilter('id', allIds)
       .order('created_at', ascending: false);
 
-  return (rows as List)
-      .map((e) => CollectionChit.fromRow(e as Map<String, dynamic>))
-      .toList();
+  return (rows as List).map((e) {
+    final m = e as Map<String, dynamic>;
+    return CollectionChit.fromRow(m, listingId: listingByChit[m['id']]);
+  }).toList();
 });

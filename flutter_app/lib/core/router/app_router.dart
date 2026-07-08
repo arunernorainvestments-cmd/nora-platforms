@@ -33,6 +33,7 @@ import '../../features/battle/screens/battle_spectate_screen.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/mint/screens/mint_moment_screen.dart';
 import '../../features/collection/screens/collection_screen.dart';
+import '../../features/market/screens/market_screen.dart';
 import '../../features/home/screens/plan_screen.dart';
 import '../../features/settings/screens/support_screen.dart';
 import '../../features/settings/screens/faq_screen.dart';
@@ -131,7 +132,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       const protectedRoutes = [
         '/markets', '/profile', '/wallet', '/mybets', '/arena', '/battle',
         '/marketplace', '/verify-identity',
-        '/my-licenses', '/create-listing', '/mint', '/collection',
+        '/my-licenses', '/create-listing', '/mint', '/collection', '/market',
       ];
       // sub-paths are also protected
       final isProtected = protectedRoutes.contains(loc) ||
@@ -468,6 +469,13 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/collection',
             builder: (context, state) => const CollectionScreen(),
+          ),
+          // Chit marketplace (M3) — fixed-price token resale of moment chits.
+          // NOTE: '/market' ≠ '/marketplace' (likeness cards) ≠ '/markets'
+          // (prediction markets).
+          GoRoute(
+            path: '/market',
+            builder: (context, state) => const MarketScreen(),
           ),
           GoRoute(
             // Must precede '/battle/:matchId' so it isn't captured as a matchId.

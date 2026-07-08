@@ -11,6 +11,9 @@ class MainShell extends StatelessWidget {
     if (location.startsWith('/battle') || location.startsWith('/arena')) {
       return 1;
     }
+    // The chit market lives under the Battle tab (game economy). Exact match:
+    // '/markets' (prediction markets) must keep resolving to tab 2 below.
+    if (location == '/market') return 1;
     if (location.startsWith('/markets')) return 2;
     if (location.startsWith('/profile')) return 3;
     if (location.startsWith('/wallet')) return 4;

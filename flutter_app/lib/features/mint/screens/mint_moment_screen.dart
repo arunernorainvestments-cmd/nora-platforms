@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:web/web.dart' as web;
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/card_face.dart';
+import '../../market/providers/market_providers.dart';
 import '../services/mint_service.dart';
 import '../services/trim_interop.dart';
 import '../widgets/clip_trimmer.dart';
@@ -326,6 +327,53 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       if (mounted) setState(() => _error = 'Could not finalize — $e');
     } finally {
       if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  // ── Done: list the freshly minted chit on the marketplace (M3). Server
+  // validates everything (ownership, finalized, allowance — Hard Rule 40).
+  Future<void> _sellFreshMint() async {
+    final chitId = _mint?['chit_id'] as String?;
+    if (chitId == null) return;
+    final tier = (_chitRow?['tier'] ?? '').toString();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('List it for sale?',
+            style: TextStyle(color: AppTheme.textPrimary)),
+        content: Text(
+          'Your card will be listed on the Chit Market at its fixed '
+          '${tier.isEmpty ? 'tier' : 'Tier $tier'} price. While listed it '
+          'leaves your collection (held in escrow) and can\'t battle or '
+          'ascend. You can delist anytime before it sells.',
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Not now'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('List it'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    try {
+      await MarketService.listChit(chitId);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('Listed on the Chit Market.'),
+          backgroundColor: AppTheme.surface));
+      context.go('/market');
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text(MarketService.errorMessage(e)),
+          backgroundColor: AppTheme.danger));
     }
   }
 
@@ -908,12 +956,18 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
           textAlign: TextAlign.center,
           style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
       const SizedBox(height: 20),
-      if (finalized)
+      if (finalized) ...[
         FilledButton(
           onPressed: () => context.go('/collection'),
           child: const Text('View my collection'),
-        )
-      else
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _sellFreshMint,
+          icon: const Icon(Icons.sell_outlined),
+          label: const Text('Sell it on the Chit Market'),
+        ),
+      ] else
         FilledButton(
           onPressed: () => context.go('/battle'),
           child: const Text('Back to the Arena'),
