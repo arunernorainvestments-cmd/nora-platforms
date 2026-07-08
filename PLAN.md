@@ -20,12 +20,13 @@
 - **Mint pipeline END-TO-END** (2026-07-02→05, migs 138–152 — history in ARCHIVE "2026-07-02→05"):
   `/mint` post-verify → device-clip trim → moderation → classify + effect selection → generate (sim) →
   web Preview (CardFace, real rules/flavor/serial) → finalize → `/collection`. Cloud Run stitch worker live.
-- **Chit marketplace M1+M2 SHIPPED** (2026-07-08, migs 153–156 — spec `NORA_PLATFORMS_MARKETPLACE_SPEC.md`,
-  history in ARCHIVE "2026-07-08"): fixed-price **token lane LIVE** (list/buy/delist RPCs, escrow over the
-  acquisition ledger, A/S fee **burned**, ascension frozen while listed); **USD lane built like-live but
-  OFF** behind `platform_integrity_settings.marketplace_usd_lane` (founder gate) — KYC-on-USD gates +
-  **provenance lock** (token-bought → token-resale-only) already enforced; sim settlement on the mig-132
-  rail. No Flutter surface yet (M3 below).
+- **Chit marketplace M1+M2+M3 SHIPPED** (2026-07-08, migs 153–156 + Flutter `/market` — spec
+  `NORA_PLATFORMS_MARKETPLACE_SPEC.md`, history in ARCHIVE "2026-07-08"): fixed-price **token lane LIVE**
+  end-to-end (list/buy/delist RPCs, escrow over the acquisition ledger, A/S fee **burned**, ascension frozen
+  while listed) with the web client (browse/buy/delist on `/market`, Sell from `/collection` + mint-success);
+  **USD lane built like-live but OFF** behind `platform_integrity_settings.marketplace_usd_lane` (founder
+  gate) — KYC-on-USD gates + **provenance lock** (token-bought → token-resale-only) already enforced; sim
+  settlement on the mig-132 rail. ⚠️ Not yet browser-verified (see the 2026-07-08 next-steps entry below).
 - **Migration ledger:** remote DB in sync at **156** (via `supabase db push`). Next = **157**.
   138–147 cinematic/minting-v2 · 148 chit display fields · 149 `{VIDEO_DESC}` · 150 mint-cancel ·
   151/152 effect library · 153–155 marketplace M1 · 156 marketplace M2 (USD seam).
@@ -37,7 +38,41 @@
   `MODERATION_MODE=sim` · `MINT_CLIP_MODE=sim` · `SEGMIND_API_KEY` set · TikTok **sandbox** creds · IG none ·
   `battle_payments_mode=sim` · `marketplace_usd_lane=FALSE`. Flipping any is a spend/creds/founder decision.
 
-**Three active build tracks — see "Where we're going next."**
+**Active build tracks — see "Where we're going next."**
+
+---
+
+## 2026-07-08 — post-M3 next steps (identified during the marketplace build + inventory audit)
+
+What the M1–M3 build and the `APP_INVENTORY.md` sweep surfaced as needing modification, in rough
+priority order. (Full row-level detail + verdicts live in APP_INVENTORY.md; this entry is the
+timestamped pointer so the queue isn't lost.)
+
+1. **Browser-verify the marketplace loop end-to-end** — mint → Sell from collection → buy with a second
+   account → delist. Everything is analyze/PostgREST/prod-smoke-verified only; no live listing has ever
+   been created through the UI. Also re-verify a fresh mint now that effects/rules populate (carried over).
+2. **Ascension has NO user surface** — `chit_ascension_refresh` (mig 136, the "viral upgrade" loop) has
+   zero Dart callers. Users cannot tier-up their cards. Needs a Refresh button + tier-up celebration on
+   `/collection` (and mirrors into Unity).
+3. **Dead-code deletions (zero risk)** — `features/campaigns/` (~4k lines, routes already redirect to
+   /plan), `features/discover/`, `features/notifications/` (no importers), `spotlightCreatorsProvider`.
+   One PR, analyze-clean.
+4. **Minimal web deck-builder** — `decks`/`deck_set_chits` (mig 118) have no UI anywhere; without one, no
+   real CCG match can be entered by a user and P7's deck-entry e2e can't run. Unity owns the rich version;
+   a minimal web builder unblocks testing.
+5. **Spectate screen effect-vocabulary + vibe check** — `/battle/spectate/:id` predates the Wave-1 effect
+   library (migs 151/152); verify new event kinds render (not unknown no-ops) and that Vibe is displayed.
+6. **Mint Review step: show the selected effect** — user currently confirms a card without seeing its
+   effect/rules preview (Track B "Wave-1 polish" item; now also an inventory NEEDS-EDIT).
+7. **No-frontend backends to schedule an owner for** (web vs Unity, per APP_INVENTORY §2): barter (119),
+   premium chit packs (120, post-G-MON), wager-match UI (142, Unity per spec), USD bet sheet (133/145,
+   Unity canonical per R3), vibe reactions (`ccg_record_vibe_signal`).
+8. **Slice-2 filter sweep + known-gaps hygiene** — HR15 test-account filters across discovery providers;
+   move `celebrity_profile_screen.dart` into `hot_topic/`; seed `celebs.image_url`; sim→live copy pass on
+   placeholder text when Track A flips; deno-check sweep (9 pre-existing type failures).
+9. **Gated retirements (do NOT do early)** — legacy Arena screens + 1v1 Battle lobby/match/matchmaking
+   screens wait on P7 7.2 archival + the nora-arena R3 cutover; polls → DORMANT at P7; legacy powerup
+   "Chits" tab stays dormant (HR27).
 
 ---
 
@@ -92,13 +127,10 @@ piece touches the turn loop.
 - [ ] **Wave-1 polish, low-lift**: auto-set `vibe_gate` on A/S-tier mints (premium needs Aura + Vibe);
       surface the selected effect + a rules preview in the mint Review step (step 4).
 
-### Track C — Marketplace M3 + economy  ⟵ spec: `NORA_PLATFORMS_MARKETPLACE_SPEC.md` (M1+M2 shipped)
-- [ ] **M3 — Flutter client** (plain Riverpod, no codegen): `/market` browse (active listings rendered with
-      CardFace + tier/price) · buy flow · **Sell** action from `/collection` (and mint-success) · delist from
-      "my listing" · GoRouter route + theme tokens · `flutter analyze` clean. RPCs are live:
-      `marketplace_list_chit(p_chit_id[, p_currency])` / `marketplace_buy_chit(p_listing_id)` /
-      `marketplace_delist_chit(p_listing_id)`; read model = `marketplace_listings` (public-read `active`)
-      join `moment_chits` + `marketplace_tier_pricing`.
+### Track C — Marketplace economy remainder  ⟵ spec: `NORA_PLATFORMS_MARKETPLACE_SPEC.md` (M1+M2+M3 shipped)
+- [x] **M3 — Flutter client** SHIPPED 2026-07-08 (PR #13): `/market` browse/buy/delist w/ CardFace,
+      Sell from `/collection` + mint-success, nav + wallet labels. ⚠️ Browser verification pending
+      (next-steps entry item 1).
 - [ ] **§6 token economy**: signup grant 500🪙 (currently 100 — decision + migration) · challenge emissions
       move open-faucet → **budgeted + tapered** (daily-streak / onboarding-funnel / burn-recycled ladder).
       Needs the CLAUDE.md currency-model governance edit (founder sign-off — spec §2).
