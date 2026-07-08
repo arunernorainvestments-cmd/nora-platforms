@@ -91,6 +91,8 @@ class TokenTransaction {
         'purchased' => '🛒',
         'verification_bonus' => '✅',
         'refund' => '↩️',
+        'chit_purchase' => '🃏',
+        'chit_sale' => '💰',
         _ => '🪙',
       };
 
@@ -102,6 +104,8 @@ class TokenTransaction {
         'purchased' => 'Tokens Purchased',
         'verification_bonus' => 'Platform Connected',
         'refund' => 'Market Refund',
+        'chit_purchase' => 'Card Bought',
+        'chit_sale' => 'Card Sold',
         _ => 'Token Activity',
       };
 

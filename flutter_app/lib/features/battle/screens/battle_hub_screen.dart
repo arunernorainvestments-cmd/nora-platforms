@@ -77,6 +77,12 @@ class BattleHubScreen extends ConsumerWidget {
                   icon: const Icon(Icons.style_outlined),
                   label: const Text('My BattleChits'),
                 ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: () => context.go('/market'),
+                  icon: const Icon(Icons.storefront_outlined),
+                  label: const Text('Chit Market'),
+                ),
                 const SizedBox(height: 24),
 
                 // ── Live matches (spectate) ────────────────────────────────

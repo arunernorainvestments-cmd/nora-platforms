@@ -27,6 +27,7 @@ Four canonical docs + a small active spec set. **If two docs disagree: CLAUDE.md
 | `NORA_PLATFORMS_CINEMATIC_ENGINE_SPEC.md` | Anchor plates, §4 prompt grammar, Seedance/Segmind generation | Governs where not superseded above |
 | `NORA_CHIT_EFFECT_DESIGN_FRAMEWORK.md` | Card-effect design principles (§1 identity matrix) | Governs Wave-2+ authoring |
 | `NORA_INTERACTION_LAYER_SPEC.md` | Reactive effect depth (Waves 2–3) | PLAN Track B |
+| `APP_INVENTORY.md` | FE↔BE coverage audit: wired / needs-wiring / needs-edit / retire | Work queue (PLAN Track D) |
 
 Retired/one-shot docs are deleted once their content is recorded in ARCHIVE.md (see its dated
 "doc consolidation" entries); git history retains everything.

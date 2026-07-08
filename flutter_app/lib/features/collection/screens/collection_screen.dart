@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/card_face.dart';
+import '../../market/providers/market_providers.dart';
+import '../../wallet/providers/wallet_providers.dart';
 import '../providers/collection_providers.dart';
 
 /// "My BattleChits" — the minted moment chits the user owns. This is where a
@@ -19,6 +21,11 @@ class CollectionScreen extends ConsumerWidget {
         backgroundColor: AppTheme.background,
         title: const Text('My BattleChits'),
         actions: [
+          IconButton(
+            tooltip: 'Chit Market',
+            icon: const Icon(Icons.storefront_outlined),
+            onPressed: () => context.go('/market'),
+          ),
           IconButton(
             tooltip: 'Mint a new one',
             icon: const Icon(Icons.add),
@@ -67,11 +74,11 @@ class CollectionScreen extends ConsumerWidget {
       builder: (ctx) => Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Flexible(
-              child: ConstrainedBox(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 360),
                 child: CardFace(
                   name: chit.name,
@@ -90,17 +97,160 @@ class CollectionScreen extends ConsumerWidget {
                   serial: chit.serial,
                 ),
               ),
-            ),
-            const SizedBox(height: 12),
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('Close',
-                  style: TextStyle(color: AppTheme.textPrimary)),
-            ),
-          ],
+              const SizedBox(height: 12),
+              _MarketActions(chit: chit, dialogContext: ctx),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Close',
+                    style: TextStyle(color: AppTheme.textPrimary)),
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+}
+
+/// Sell / Delist actions for a card in the collection dialog. Prices are the
+/// fixed tier prices from `marketplace_tier_pricing` (Hard Rule 40 — config,
+/// never user-set); the server re-validates everything on the RPC.
+class _MarketActions extends ConsumerStatefulWidget {
+  const _MarketActions({required this.chit, required this.dialogContext});
+  final CollectionChit chit;
+  final BuildContext dialogContext;
+
+  @override
+  ConsumerState<_MarketActions> createState() => _MarketActionsState();
+}
+
+class _MarketActionsState extends ConsumerState<_MarketActions> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final chit = widget.chit;
+    if (chit.isListed) {
+      return Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('Listed on the Chit Market',
+            style: TextStyle(color: AppTheme.secondary, fontSize: 12)),
+        const SizedBox(height: 6),
+        FilledButton.icon(
+          style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+          onPressed: _busy ? null : _delist,
+          icon: const Icon(Icons.remove_shopping_cart_outlined),
+          label: const Text('Delist'),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.pop(widget.dialogContext);
+            context.go('/market');
+          },
+          child: const Text('View on the Market',
+              style: TextStyle(color: AppTheme.secondary)),
+        ),
+      ]);
+    }
+    if (!chit.isSellable) return const SizedBox.shrink();
+
+    final pricing = ref.watch(tierPricingProvider).valueOrNull;
+    final price = pricing?[chit.tier];
+    if (price == null) return const SizedBox.shrink();
+
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      FilledButton.icon(
+        onPressed: _busy ? null : () => _sell(price),
+        icon: _busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.sell_outlined),
+        label: Text('Sell for ${price.tokens} tokens'),
+      ),
+      if (price.feeBps > 0)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(
+            '${price.feeBps ~/ 100}% is burned on sale — you receive '
+            '${price.netToSeller} tokens.',
+            style:
+                const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+          ),
+        ),
+    ]);
+  }
+
+  Future<void> _sell(TierPrice price) async {
+    // Captured before the awaits: the dialog context outlives them via the
+    // messenger, so no BuildContext crosses an async gap.
+    final messenger = ScaffoldMessenger.of(widget.dialogContext);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('List for sale?',
+            style: TextStyle(color: AppTheme.textPrimary, fontSize: 17)),
+        content: Text(
+          '${widget.chit.name} will be listed at its fixed Tier '
+          '${widget.chit.tier} price of ${price.tokens} tokens.'
+          '${price.feeBps > 0 ? ' ${price.feeBps ~/ 100}% is burned on sale — you receive ${price.netToSeller}.' : ''}'
+          '\n\nWhile listed it leaves your collection (held in escrow) and '
+          'can\'t battle or ascend. You can delist anytime before it sells.',
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('List it')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _busy = true);
+    try {
+      await MarketService.listChit(widget.chit.id);
+      if (widget.dialogContext.mounted) Navigator.pop(widget.dialogContext);
+      messenger.showSnackBar(SnackBar(
+          content:
+              Text('${widget.chit.name} listed for ${price.tokens} tokens.'),
+          backgroundColor: AppTheme.surface));
+    } catch (e) {
+      if (mounted) setState(() => _busy = false);
+      messenger.showSnackBar(SnackBar(
+          content: Text(MarketService.errorMessage(e)),
+          backgroundColor: AppTheme.danger));
+    } finally {
+      ref.invalidate(myCollectionProvider);
+      ref.invalidate(activeListingsProvider);
+      ref.invalidate(myListingsProvider);
+    }
+  }
+
+  Future<void> _delist() async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(widget.dialogContext);
+    try {
+      await MarketService.delistListing(widget.chit.listingId!);
+      if (widget.dialogContext.mounted) Navigator.pop(widget.dialogContext);
+      messenger.showSnackBar(SnackBar(
+          content: Text('${widget.chit.name} is back in your collection.'),
+          backgroundColor: AppTheme.surface));
+    } catch (e) {
+      if (mounted) setState(() => _busy = false);
+      messenger.showSnackBar(SnackBar(
+          content: Text(MarketService.errorMessage(e)),
+          backgroundColor: AppTheme.danger));
+    } finally {
+      ref.invalidate(myCollectionProvider);
+      ref.invalidate(activeListingsProvider);
+      ref.invalidate(myListingsProvider);
+      ref.invalidate(tokenBalanceProvider);
+    }
   }
 }
 
@@ -145,6 +295,12 @@ class _ChitCard extends StatelessWidget {
                     top: 8,
                     left: 8,
                     child: _pill('Pending', AppTheme.secondary),
+                  )
+                else if (chit.isListed)
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: _pill('Listed', AppTheme.success),
                   ),
               ],
             ),
