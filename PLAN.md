@@ -109,6 +109,12 @@ piece touches the turn loop.
       AND the §6 emission model is re-run AND founder sign-off. Hooks already in place:
       `marketplace_listing_allowance()` (extra listing slots) + stipends land in the *bought* bucket.
 
+### Track D — App inventory remediation  ⟵ queue: `APP_INVENTORY.md` (compiled 2026-07-08, post-M3)
+The full FE↔BE coverage audit lives in **APP_INVENTORY.md**: what's wired, backend built with NO
+frontend (deck builder, barter, packs, ascension, wager UI…), surfaces needing edits, and FE to
+retire (campaigns/discover/notifications dead code now; legacy arena/battle screens gated on P7 +
+the mobile cutover). Work it in that file's §6 order; move completed rows into ARCHIVE dated entries.
+
 ### Maintenance / small
 - [ ] **deno-check sweep**: fix the 9 pre-existing type failures (see snapshot) so `deno check` is clean
       repo-wide under Deno 2.9/TS 5.7.
