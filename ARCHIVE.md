@@ -79,6 +79,57 @@
 #   MODERATION_MODE=sim (unset) · MINT_CLIP_MODE=sim · SEGMIND_API_KEY set · TikTok SANDBOX creds · IG none.
 #   G-MON not yet confirmed. NEXT tracks live in PLAN.md ("Where we're going next").
 #
+# ---------------------------------------------------------------------------
+# 2026-07-08 — Chit marketplace M1+M2 (SHIPPED) + documentation consolidation
+# ---------------------------------------------------------------------------
+# MARKETPLACE (spec NORA_PLATFORMS_MARKETPLACE_SPEC.md, migs 153–156, PRs #11/#12):
+#   • M1 (153–155): fixed-price TOKEN lane LIVE. marketplace_tier_pricing config (F–S;
+#     A/S fee 1000/1500 bps, fee is a BURN — credited to no one); marketplace_listings
+#     (escrow status-sibling over the append-only chit_acquisition_ledger — mig-142
+#     wager pattern: -1 'marketplace_escrow' delta + partial-unique open index);
+#     marketplace_sales (append-only receipts + block-mutation guard);
+#     marketplace_listing_allowance() default 1 (function-not-constant → subscription
+#     hook). RPCs marketplace_{list,buy,delist}_chit = auth wrappers over service-only
+#     _internal fns (mig-101 pattern; lets apply-time smoke exercise real logic).
+#     Buy is idempotent (replay returns same receipt), transfers via a NEW ledger row
+#     stamped acquired_currency, attribution/card_serial survive on the definition.
+#     Escrow integration: self_mint_slot counts listed chits; chit_swap_retire blocked
+#     while listed; ASCENSION FROZEN while escrowed (moment_chit_rederive guard +
+#     chit_ascension_refresh skip) — a listing's tier/price snapshot can't drift.
+#     NOTE: chit-marketplace-{buy,list} edge fns are the LEGACY POWERUP lane (HR27) —
+#     untouched; the moment-chit marketplace is RPC-only, no edge functions.
+#   • M2 (156): USD-ready seam BUILT LIKE-LIVE, OFF by default. Two gates:
+#     platform_integrity_settings.marketplace_usd_lane (founder flip) AND
+#     battle_payments_mode (sim→sim_usd_balances via ccg_usd_debit/credit; live RAISEs
+#     until Treasury). KYC-on-USD (seller is_eligible_for_real_money to list, buyer to
+#     buy); PROVENANCE LOCK ACTIVE (any token-stamped acquisition of the chit by the
+#     seller ⇒ token-resale-only — free emission can never reach USD; USD-bought may
+#     relist for tokens, one-directional). Fee in integer cents; a USD sale writes
+#     sim_usd_transactions only, NEVER token_transactions (HR33 wall, smoke-asserted).
+#   • Smoke identities mkt-smoke-1/2@noraplatforms.com created in prod
+#     (is_test_account=TRUE); append-only residue stays on them → P7 sweep (§A8).
+#   • Hard Rule 40 added to CLAUDE.md (marketplace invariants).
+#
+# DOC CONSOLIDATION (2026-07-08) — repo went 19 → 12 root .md files. Deleted, with
+# content disposition (git history retains everything):
+#   • HANDOFF.md — orientation duplicated CLAUDE/PLAN/ARCHIVE; README.md is now the map.
+#   • NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md — P0–P6 shipped (per-phase push status
+#     preserved in this file's 2026-07-01 entry + B1); the P7 remainder + P5 leftovers
+#     (payout-round-trip e2e, deck-entry e2e) moved to PLAN.md §P7.
+#   • NORA_CHIT_EFFECT_LIBRARY_WAVE1.md — Wave 1 shipped (migs 151/152); the LIVE
+#     library is the DB (effect_templates). Durable decisions preserved here:
+#     magnitude_scales=false for count/resource effects (draw_card/disrupt_discard/
+#     aura_refund/removal/taunt_grant/summon_token — else S-tier draws 8 cards);
+#     stat_lean aggressive≈75% ATK-max / defensive inverse / balanced=midpoint,
+#     spells ignore it; summon_token templates deferred to Wave 2 (resolver stub 128).
+#   • NORA_PLATFORMS_ALIGNMENT_BUILD_SPEC.md + passbacktoclaude.md — the v2.x
+#     realignment spec + its open-questions doc, superseded whole by the v3 pivot
+#     (its real-money-rail asks became P5/migs 132–134; R1–R4 live in RECONCILIATION).
+#   • PROMPT_nora_platforms_v3.md + PROMPT_nora_platforms_cinematic_engine.md —
+#     one-shot kickoff prompts; both builds executed.
+# CORRECTION to §A2/§B1 below: mobile_iap_confirm + mig 115 are MERGED + DEPLOYED
+# (commit 2f09ddc) — older lines saying "unmerged branch" predate the merge.
+
 # ===========================================================================
 # TABLE OF CONTENTS
 # ===========================================================================
@@ -302,8 +353,8 @@ ubi-ai-evaluate (service role) | ubi-assemble-voting-panel (service role) | ubi-
 **Licensing (lkn-):** lkn-verify (API-key auth) | lkn-register-api-key | lkn-partner-apply |
 lkn-register-licensor | lkn-create-listing | lkn-submit-template | lkn-purchase-license |
 lkn-revoke-license | lkn-generate-contract (NOT yet built — needs clause library).
-**Mobile (nora-arena-api-):** profile | spotlight (proxies compute-spotlight) | market | token-balance.
-Plus mobile_iap_confirm (on unmerged branch).
+**Mobile (nora-arena-api-):** profile | spotlight (proxies compute-spotlight) | market | token-balance |
+mobile_iap_confirm (merged + deployed, 2f09ddc).
 
 ### pg_cron Jobs
 main-character-check (hourly) | arena-matchmaker (5min) | process_arena_tick (3s) | arena-tick-warmer (30s) |
@@ -648,7 +699,7 @@ Flutter screens + Hard Rules 29–32 + public signing key merged. Signing key wo
 (Codespace) — rotate later. Remaining: gateway routing, lkn-generate-contract.
 Doc 6 mobile prep (Repo A): migration 114 (profiles.fcm_token_mobile) + four nora-arena-api-* fns DEPLOYED
 + verified live. Phase-6 backend mobile_iap_confirm fn + migration 115 (mobile_iap_receipts idempotency ledger)
-built + smoke-tested on branch doc6-mobile-iap-confirm (commit ee5a782) — NOT yet pushed/merged. Remaining
+built + smoke-tested on branch doc6-mobile-iap-confirm — since MERGED + deployed (2f09ddc). Remaining
 external: gateway routing, RevenueCat config.
 
 ---

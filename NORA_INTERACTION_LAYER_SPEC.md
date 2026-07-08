@@ -1,7 +1,8 @@
 # NORA Interaction Layer — design spec (reactive play, counters, charge-up)
 
 **Status:** DESIGN PROPOSAL — not built. Companion to `NORA_CHIT_EFFECT_DESIGN_FRAMEWORK.md`
-(content) and `NORA_CHIT_EFFECT_LIBRARY_WAVE1.md` (shipped). This doc covers the **engine**
+(content) and the shipped Wave-1 library (live in the DB `effect_templates`, migs 151/152; design
+record in ARCHIVE "2026-07-08" entry). This doc covers the **engine**
 depth the user asked for after Wave 1: "instant deploy to block/counter," "counter/nullifying
 cards," and "cards that build to stack damage on a later turn." Those are engine features, not
 templates — so they live here, sequenced with the compound-effects work (Wave 2).

@@ -1,35 +1,43 @@
 # NORA Platforms — PLAN.md
-# Where we're going. Last updated: 2026-07-05.
+# Where we're going. Last updated: 2026-07-08.
 # Rules for HOW to build any of this live in CLAUDE.md ("Building future work safely").
 # Full specs / schemas / build history for anything referenced here live in ARCHIVE.md.
+# Cross-repo (nora-arena) contract: RECONCILIATION.md. Doc map: README.md.
 #
 # ⚠️ v3 PIVOT (2026-07-01): the game is the "Moments" card-battler. Canonical spec:
-# NORA_PLATFORMS_BUILD_SPEC_v3.md; phased tracker (P0–P7): NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md.
-# The v2.x 1v1 archetype-fighter plan is RETIRED (bottom).
+# NORA_PLATFORMS_BUILD_SPEC_v3.md. P0–P6 SHIPPED (migs 116–137); the P7 launch-hygiene
+# remainder is tracked HERE (§"P7"). The v2.x 1v1 archetype-fighter plan is RETIRED (bottom).
 
 ---
 
-## Status snapshot (where we are, 2026-07-05)
+## Status snapshot (where we are, 2026-07-08)
 
 - **Live & built (v2.x base, reused by v3):** Markets, Hot Topic, Likeness Cards + stat sheets +
   marketplaces, celebrity integration, KYC flow, Emergency Fund (sim), Licensing Marketplace (backend +
   Flutter). Legacy 1v1 Battle + Arena exist but are **superseded by the v3 card-battler** (see Retired).
 - **v3 card-battler:** P0–P6 BUILT + applied to prod (migs 116–137); the CCG engine, tier ladder, effects,
-  fusion, Vibe, real-money rail, minting + ascension all live. P7 (launch hygiene) partial.
-- **Mint pipeline is now END-TO-END** (2026-07-02→05, migs 138–152 — full build history in ARCHIVE
-  "2026-07-02→05"): `/mint` post-verify → device-clip trim → moderation → **classify + effect selection**
-  → generate (sim) → **web Preview (CardFace with real rules/flavor/serial)** → finalize → `/collection`.
-  Cards now carry a **real, balanced, printable effect** selected from the authored library. Cancel/discard
-  works; sim-mode media shows honest placeholders. Cloud Run stitch worker (`nora-stitch`) live for §4.
-- **Migration ledger:** remote DB in sync at **152** (via `supabase db push`). Next = **153**.
+  fusion, Vibe, real-money rail, minting + ascension all live. P7 (launch hygiene) tracked below.
+- **Mint pipeline END-TO-END** (2026-07-02→05, migs 138–152 — history in ARCHIVE "2026-07-02→05"):
+  `/mint` post-verify → device-clip trim → moderation → classify + effect selection → generate (sim) →
+  web Preview (CardFace, real rules/flavor/serial) → finalize → `/collection`. Cloud Run stitch worker live.
+- **Chit marketplace M1+M2 SHIPPED** (2026-07-08, migs 153–156 — spec `NORA_PLATFORMS_MARKETPLACE_SPEC.md`,
+  history in ARCHIVE "2026-07-08"): fixed-price **token lane LIVE** (list/buy/delist RPCs, escrow over the
+  acquisition ledger, A/S fee **burned**, ascension frozen while listed); **USD lane built like-live but
+  OFF** behind `platform_integrity_settings.marketplace_usd_lane` (founder gate) — KYC-on-USD gates +
+  **provenance lock** (token-bought → token-resale-only) already enforced; sim settlement on the mig-132
+  rail. No Flutter surface yet (M3 below).
+- **Migration ledger:** remote DB in sync at **156** (via `supabase db push`). Next = **157**.
   138–147 cinematic/minting-v2 · 148 chit display fields · 149 `{VIDEO_DESC}` · 150 mint-cancel ·
-  151 effect-library framework cols + derivation · 152 Wave-1 template seed (10 families × 3).
-- **`flutter analyze` / `deno check`:** clean (2026-07-05).
+  151/152 effect library · 153–155 marketplace M1 · 156 marketplace M2 (USD seam).
+- **`flutter analyze`:** clean (2026-07-08). **`deno check`:** ⚠️ 9 pre-existing fns fail under the
+  Codespace's Deno 2.9/TS 5.7 strictness (`lkn-verify`, `resolve-markets`, `apply-promotion`,
+  `arena-dev-*`, `hot-topic-resolve-week`, `likeness-{buy-listed,purchase}-card`,
+  `ubi-assemble-voting-panel`) — type-level only, unrelated to recent work; sweep queued below.
 - **Config flags:** `MINT_INGEST_MODE=live` · `MOMENT_CLASSIFY_MODE=sim` · `CINEMATIC_MODE=sim` ·
-  `MODERATION_MODE=sim` · `MINT_CLIP_MODE=sim` · `SEGMIND_API_KEY` set · TikTok **sandbox** creds · IG none.
-  Flipping any to live is a spend/creds/G-MON decision (below).
+  `MODERATION_MODE=sim` · `MINT_CLIP_MODE=sim` · `SEGMIND_API_KEY` set · TikTok **sandbox** creds · IG none ·
+  `battle_payments_mode=sim` · `marketplace_usd_lane=FALSE`. Flipping any is a spend/creds/founder decision.
 
-**Two active build tracks are next — see "Where we're going next."**
+**Three active build tracks — see "Where we're going next."**
 
 ---
 
@@ -60,15 +68,17 @@ The seam is bracketed by **two character-AGNOSTIC anchor plates** (Hard Rule 39;
       already live (IG still 503s cleanly until creds; swap TikTok sandbox→prod at app approval).
 
 ### Track B — Effect system depth (Wave 2 → 3)  ⟵ spec: `NORA_INTERACTION_LAYER_SPEC.md`
-Wave 1 (single-clause library + server-side selection) SHIPPED (migs 151/152 — see ARCHIVE + `NORA_CHIT_
-EFFECT_LIBRARY_WAVE1.md`). The reactive/"instant" depth is engine work, sequenced so only the last piece
-touches the turn loop. Framework: `NORA_CHIT_EFFECT_DESIGN_FRAMEWORK.md`.
+Wave 1 (single-clause library + server-side selection) SHIPPED — migs 151/152; the live templates are the
+DB (`effect_templates`); design record + the shipped Wave-1 decisions are in ARCHIVE ("2026-07-02→05" +
+"2026-07-08 doc consolidation"). Framework: `NORA_CHIT_EFFECT_DESIGN_FRAMEWORK.md` (§1 identity matrix
+still governs Wave-2 authoring). The reactive/"instant" depth is engine work, sequenced so only the last
+piece touches the turn loop.
 
 - [ ] **Wave 2a — compound-clause resolver** (shared prerequisite): `effect_template_clauses` (or
       `secondary_effect_*`) → clause list snapshot on `ccg_match_cards` → `ccg_apply_card_effect` loops clauses
       → `compose_chit_rules` joins them. Unlocks `complexity=2` templates (already gated by `min_tier_band`, mig 151).
 - [ ] **Wave 2 library expansion**: 4th/5th templates per family incl. compound cards, authored by cycle vs the
-      §1 identity matrix; wider use of `summon_token` once the resolver stub (mig 128) is implemented.
+      framework §1 identity matrix; wider use of `summon_token` once the resolver stub (mig 128) is implemented.
 - [ ] **Wave 2b — charge-up state** (Pillar C): per-card `charges` (in-match only) + `charge_gain`/`charge_spends`
       template hooks → "build a payoff later"; homes the deferred Combo (Gamer) / Encore (Musician) signatures. No turn-loop change.
 - [ ] **Wave 3a — Secrets** (Pillar A): `armed` hidden zone + new trigger conditions (`on_enemy_summon/attack/
@@ -82,26 +92,55 @@ touches the turn loop. Framework: `NORA_CHIT_EFFECT_DESIGN_FRAMEWORK.md`.
 - [ ] **Wave-1 polish, low-lift**: auto-set `vibe_gate` on A/S-tier mints (premium needs Aura + Vibe);
       surface the selected effect + a rules preview in the mint Review step (step 4).
 
+### Track C — Marketplace M3 + economy  ⟵ spec: `NORA_PLATFORMS_MARKETPLACE_SPEC.md` (M1+M2 shipped)
+- [ ] **M3 — Flutter client** (plain Riverpod, no codegen): `/market` browse (active listings rendered with
+      CardFace + tier/price) · buy flow · **Sell** action from `/collection` (and mint-success) · delist from
+      "my listing" · GoRouter route + theme tokens · `flutter analyze` clean. RPCs are live:
+      `marketplace_list_chit(p_chit_id[, p_currency])` / `marketplace_buy_chit(p_listing_id)` /
+      `marketplace_delist_chit(p_listing_id)`; read model = `marketplace_listings` (public-read `active`)
+      join `moment_chits` + `marketplace_tier_pricing`.
+- [ ] **§6 token economy**: signup grant 500🪙 (currently 100 — decision + migration) · challenge emissions
+      move open-faucet → **budgeted + tapered** (daily-streak / onboarding-funnel / burn-recycled ladder).
+      Needs the CLAUDE.md currency-model governance edit (founder sign-off — spec §2).
+- [ ] **USD lane flip** = founder gate: `marketplace_usd_lane=TRUE` (KYC gates + provenance lock already
+      enforce themselves). Real money additionally needs `battle_payments_mode='live'` (Stripe Treasury /
+      Connect seller payout — the mig-132 live branch, shared with P5).
+- [ ] **M4 — battle pass / subscription**: analysis in spec §7. **GATED** — do not start before M1–M3 shipped
+      AND the §6 emission model is re-run AND founder sign-off. Hooks already in place:
+      `marketplace_listing_allowance()` (extra listing slots) + stipends land in the *bought* bucket.
+
+### Maintenance / small
+- [ ] **deno-check sweep**: fix the 9 pre-existing type failures (see snapshot) so `deno check` is clean
+      repo-wide under Deno 2.9/TS 5.7.
+
 ### External unblocks the user still owns (gate the above)
 - `CINEMATIC_MODE=live` + Segmind spend (Track A) · `MODERATION_MODE=live` decision · production TikTok
   key/secret (swap the sandbox pair at app approval) + Instagram `INSTAGRAM_CLIENT_ID/SECRET`.
 - **G-MON confirmation** before any real-money go-live (the gate is built; the rule needs sign-off).
-- Rotate the `service_role` + `SUPABASE_ACCESS_TOKEN` (both appeared in session transcripts) and
-  `NORA_SIGNING_PRIVATE_KEY` (known-compromised, generated in Codespace) — all post-launch, pre-live.
+- **`marketplace_usd_lane` + §6 economy sign-offs** (Track C).
+- Rotate the `service_role`, `SUPABASE_ACCESS_TOKEN` (multiple tokens have appeared in session transcripts,
+  latest 2026-07-08) and `NORA_SIGNING_PRIVATE_KEY` (known-compromised, generated in Codespace) — all
+  post-launch, pre-live.
 - Browser-verify a fresh end-to-end mint now that rules/effects populate (analyze/PostgREST-verified only).
 
 ---
 
-## v3 build plan status (P0–P7) — condensed
-Per-phase detail + checklists: `NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md`. Build history: ARCHIVE.
+## v3 P7 — launch hygiene (the remainder; P0–P6 are DONE)
+P0–P6 shipped to prod (migs 116–137; per-phase history in ARCHIVE). What P7 still owes, with its gating:
 
-- **P0–P6 DONE + applied to prod** (migs 116–137): canonical model/governance · chit catalog + collection +
-  deck + barter · tier ladder + effects + fusion data · CCG combat engine · Vibe meter · real-money rail +
-  G-MON gate · minting pipeline + tier-ascension. Cinematic engine + minting v2 layered on top (138–152).
-- **P7 — launch hygiene: OUTSTANDING.** Execute the archival retirements (schemas archived-not-dropped),
-  weekly polls/multipliers → DORMANT, Emergency Fund live behind config, **pre-launch reset (ARCHIVE §A8) +
-  remove all dev tooling** (arena bot-backer, test-match maintainer, `dev_*` RPCs, cinematic/mint smoke users),
-  final smoke tests.
+- [ ] **7.2 Physical archival of retired schemas** (markers set in mig 121): rename/archive `battle_abilities`
+      + the 1v1 stat/moveset tables; drop `check_battle_eligibility`/`get_eligible_characters`; weekly
+      polls/stat-multipliers → DORMANT; retire parody-avatar scaffolding. **Archive, never DROP.**
+      ⏸ Gated on the legacy-engine cutover + the nora-arena pivot — mobile still consumes the legacy fns
+      (RECONCILIATION §1). Do NOT run before that.
+- [ ] **7.4 Pre-launch reset** (ARCHIVE §A8) — destructive, run LAST on launch day: teardown test accounts,
+      truncate test Arena/Battle rows, reset balances/bets/markets, re-grant signup bonuses; remove ALL dev
+      tooling (`dev_*` RPCs, `arena-dev-*` fns, bot-backer/test-match-maintainer crons per ARCHIVE §A5);
+      sweep dev-seed chits (P2/P3), `is_test` matches, and the smoke identities
+      (`cinematic-smoke*@`, `mkt-smoke-1/2@noraplatforms.com` + their ledger/sales residue).
+- [ ] **7.5 Final verification**: full `flutter analyze` + an e2e **real-money round-trip** (2 KYC'd users,
+      sim USD: market → bets → settle → moment-owner + passive-holder credits) and a **deck-entry** match from
+      two real 20-card decks — neither exercised end-to-end yet (per-phase apply-time smokes are green).
 - **🚧 Open product call — G-MON:** real-money `battle_outcome` market created iff both players KYC'd; royalty
   routes to moment-owners of played chits; consent at mint, KYC at cash-out. Gate is built; confirm before go-live.
 
@@ -114,23 +153,22 @@ Per-phase detail + checklists: `NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md`. Build
       route or Vercel rewrite → `…functions.supabase.co/lkn-verify`). Unblocks mobile License Sync. Runbook in ARCHIVE.
 - [ ] **`lkn-generate-contract`**: needs the attorney-seeded `lkn_contract_clauses` table (not yet created).
       Do NOT fabricate legal language (Hard Rule 30). Deferred until clause library exists.
-- [ ] **Signing-key rotation** (also a v3 P5 prereq): current `NORA_SIGNING_PRIVATE_KEY` works but is
+- [ ] **Signing-key rotation** (also a P5 live prereq): current `NORA_SIGNING_PRIVATE_KEY` works but is
       known-compromised (generated in a Codespace). Regenerate on a local secure machine, update the secret +
       `.well-known/nora-public-key.pem`, before live launch.
 - [ ] Featured/paid listing placement (post-launch).
 
 ### Mobile app (nora-arena, separate repo) — surviving items
-Backend prep in THIS repo is done (mig 114 + four `nora-arena-api-*` wrappers + `mobile_iap_confirm`).
-nora-arena has pivoted Flutter+Flame → **Unity (C#) + Meshy 3D**; launch target is mobile (WebGL is
-inspection-only). Cross-repo contract: **RECONCILIATION.md** (keep §7 mirroring as gates unblock; add the
-new `moment_chits` display fields — `rules_text`/`flavor_text`/`card_serial` — so Unity prints identical text).
-- [ ] **Merge `doc6-mobile-iap-confirm`** (commit ee5a782: `mobile_iap_confirm` + mig 115) — also a v3 P5 prereq.
+Backend prep in THIS repo is done: mig 114 + four `nora-arena-api-*` wrappers + **`mobile_iap_confirm` +
+mig 115 (MERGED 2026-06 — commit 2f09ddc; the old "merge the branch" task is complete)**. nora-arena is
+**Unity (C#) + Meshy 3D**; launch target mobile (WebGL inspection-only). Contract: **RECONCILIATION.md**
+(§5 CCG, §7 minting/cinematic, §8 marketplace).
 - [ ] Gateway routing for `api.noraplatforms.com/v1/verify` (shared blocker with Licensing above).
 - [ ] FCM push (battle invites, bet resolution) using `profiles.fcm_token_mobile`.
 - [ ] RevenueCat IAP config (token packs / chit packs) → `mobile_iap_confirm`.
 - [ ] Native iOS/Android shells, store submissions, deep links from web.
-- [ ] The v3 CCG contract (moment-chit catalog + display fields, tier exposure, CCG `battle_events`, market
-      gating, minting/ascension, fusion) replaces the old character-select contract — mirrored in RECONCILIATION.
+- [ ] Keep RECONCILIATION §5/§7/§8 mirrored as gates unblock (incl. `moment_chits` display fields
+      `rules_text`/`flavor_text`/`card_serial` so Unity prints identical text).
 
 ### nora-arena reconciliation — platform-side decisions that survive v3
 - [ ] **R1 — Archetype vocabulary.** archetype **families** are the v3 effect-family classifier. Fix
@@ -150,18 +188,20 @@ leak into ranking/discovery (Hard Rule 15). Tracked separately (Rule 22).
 - [x] Onboarding walkthrough — SHIPPED (6-page welcome tour, once per user, re-openable from drawer).
 - [ ] Profile avatars from connected platform data.
 - [x] Launch-day animation — SHIPPED (countdown → midnight ET; rocket cutscene w/ fallback). **User owes the MP4.**
-- [ ] Run the **pre-launch reset sequence** + remove all dev tooling (ARCHIVE §A8) — folded into v3 P7.
+- [ ] Run the **pre-launch reset sequence** + remove all dev tooling — folded into P7 above.
 
 ---
 
 ## RETIRED by the v3 pivot (do not resume; schemas archived-not-dropped in P7)
-Detail + retired schemas in ARCHIVE §A3/§A4/§B (archived, never DROPped — v3 P7 executes the archival).
+Detail + retired schemas in ARCHIVE §A3/§A4/§B (archived, never DROPped — P7 executes the archival).
 - The v2.x **1v1 archetype-fighter** model: 6-player sprite Battle, Battle Phase D, D&D six-stat characters,
   per-archetype move-sets (`battle_abilities`), parody-celebrity avatars, license-per-character eligibility (R2).
   Celebrities return as licensed premium chits (P1); stat sheets survive but are cosmetic.
 - **Battle bot-fill** for the old matchmaking loop — re-scope to the CCG engine only if needed.
 - **Legacy powerup "Battle Chits"** (`battle_chit_definitions`) — dormant (Hard Rule 27); the v3 "moment chit"
   is a different asset (P1). Do not conflate the tables.
+- **The v2.x Alignment Build Spec** + its open-questions doc — superseded whole by the v3 pivot; its
+  still-relevant asks (real-money rail, R1/R3) were absorbed into P5 and this file (doc retired 2026-07-08).
 
 ---
 
@@ -195,7 +235,9 @@ match loser surrenders a card of the winner's choice (that pick UX lives in nora
 the **creator** (KYC-verified Market Maker) each time their moment is played in a monetized match —
 recurring creator earnings, no holder appreciation promise. Holders get gameplay power, scarcity,
 permanent minter attribution, and player-set marketplace pricing. Wager-match card forfeiture is
-already built (mig 142).
+already built (mig 142). **The shipped marketplace (migs 153–156) deliberately stays on this side of
+the line: fixed config prices, fee burned, no accrual — and the provenance lock keeps free token
+emission from ever reaching USD.**
 
 **If G-CARDVAL is ever cleared, open design questions:** exact accrual formula and which markets
 feed it; whether accrual attaches per-copy or per-definition; how set-completion redemption prices
@@ -206,9 +248,9 @@ rake into); and how any of it is disclosed without financial-instrument language
 
 ## Long-horizon vision (post-launch, not scoped)
 - **On-chain / NORA coin**: append-only ledgers (`likeness_card_transfers`, `lkn_agreements`, the
-  `chit_ownership` acquisition ledger, and archived `campaigns_archived_ledger`) are designed to migrate to
-  on-chain settlement. Integer-cents, no floats, every ownership change a new row. Full migration path +
-  original Campaigns royalty/Reg CF framework preserved in ARCHIVE.
+  `chit_ownership` acquisition ledger + `marketplace_sales`, and archived `campaigns_archived_ledger`) are
+  designed to migrate to on-chain settlement. Integer-cents, no floats, every ownership change a new row.
+  Full migration path + original Campaigns royalty/Reg CF framework preserved in ARCHIVE.
 - **Revenue data partnerships** (Spotify for Artists, YouTube Analytics, DistroKid/TuneCore) — the layered
   verification roadmap still informs licensing revenue-share and could feed engagement-tier signals for minting.
 - **Battle V2 (Unity)** — the mobile client is already Unity; the Supabase data layer is engine-agnostic so

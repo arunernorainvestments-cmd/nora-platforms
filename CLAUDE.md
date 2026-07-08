@@ -5,7 +5,7 @@
 Flutter web prediction-market + **card-battler** platform ("Moments" — the v3 CCG pivot),
 one wallet, plus two community systems (Emergency Fund, Licensing Marketplace).
 Pre-launch — July 4 2026. The v3 build path lives in `NORA_PLATFORMS_BUILD_SPEC_v3.md` (canonical
-spec) + `NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md` (phased tracker, P0–P7).
+spec); P0–P6 are SHIPPED and the P7 launch-hygiene remainder is tracked in PLAN.md.
 Repo: arunernorainvestments-cmd/nora-platforms
 Supabase ref: cceisywxwhgljdpisjrl | Domain: noraplatforms.com (Cloudflare → Vercel → Flutter)
 
@@ -67,10 +67,11 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 37. Chits are minted **only from a post the user owns** (OAuth-verified account link); source allowlist TikTok/Instagram/YouTube; **no arbitrary-URL minting**. *(Amended 2026-07-04, Minting_Workflow.md:)* because the platform APIs never hand out the video file, the clip itself is uploaded from the user's device — but **only tethered to an already-approved owned moment** (moment-ingest first), trimmed in-browser to 1–15s, into the **private `mint-staging` bucket** under the owner's prefix; `moment-clip-attach` then **re-moderates sampled frames of the actual upload** and runs a **thumbnail-vs-frame similarity check** (mismatch → human review, never silent mint). Untethered/anonymous uploads remain forbidden. **Pre-generation moderation runs before any generation; the minor-safety/CSAM screen is absolute and cannot be bypassed** — on source AND on the uploaded clip.
 38. Every minted cutscene MP4 is stored in the **`battle-media`** bucket (**never a hotlinked provider URL**) and the chit carries `match_cut_template_id`, `anchor_plate_version`, `prompt_template_version`, `generation_seed`. (`final_frame_camera` is deprecated — Unity owns the camera pose via its local `MatchCutAnchor`, authored against the plates.)
 39. Anchor plates + motion prompt templates are **house-owned and versioned, never per card** (`match_cut_anchor_plates`, `match_cut_prompt_templates`). *(Amended 2026-07-04, Minting_Workflow.md:)* launch ships **two character/template-AGNOSTIC plates** — start = the glowing BattleChit card, end = the cyber impact flash (`assets/plates/agnostic_*_plate_v1_16x9.png`); Unity's zoom-into-card lead-in and impact-flash particle bracket every cutscene, so lead-in variety lives in Unity, not in per-template plates (per-template plates are a future expansion, not launch). Plates are authored at **16:9** (generation aspect follows the reference frames). The prompt's **STYLE (style-lock) and CONSTRAINTS blocks are never user-influenced or omitted**. **Post-generation moderation on the finished MP4 is mandatory — clean bookends never vouch for the middle.** The user must preview the card in a practice battle before the chit finalizes.
+40. **Marketplace (migs 153–156):** fixed config prices only (`marketplace_tier_pricing`) — never supply/demand, never value accrual (G-CARDVAL parked). The A/S sale fee is a **BURN**, never platform income. All marketplace writes go through the `marketplace_*` SECURITY DEFINER RPCs — no client table writes; `marketplace_sales` and the acquisition ledger stay append-only. **Provenance lock:** a copy acquired with tokens can never be resold for USD (`acquired_currency` stamp) — free token emission must never reach USD. The USD lane opens only via `marketplace_usd_lane` (founder gate) AND settles per `battle_payments_mode`; USD sales never touch `token_transactions` (Rule 33). A listed chit is HELD: escrowed out of holdings, ascension frozen, swap-retire blocked, self-mint slot still occupied.
 
 ## The game (v3 — "Moments" card-battler, canonical)
 > **v3 supersedes the v2.x 1v1 archetype-fighter model entirely.** The build path is `NORA_PLATFORMS_BUILD_SPEC_v3.md`
-> + phased tracker `NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md` (P0–P7). Backend owns ALL game logic; Arena is display-only/server-authoritative.
+> (P0–P6 shipped, migs 116–137; P7 remainder in PLAN.md). Backend owns ALL game logic; Arena is display-only/server-authoritative.
 
 Each player has **Life** (default 30), builds a **lean deck** (size 20, max 2 copies/chit) of **moment chits**, and on
 their turn spends **Aura** (auto-ramp +1/turn to a cap of 10, refills each turn, **no land cards**) to summon chit
@@ -115,6 +116,12 @@ ordered `battle_events`; the client computes nothing.
   polls/stat-multipliers go DORMANT under v3** (P7). Stat sheets are cosmetic-only in the card-battler.
 - **Emergency Fund** (`/emergency-fund`, `ubi_*`): community mutual-aid pool, sim mode. Contribute → AI privately evaluates request → random contributor panel votes → Stripe Treasury disburses. Platform holds zero funds.
 - **Licensing Marketplace** (`/licenses`, `lkn_*`): Right of Publicity licensing; now also the rail for **premium chit packs**. Buyers purchase priced tiers governed by toggle-driven templates → append-only `lkn_agreements` (Hard Rule 29). Public registry `/license/:id` (no PII). Verification REST API `GET api.noraplatforms.com/v1/verify`, X-NORA-API-Key auth, rate-limited (Hard Rule 31), ECDSA P-256 signed (Hard Rule 32). License IDs `LKN-[year]-[8 chars]`. Payments sim-mode (`LKN_PAYMENTS=sim`).
+- **Chit marketplace** (`marketplace_*` tables, migs 153–156; spec `NORA_PLATFORMS_MARKETPLACE_SPEC.md`): public
+  **fixed-price** resale of minted moment chits. Token lane LIVE (config prices per tier F–S; A/S fee **burned**);
+  USD lane built like-live but **OFF** behind `marketplace_usd_lane` (founder gate) with KYC-on-USD + the
+  **provenance lock** (token-bought → token-resale-only). RPC-only writes; listing = escrow on the acquisition
+  ledger; ascension freezes while listed. Web-only surface (`/market`, M3 pending); mobile deep-links. Hard Rule 40.
+  Distinct from the LEGACY powerup marketplace (`chit-marketplace-*` edge fns over `battle_chit_definitions` — HR27).
 
 ## Deprecated / retired by v3 (archive, don't drop)
 - **The 1v1 archetype-fighter model**: the 6-player turn-based Battle resolver, **D&D six-stat characters**, per-archetype
@@ -151,8 +158,11 @@ Everything queued in PLAN.md must respect these, in addition to the Hard Rules a
 - Minting + Match Cut spec (web minting, consent/moderation stack, templates, wager mode): **NORA_PLATFORMS_MINTING_MATCHCUT_SPEC.md**
 - Minting workflow v2 (device-clip upload + trimmer, V2V middle, AGNOSTIC plates + bridge stitch — **governs where it conflicts with the two specs above**; naming: its "battle_chits" = `moment_chits`): **Minting_Workflow.md**
 - Cinematic Engine spec (anchor plates + motion prompts + Seedance/Segmind generation; supersedes the anchor-plate doc; §4 prompt grammar + moderation stack still govern under v2): **NORA_PLATFORMS_CINEMATIC_ENGINE_SPEC.md**
-- v3 phased implementation tracker (the *how/when*, P0–P7, with repo-grounded reconciliation): **NORA_PLATFORMS_v3_IMPLEMENTATION_PLAN.md**
-- Where we're going, with build checklists: **PLAN.md**
+- Chit marketplace spec (fixed-price, token-first; M1+M2 shipped, M3+ queued): **NORA_PLATFORMS_MARKETPLACE_SPEC.md**
+- Effect system: design principles **NORA_CHIT_EFFECT_DESIGN_FRAMEWORK.md** · reactive-depth roadmap
+  **NORA_INTERACTION_LAYER_SPEC.md** (the live Wave-1 library is the DB `effect_templates`; design record in ARCHIVE)
+- Where we're going, with build checklists (incl. the v3 P7 remainder): **PLAN.md**
+- Doc map / entry point for a new agent: **README.md**
 - History, scoring formulas, DB schemas, infra (edge fns / pg_cron / routes), Arena testing, deploy runbooks,
   deprecated Campaigns framework, redesign migration ledger: **ARCHIVE.md**
 - Arena + Battle mobile app lives in a separate repo (`arunernorainvestments-cmd/nora-arena`, its own CLAUDE.md). Shares this backend. Cross-repo contract + open decisions: **RECONCILIATION.md**.
