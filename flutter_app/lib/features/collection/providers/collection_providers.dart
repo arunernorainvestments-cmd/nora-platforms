@@ -135,3 +135,49 @@ final myCollectionProvider =
     return CollectionChit.fromRow(m, listingId: listingByChit[m['id']]);
   }).toList();
 });
+
+/// Where the signed-in user stands with the weekly ascension refresh
+/// (migs 136/157). Reads their own `chit_ascension_log` (RLS: select-own) for
+/// the cooldown and `ascension_review_queue` for held big jumps.
+class AscensionStatus {
+  const AscensionStatus({this.lastRefreshedAt, this.pendingReviewCount = 0});
+
+  final DateTime? lastRefreshedAt;
+
+  /// Chits held in the manual review queue (≥3-rank jumps) awaiting approval.
+  final int pendingReviewCount;
+
+  DateTime? get nextRefreshAt =>
+      lastRefreshedAt?.add(const Duration(days: 7));
+
+  bool get canRefresh =>
+      nextRefreshAt == null || nextRefreshAt!.isBefore(DateTime.now());
+}
+
+final ascensionStatusProvider =
+    FutureProvider.autoDispose<AscensionStatus>((ref) async {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return const AscensionStatus();
+  final client = Supabase.instance.client;
+
+  final log = await client
+      .from('chit_ascension_log')
+      .select('refreshed_at')
+      .eq('user_id', user.id)
+      .order('refreshed_at', ascending: false)
+      .limit(1)
+      .maybeSingle();
+
+  final pending = await client
+      .from('ascension_review_queue')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('status', 'pending');
+
+  return AscensionStatus(
+    lastRefreshedAt: log == null
+        ? null
+        : DateTime.tryParse((log['refreshed_at'] ?? '').toString()),
+    pendingReviewCount: (pending as List).length,
+  );
+});

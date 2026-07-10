@@ -22,9 +22,10 @@
 // deterministic metadata; MODERATION_MODE governs the moderation layer separately.
 // Deployed --no-verify-jwt (ES256 project); auth via supabase.auth.getUser().
 
-import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { moderationConfigFromEnv, preGenModerate } from '../_shared/moderation.ts';
-import { parsePostUrl, type ParsedSource, type Platform } from '../_shared/source_urls.ts';
+import { parsePostUrl } from '../_shared/source_urls.ts';
+import { fetchSourceMeta, type SourceMeta } from '../_shared/platform_meta.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': 'https://noraplatforms.com',
@@ -36,14 +37,6 @@ const json = (body: unknown, status = 200) =>
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
-
-interface SourceMeta {
-  externalId: string;
-  handle: string;            // creator handle → moments.creator_handle / attribution
-  thumbnailUrl: string | null;
-  engagement: number;        // tier signal (Hard Rule 34: tier derives from this)
-  title: string;             // text context for moderation
-}
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
@@ -155,181 +148,5 @@ Deno.serve(async (req: Request): Promise<Response> => {
   });
 });
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Live ingest — official APIs, ownership-checked (never scraping)
-// ─────────────────────────────────────────────────────────────────────────────
-
-type FetchOutcome =
-  | { ok: true; meta: SourceMeta }
-  | { ok: false; status: number; error: string; detail?: string };
-
-interface Connection {
-  id: string;
-  platform_user_id: string;
-  platform_username: string | null;
-  access_token: string;
-  refresh_token: string | null;
-  token_expires_at: string | null;
-}
-
-async function fetchSourceMeta(
-  db: SupabaseClient, parsed: ParsedSource, conn: Connection,
-): Promise<FetchOutcome> {
-  const token = await freshAccessToken(db, parsed.platform, conn);
-  if (!token) {
-    return { ok: false, status: 403, error: 'platform_token_expired', detail: `Re-link your ${parsed.platform} account` };
-  }
-
-  try {
-    if (parsed.platform === 'youtube') return await fetchYouTube(parsed, conn, token);
-    if (parsed.platform === 'tiktok') return await fetchTikTok(parsed, conn, token);
-    return await fetchInstagram(parsed, token);
-  } catch (err) {
-    console.error(`moment-ingest ${parsed.platform} fetch failed:`, err);
-    return { ok: false, status: 502, error: 'source_fetch_failed' };
-  }
-}
-
-async function fetchYouTube(parsed: ParsedSource, conn: Connection, token: string): Promise<FetchOutcome> {
-  const res = await fetch(
-    `https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&id=${encodeURIComponent(parsed.externalId)}`,
-    { headers: { Authorization: `Bearer ${token}` } },
-  );
-  if (res.status === 429) { await res.body?.cancel(); return { ok: false, status: 429, error: 'source_rate_limited' }; }
-  if (!res.ok) return { ok: false, status: 502, error: 'source_fetch_failed', detail: `youtube ${res.status}` };
-  const data = await res.json();
-  const video = data.items?.[0];
-  if (!video) return { ok: false, status: 404, error: 'post_not_found' };
-  // Ownership: the video's channel must be the OAuth-linked channel.
-  if (video.snippet?.channelId !== conn.platform_user_id) {
-    return { ok: false, status: 403, error: 'not_your_post', detail: 'The video belongs to a different channel' };
-  }
-  const thumbs = video.snippet?.thumbnails ?? {};
-  const thumb = thumbs.maxres?.url ?? thumbs.high?.url ?? thumbs.default?.url ?? null;
-  return {
-    ok: true,
-    meta: {
-      externalId: parsed.externalId,
-      handle: `@${video.snippet?.channelTitle ?? conn.platform_username ?? 'unknown'}`,
-      thumbnailUrl: thumb,
-      engagement: Number(video.statistics?.viewCount ?? 0),
-      title: `${video.snippet?.title ?? ''}\n${video.snippet?.description ?? ''}`.slice(0, 2000),
-    },
-  };
-}
-
-async function fetchTikTok(parsed: ParsedSource, conn: Connection, token: string): Promise<FetchOutcome> {
-  // Display API video.query returns ONLY the authorized user's own videos —
-  // an empty result for this id IS the ownership rejection.
-  const res = await fetch(
-    'https://open.tiktokapis.com/v2/video/query/?fields=id,title,cover_image_url,view_count,like_count',
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filters: { video_ids: [parsed.externalId] } }),
-    },
-  );
-  if (res.status === 429) { await res.body?.cancel(); return { ok: false, status: 429, error: 'source_rate_limited' }; }
-  if (!res.ok) return { ok: false, status: 502, error: 'source_fetch_failed', detail: `tiktok ${res.status}` };
-  const data = await res.json();
-  const video = data.data?.videos?.[0];
-  if (!video) return { ok: false, status: 403, error: 'not_your_post', detail: 'The video is not on your linked TikTok account' };
-  return {
-    ok: true,
-    meta: {
-      externalId: parsed.externalId,
-      handle: `@${conn.platform_username ?? 'unknown'}`,
-      thumbnailUrl: video.cover_image_url ?? null,
-      engagement: Number(video.view_count ?? 0),
-      title: String(video.title ?? '').slice(0, 2000),
-    },
-  };
-}
-
-async function fetchInstagram(parsed: ParsedSource, token: string): Promise<FetchOutcome> {
-  // me/media returns only the authorized professional account's media — matching
-  // the permalink shortcode against it IS the ownership check.
-  let url: string | null =
-    'https://graph.instagram.com/v23.0/me/media' +
-    '?fields=id,permalink,media_url,thumbnail_url,like_count,comments_count,caption,username&limit=100' +
-    `&access_token=${encodeURIComponent(token)}`;
-  interface IgMedia {
-    id?: string; permalink?: string; media_url?: string; thumbnail_url?: string;
-    like_count?: number; comments_count?: number; caption?: string; username?: string;
-  }
-  for (let page = 0; page < 3 && url; page++) {
-    const res: Response = await fetch(url);
-    if (res.status === 429) { await res.body?.cancel(); return { ok: false, status: 429, error: 'source_rate_limited' }; }
-    if (!res.ok) return { ok: false, status: 502, error: 'source_fetch_failed', detail: `instagram ${res.status}` };
-    const data: { data?: IgMedia[]; paging?: { next?: string } } = await res.json();
-    for (const media of data.data ?? []) {
-      if (typeof media.permalink === 'string' && media.permalink.includes(`/${parsed.externalId}/`)) {
-        return {
-          ok: true,
-          meta: {
-            externalId: media.id ?? parsed.externalId,
-            handle: `@${media.username ?? 'unknown'}`,
-            thumbnailUrl: media.thumbnail_url ?? media.media_url ?? null,
-            engagement: Number(media.like_count ?? 0) + Number(media.comments_count ?? 0),
-            title: String(media.caption ?? '').slice(0, 2000),
-          },
-        };
-      }
-    }
-    url = data.paging?.next ?? null;
-  }
-  return { ok: false, status: 403, error: 'not_your_post', detail: 'The post is not on your linked Instagram account' };
-}
-
-// ── token refresh (youtube/tiktok expire hourly-ish; instagram long-lived) ──────
-async function freshAccessToken(
-  db: SupabaseClient, platform: Platform, conn: Connection,
-): Promise<string | null> {
-  const expired = conn.token_expires_at !== null &&
-    new Date(conn.token_expires_at).getTime() < Date.now() + 60_000;
-  if (!expired) return conn.access_token;
-  if (!conn.refresh_token) return platform === 'instagram' ? conn.access_token : null;
-
-  let res: Response;
-  if (platform === 'youtube') {
-    res = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: Deno.env.get('YOUTUBE_CLIENT_ID') ?? '',
-        client_secret: Deno.env.get('YOUTUBE_CLIENT_SECRET') ?? '',
-        refresh_token: conn.refresh_token,
-        grant_type: 'refresh_token',
-      }),
-    });
-  } else if (platform === 'tiktok') {
-    res = await fetch('https://open.tiktokapis.com/v2/oauth/token/', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_key: Deno.env.get('TIKTOK_CLIENT_KEY') ?? '',
-        client_secret: Deno.env.get('TIKTOK_CLIENT_SECRET') ?? '',
-        refresh_token: conn.refresh_token,
-        grant_type: 'refresh_token',
-      }),
-    });
-  } else {
-    return conn.access_token; // instagram long-lived tokens refresh out-of-band
-  }
-
-  if (!res.ok) {
-    console.warn(`moment-ingest ${platform} token refresh failed: ${res.status}`);
-    await res.body?.cancel();
-    return null;
-  }
-  const tokens = await res.json();
-  const expiresAt = tokens.expires_in
-    ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
-    : null;
-  await db.from('platform_connections').update({
-    access_token: tokens.access_token,
-    refresh_token: tokens.refresh_token ?? conn.refresh_token,
-    token_expires_at: expiresAt,
-  }).eq('id', conn.id);
-  return tokens.access_token as string;
-}
+// Live ingest readers (official APIs, ownership-checked, token refresh) live in
+// _shared/platform_meta.ts — shared with chit-ascension's engagement re-read.
