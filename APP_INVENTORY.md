@@ -51,7 +51,7 @@ The game pivot means some belong to Unity (nora-arena), not web — noted per ro
 | **Deck builder** — `decks`/`deck_chits`, `deck_set_chits`, `deck_validate` (mig 118) | No deck-builder UI anywhere. Without it no real (non-test) CCG match can be entered by a user. | Unity primarily; a minimal web deck-builder would unblock web testing + P7's deck-entry e2e |
 | **Barter** — `chit_barter_create_offer/accept/cancel` (mig 119) | No trade UI (offer/accept handshake, KYC popup on licensed crossover) | Web (companion) or Unity — decide |
 | **Premium chit packs** — `chit_packs`/`chit_pack_grant` on lkn rail (mig 120) | No pack storefront; purchase wiring was deferred to P5 anyway | Web licensing surface, post-G-MON |
-| **Tier ascension** — `chit_ascension_refresh` (mig 136, ≤1/7d) | No "Refresh my chit" button / tier-up celebration | Web collection + Unity |
+| **Tier ascension** — `chit_ascension_refresh` (mig 136, ≤1/7d) | ✅ **Web SHIPPED 2026-07-10** — mig 157 (client lockdown + detail-returning refresh) + `chit-ascension` edge fn (live engagement re-read) + `/collection` check-for-tier-ups w/ celebration | Unity mirror remains |
 | **Wager matches** — `ccg_create_wager_match` + escrow/settle (mig 142) | No wager UI (stake pick, resolution reveal) | Unity (per spec §7 contract) |
 | **USD spectator bets** — `ccg_place_bet` + `battle_place_spectator_bet_usd` wrapper (migs 133/145) | Web spectate screen shows matches but has no bet sheet on the USD path | Unity is canonical (R3); web bet sheet optional |
 | **`profiles.avatar_loadout`** (mig 145) | No web Dressing Room (by design — Unity owns it) | Unity ✓ (leave web alone) |
@@ -64,7 +64,7 @@ The game pivot means some belong to Unity (nora-arena), not web — noted per ro
 |---|---|---|
 | Battle spectate (`/battle/spectate/:id`) | Verify event replay covers the full Wave-1 effect vocabulary (migs 151/152 added kinds after the screen shipped); render vibe if absent | effect events may render as unknown/no-op rows |
 | Mint wizard step 4 (Review) | Surface the server-selected effect + rules preview (PLAN Track B "Wave-1 polish") | user currently confirms a card without seeing its effect |
-| Collection | Ascension entry point (once §2 wiring lands); "in a deck" indicators when deck builder exists | inventory currently read-only beyond M3 sell/delist |
+| Collection | ✅ Ascension entry point shipped 2026-07-10; "in a deck" indicators when deck builder exists | inventory currently read-only beyond M3 sell/delist |
 | Hot Topic / explore | Move `celebrity_profile_screen.dart` into `hot_topic/`; seed `celebs.image_url` | ARCHIVE known gaps 1+4 |
 | Home | Remove dead `spotlightCreatorsProvider` (stale `spotlight_scores`) | ARCHIVE known gap 3 |
 | Wallet | Hot Topic simple-bet payout display parity (equal-split vs proportional — ARCHIVE gap 5) if product wants it changed | consistency |

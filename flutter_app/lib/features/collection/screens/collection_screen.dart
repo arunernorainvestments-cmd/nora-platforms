@@ -6,6 +6,7 @@ import '../../../core/widgets/card_face.dart';
 import '../../market/providers/market_providers.dart';
 import '../../wallet/providers/wallet_providers.dart';
 import '../providers/collection_providers.dart';
+import '../services/ascension_service.dart';
 
 /// "My BattleChits" — the minted moment chits the user owns. This is where a
 /// freshly minted card lands after the mint wizard finalizes it.
@@ -21,6 +22,7 @@ class CollectionScreen extends ConsumerWidget {
         backgroundColor: AppTheme.background,
         title: const Text('My BattleChits'),
         actions: [
+          const _AscensionAction(),
           IconButton(
             tooltip: 'Chit Market',
             icon: const Icon(Icons.storefront_outlined),
@@ -251,6 +253,206 @@ class _MarketActionsState extends ConsumerState<_MarketActions> {
       ref.invalidate(myListingsProvider);
       ref.invalidate(tokenBalanceProvider);
     }
+  }
+}
+
+/// The weekly "check for tier-ups" action (migs 136/157 — the viral upgrade).
+/// Re-reads the linked posts' live engagement server-side and ascends any chit
+/// whose moment has crossed a tier threshold; once per 7 days.
+class _AscensionAction extends ConsumerStatefulWidget {
+  const _AscensionAction();
+
+  @override
+  ConsumerState<_AscensionAction> createState() => _AscensionActionState();
+}
+
+class _AscensionActionState extends ConsumerState<_AscensionAction> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final status = ref.watch(ascensionStatusProvider).valueOrNull;
+    final pending = status?.pendingReviewCount ?? 0;
+    return IconButton(
+      tooltip: pending > 0
+          ? 'Check for tier-ups ($pending awaiting review)'
+          : 'Check for tier-ups',
+      icon: _busy
+          ? const SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(strokeWidth: 2))
+          : const Icon(Icons.trending_up),
+      onPressed: _busy ? null : _checkForTierUps,
+    );
+  }
+
+  Future<void> _checkForTierUps() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final status = ref.read(ascensionStatusProvider).valueOrNull;
+    if (status != null && !status.canRefresh) {
+      messenger.showSnackBar(SnackBar(
+          content: Text(
+              'Next tier-up check unlocks ${_when(status.nextRefreshAt!)}.'),
+          backgroundColor: AppTheme.surface));
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Check for tier-ups?',
+            style: TextStyle(color: AppTheme.textPrimary, fontSize: 17)),
+        content: const Text(
+          'This re-reads your posts\' live engagement and ascends any '
+          'BattleChit whose moment has kept going viral. Tiers only ever go '
+          'up, and you can check once every 7 days.',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Check now')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _busy = true);
+    try {
+      final result = await AscensionService.refresh();
+      if (!mounted) return;
+      setState(() => _busy = false);
+      if (result.anythingHappened) {
+        ref.invalidate(myCollectionProvider);
+        await _showTierUps(result);
+      } else {
+        messenger.showSnackBar(SnackBar(
+            content: Text(result.detail ??
+                'No tier-ups yet — keep sharing your moment!'),
+            backgroundColor: AppTheme.surface));
+      }
+    } on AscensionCooldownException catch (e) {
+      if (mounted) setState(() => _busy = false);
+      messenger.showSnackBar(SnackBar(
+          content: Text(e.nextRefreshAt == null
+              ? 'Ascension refresh is available once per 7 days.'
+              : 'Next tier-up check unlocks ${_when(e.nextRefreshAt!)}.'),
+          backgroundColor: AppTheme.surface));
+    } catch (e) {
+      if (mounted) setState(() => _busy = false);
+      messenger.showSnackBar(SnackBar(
+          content: Text('$e'), backgroundColor: AppTheme.danger));
+    } finally {
+      ref.invalidate(ascensionStatusProvider);
+    }
+  }
+
+  Future<void> _showTierUps(AscensionResult result) {
+    return showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: AppTheme.surface,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 28, 24, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (result.tierUps.isNotEmpty) ...[
+                const Icon(Icons.auto_awesome, color: Colors.amber, size: 44),
+                const SizedBox(height: 10),
+                const Text('GONE VIRAL!',
+                    style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.5)),
+                const SizedBox(height: 4),
+                Text(
+                  result.tierUps.length == 1
+                      ? 'Your BattleChit ascended!'
+                      : '${result.tierUps.length} BattleChits ascended!',
+                  style: const TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                for (final up in result.tierUps) _tierUpRow(up, live: true),
+              ],
+              if (result.queuedForReview.isNotEmpty) ...[
+                if (result.tierUps.isNotEmpty) const SizedBox(height: 16),
+                const Text('Held for review',
+                    style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 4),
+                const Text(
+                  'A jump this big gets a quick manual check first — the '
+                  'tier updates once it clears.',
+                  textAlign: TextAlign.center,
+                  style:
+                      TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                ),
+                const SizedBox(height: 10),
+                for (final up in result.queuedForReview)
+                  _tierUpRow(up, live: false),
+              ],
+              const SizedBox(height: 12),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: Text(
+                    result.tierUps.isNotEmpty ? 'Awesome!' : 'Got it'),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tierUpRow(AscensionTierUp up, {required bool live}) {
+    final accent = live ? Colors.amber : AppTheme.secondary;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Flexible(
+            child: Text(up.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600)),
+          ),
+          const SizedBox(width: 10),
+          Text('Tier ${up.fromTier}',
+              style:
+                  const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: Icon(Icons.arrow_forward, size: 14, color: accent),
+          ),
+          Text('Tier ${up.toTier}',
+              style: TextStyle(
+                  color: accent, fontSize: 14, fontWeight: FontWeight.w800)),
+        ],
+      ),
+    );
+  }
+
+  String _when(DateTime at) {
+    final local = at.toLocal();
+    final now = DateTime.now();
+    final days = local.difference(now).inDays;
+    final clock = TimeOfDay.fromDateTime(local).format(context);
+    if (days < 1 && local.day == now.day) return 'today at $clock';
+    return 'on ${local.month}/${local.day} at $clock';
   }
 }
 

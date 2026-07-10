@@ -51,9 +51,13 @@ timestamped pointer so the queue isn't lost.)
 1. **Browser-verify the marketplace loop end-to-end** — mint → Sell from collection → buy with a second
    account → delist. Everything is analyze/PostgREST/prod-smoke-verified only; no live listing has ever
    been created through the UI. Also re-verify a fresh mint now that effects/rules populate (carried over).
-2. **Ascension has NO user surface** — `chit_ascension_refresh` (mig 136, the "viral upgrade" loop) has
-   zero Dart callers. Users cannot tier-up their cards. Needs a Refresh button + tier-up celebration on
-   `/collection` (and mirrors into Unity).
+2. **Ascension has NO user surface** — ✅ web half SHIPPED 2026-07-10: mig 157 (locks down the
+   never-REVOKEd `moment_chit_rederive`/`chit_ascension_refresh`/`ccg_create_match`/
+   `ccg_create_outcome_market` — the first was a live HR34 tamper vector — and makes the refresh return
+   per-chit detail) + new `chit-ascension` edge fn (the live engagement re-read that mig 136 always
+   assumed but nothing performed; readers shared with moment-ingest via `_shared/platform_meta.ts`) +
+   `/collection` check-for-tier-ups button w/ tier-up celebration + review-queue/cooldown states.
+   Unity mirror remains (same edge fn — RECONCILIATION).
 3. **Dead-code deletions (zero risk)** — `features/campaigns/` (~4k lines, routes already redirect to
    /plan), `features/discover/`, `features/notifications/` (no importers), `spotlightCreatorsProvider`.
    One PR, analyze-clean.
