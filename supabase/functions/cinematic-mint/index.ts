@@ -16,6 +16,7 @@ import {
   assembleMotionPrompt, familyAction, illustrationPrompt, sanitizeSubjectDesc,
   selectTemplate, TIER_INTENSITY, type Family, type Tier,
 } from '../_shared/cinematic_directives.ts';
+import { moderationConfigFromEnv, preGenModerate } from '../_shared/moderation.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': 'https://noraplatforms.com',
@@ -62,6 +63,36 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: 'Moment has not passed pre-generation moderation' }, 409);
   }
   if (moment.minted_chit_id) return json({ error: 'Moment already minted' }, 409);
+
+  // ── spend guards (BEFORE any generation — each mint is paid provider calls) ───────
+  // Guard 1: a generation for this moment already awaits a moderation verdict →
+  // RESUME it (re-screen the stored media + complete) instead of generating again.
+  // Without this, every re-click while a verdict is pending would burn another paid
+  // illustration + cutscene; the resume path costs no provider calls at all.
+  // Also resumes 'moderation_approved' rows whose completion failed/never ran (e.g.
+  // a manual verdict applied after a screening outage) — straight to complete.
+  const { data: pendingGens } = await db.from('cinematic_generations')
+    .select('*').eq('moment_id', moment_id)
+    .in('status', ['generated', 'moderation_approved'])
+    .order('created_at', { ascending: false }).limit(1);
+  const resumeGen = !body.rerun_of_generation_id && pendingGens?.[0] ? pendingGens[0] : null;
+
+  // Guard 2: per-user daily generation cap (bug loops, multi-tab spam, abuse).
+  // A resume makes no provider calls, so it does not consume the allowance.
+  if (!resumeGen) {
+    const dailyCap = Math.max(1, Number(Deno.env.get('CINEMATIC_DAILY_CAP') ?? '6'));
+    const { count: dayCount } = await db.from('cinematic_generations')
+      .select('id, moments!inner(owner_user_id)', { count: 'exact', head: true })
+      .eq('moments.owner_user_id', user.id)
+      .gte('created_at', new Date(Date.now() - 24 * 3600 * 1000).toISOString());
+    if ((dayCount ?? 0) >= dailyCap) {
+      console.warn(`cinematic-mint: daily cap hit for user ${user.id} (${dayCount}/${dailyCap})`);
+      return json({
+        error: 'generation_limit',
+        detail: `Daily card-generation limit reached (${dailyCap}). Try again tomorrow.`,
+      }, 429);
+    }
+  }
 
   // ── one active self-minted chit (minting spec P4) — fail fast, before generation ──
   // Occupied slot: the client must re-call with the explicit swap confirmation. The
@@ -136,94 +167,150 @@ Deno.serve(async (req: Request): Promise<Response> => {
     attempt = prev.attempt + 1;
   }
 
-  // ── illustration (card art; also the cutscene subject reference) ─────────────────
-  const illo = await generateIllustration(cfg, {
-    prompt: illustrationPrompt(subject_desc, family),
-    referenceImageUrl: moment.thumbnail_url ?? undefined,
-    seed,
-    width: 1024,   // portrait 4:5 card-art window — the app frames it, not 16:9
-    height: 1280,
-  });
-  if (!illo.ok) {
-    console.warn(`cinematic-mint illustration: ${illo.reason}`);
-    return json({ error: 'generation_unavailable', stage: 'illustration', reason: illo.reason }, illo.reason === 'rate_limited' ? 429 : 502);
-  }
-  const artPath = `moments/${moment_id}/card_art.png`;
-  const artUp = await db.storage.from('battle-media').upload(artPath, illo.bytes, {
-    contentType: illo.contentType, upsert: true,
-  });
-  if (artUp.error) return json({ error: 'card art store failed', detail: artUp.error.message }, 500);
-  const artUrl = db.storage.from('battle-media').getPublicUrl(artPath).data.publicUrl;
+  // ── generate, or resume the pending generation with no new provider spend ────────
+  let genId: string;
+  let artUrl: string;
+  let mp4Url: string;
+  let durationS: number;
+  let seedUsed: number;
 
-  // ── cutscene: bracketed by the plates, seeded, style-locked ──────────────────────
-  const fAction = familyAction(family, templateId);
-  const intensity = TIER_INTENSITY[tier as Tier];
-  // {VIDEO_DESC} is the attached clip's description (moment-clip-attach) — a VARIABLE
-  // slot for the V2V core only; the agnostic bridge templates carry no placeholder for
-  // it (Hard Rule 39). Absent (e.g. link-only ingest, no clip) → the slot collapses.
-  const videoDesc = (moment.clip_video_desc as string | null) ?? null;
-  const motionPrompt = assembleMotionPrompt(promptTpl.prompt_body, {
-    subjectDesc: subject_desc, familyAction: fAction, tierIntensity: intensity,
-    videoDesc,
-  });
-  const durationS = Math.round(((tpl?.duration_min_s ?? 4) + (tpl?.duration_max_s ?? 6)) / 2);
-  const cut = await generateCutscene(cfg, {
-    prompt: motionPrompt,
-    firstFrameUrl: plate.start_plate_url,
-    lastFrameUrl: plate.end_plate_url,
-    referenceImageUrl: artUrl,
-    durationS,
-    seed,
-  });
-  if (!cut.ok) {
-    console.warn(`cinematic-mint cutscene: ${cut.reason}`);
-    return json({ error: 'generation_unavailable', stage: 'cutscene', reason: cut.reason }, cut.reason === 'rate_limited' ? 429 : 502);
-  }
-  const mp4Path = `moments/${moment_id}/attempt${attempt}/cutscene.mp4`;
-  const mp4Up = await db.storage.from('battle-media').upload(mp4Path, cut.bytes, {
-    contentType: 'video/mp4', upsert: true,
-  });
-  if (mp4Up.error) return json({ error: 'cutscene store failed', detail: mp4Up.error.message }, 500);
-  const mp4Url = db.storage.from('battle-media').getPublicUrl(mp4Path).data.publicUrl;
+  if (resumeGen) {
+    genId = resumeGen.id as string;
+    artUrl = db.storage.from('battle-media')
+      .getPublicUrl(resumeGen.illustration_path as string).data.publicUrl;
+    mp4Url = db.storage.from('battle-media')
+      .getPublicUrl(resumeGen.mp4_path as string).data.publicUrl;
+    durationS = Math.round(((tpl?.duration_min_s ?? 4) + (tpl?.duration_max_s ?? 6)) / 2);
+    seedUsed = Number(resumeGen.generation_seed);
+    console.log(`cinematic-mint: resuming pending generation ${genId} (no provider calls)`);
+  } else {
+    // ── illustration (card art; also the cutscene subject reference) ───────────────
+    const illo = await generateIllustration(cfg, {
+      prompt: illustrationPrompt(subject_desc, family),
+      referenceImageUrl: moment.thumbnail_url ?? undefined,
+      seed,
+      width: 1024,   // portrait 4:5 card-art window — the app frames it, not 16:9
+      height: 1280,
+    });
+    if (!illo.ok) {
+      console.warn(`cinematic-mint illustration: ${illo.reason} status=${illo.status ?? ''} ${illo.detail ?? ''}`);
+      return json({
+        error: 'generation_unavailable', stage: 'illustration', reason: illo.reason,
+        provider_status: illo.status ?? null, detail: illo.detail ?? null,
+      }, illo.reason === 'rate_limited' ? 429 : 502);
+    }
+    const artPath = `moments/${moment_id}/card_art.png`;
+    const artUp = await db.storage.from('battle-media').upload(artPath, illo.bytes, {
+      contentType: illo.contentType, upsert: true,
+    });
+    if (artUp.error) return json({ error: 'card art store failed', detail: artUp.error.message }, 500);
+    artUrl = db.storage.from('battle-media').getPublicUrl(artPath).data.publicUrl;
 
-  // ── generation ledger row ─────────────────────────────────────────────────────────
-  const { data: gen, error: gErr } = await db.from('cinematic_generations').insert({
-    moment_id,
-    template_id: templateId,
-    anchor_plate_version: plate.version,
-    prompt_template_version: promptTpl.version,
-    subject_desc: sanitizeSubjectDesc(subject_desc),
-    video_desc: videoDesc,
-    family_action: fAction,
-    tier_intensity: intensity,
-    generation_seed: cut.seed,
-    render_tier: cfg.renderTier,
-    mode: cfg.mode,
-    attempt,
-    illustration_path: artPath,
-    mp4_path: mp4Path,
-  }).select('id').single();
-  if (gErr || !gen) return json({ error: 'ledger write failed', detail: gErr?.message }, 500);
+    // ── cutscene: bracketed by the plates, seeded, style-locked ────────────────────
+    const fAction = familyAction(family, templateId);
+    const intensity = TIER_INTENSITY[tier as Tier];
+    // {VIDEO_DESC} is the attached clip's description (moment-clip-attach) — a VARIABLE
+    // slot for the V2V core only; the agnostic bridge templates carry no placeholder for
+    // it (Hard Rule 39). Absent (e.g. link-only ingest, no clip) → the slot collapses.
+    const videoDesc = (moment.clip_video_desc as string | null) ?? null;
+    const motionPrompt = assembleMotionPrompt(promptTpl.prompt_body, {
+      subjectDesc: subject_desc, familyAction: fAction, tierIntensity: intensity,
+      videoDesc,
+    });
+    durationS = Math.round(((tpl?.duration_min_s ?? 4) + (tpl?.duration_max_s ?? 6)) / 2);
+    const cut = await generateCutscene(cfg, {
+      prompt: motionPrompt,
+      firstFrameUrl: plate.start_plate_url,
+      lastFrameUrl: plate.end_plate_url,
+      referenceImageUrl: artUrl,
+      durationS,
+      seed,
+    });
+    if (!cut.ok) {
+      console.warn(`cinematic-mint cutscene: ${cut.reason} status=${cut.status ?? ''} ${cut.detail ?? ''}`);
+      return json({
+        error: 'generation_unavailable', stage: 'cutscene', reason: cut.reason,
+        provider_status: cut.status ?? null, detail: cut.detail ?? null,
+      }, cut.reason === 'rate_limited' ? 429 : 502);
+    }
+    const mp4Path = `moments/${moment_id}/attempt${attempt}/cutscene.mp4`;
+    const mp4Up = await db.storage.from('battle-media').upload(mp4Path, cut.bytes, {
+      contentType: 'video/mp4', upsert: true,
+    });
+    if (mp4Up.error) return json({ error: 'cutscene store failed', detail: mp4Up.error.message }, 500);
+    mp4Url = db.storage.from('battle-media').getPublicUrl(mp4Path).data.publicUrl;
+
+    // ── generation ledger row ───────────────────────────────────────────────────────
+    const { data: gen, error: gErr } = await db.from('cinematic_generations').insert({
+      moment_id,
+      template_id: templateId,
+      anchor_plate_version: plate.version,
+      prompt_template_version: promptTpl.version,
+      subject_desc: sanitizeSubjectDesc(subject_desc),
+      video_desc: videoDesc,
+      family_action: fAction,
+      tier_intensity: intensity,
+      generation_seed: cut.seed,
+      render_tier: cfg.renderTier,
+      mode: cfg.mode,
+      attempt,
+      illustration_path: artPath,
+      mp4_path: mp4Path,
+    }).select('id').single();
+    if (gErr || !gen) return json({ error: 'ledger write failed', detail: gErr?.message }, 500);
+    genId = gen.id as string;
+    seedUsed = cut.seed;
+  }
 
   // ── post-gen moderation (mandatory — Hard Rule 39) ───────────────────────────────
-  // sim/auto: approve and continue. manual: stop here; a human verdict + a follow-up
-  // completion run the rest. Provider-side filtering is a bonus, never a substitute.
-  const moderation = Deno.env.get('CINEMATIC_MODERATION') ?? (cfg.mode === 'sim' ? 'auto' : 'manual');
-  if (moderation !== 'auto') {
-    return json({
-      status: 'pending_moderation', generation_id: gen.id,
-      detail: 'Post-generation moderation verdict required before the chit is created' +
-        (swapOf ? '; the swap is NOT executed yet — pass swap_of_chit_id again at completion' : ''),
-    }, 202);
+  // Modes (CINEMATIC_MODERATION): 'manual' = hold every generation for a human
+  // verdict; 'auto' = approve blind (sim/dev ONLY — sim media is a stub with nothing
+  // to screen); default in live = 'screen': sample frames of the ACTUAL generated MP4
+  // (stitch worker) and classify them with the same fail-closed classifier as pre-gen.
+  // Infra failure never approves — it holds for manual review (fail closed).
+  // Provider-side filtering is a bonus, never a substitute.
+  const moderation = Deno.env.get('CINEMATIC_MODERATION') ?? (cfg.mode === 'sim' ? 'auto' : 'screen');
+  const alreadyApproved = resumeGen?.status === 'moderation_approved';
+  if (!alreadyApproved) {
+    if (moderation === 'manual') {
+      return json({
+        status: 'pending_moderation', generation_id: genId,
+        detail: 'Post-generation moderation verdict required before the chit is created' +
+          (swapOf ? '; the swap is NOT executed yet — pass swap_of_chit_id again at completion' : ''),
+      }, 202);
+    }
+    if (moderation === 'screen') {
+      const screen = await screenCutsceneFrames(db, genId, mp4Url, durationS);
+      if (!screen.ok) {
+        // Fail CLOSED: status stays 'generated' → a human verdict is required.
+        console.warn(`cinematic-mint post-gen screen unavailable (${screen.detail}) — holding for manual review`);
+        return json({
+          status: 'pending_moderation', generation_id: genId,
+          detail: 'Automated screening was unavailable, so the cutscene is held for manual review' +
+            (swapOf ? '; the swap is NOT executed yet' : ''),
+        }, 202);
+      }
+      if (screen.verdict !== 'approved') {
+        const { error: rejErr } = await db.rpc('cinematic_moderation_verdict', {
+          p_generation_id: genId, p_approved: false, p_reason: screen.reason ?? screen.verdict,
+        });
+        if (rejErr) console.warn(`cinematic-mint: reject verdict write failed: ${rejErr.message}`);
+        return json({
+          error: 'moderation_rejected', generation_id: genId,
+          detail: 'The generated cutscene did not pass content moderation, so no card was ' +
+            'created. You can adjust the description and generate again.',
+        }, 422);
+      }
+    }
+    const { error: modErr } = await db.rpc('cinematic_moderation_verdict', {
+      p_generation_id: genId, p_approved: true, p_reason: null,
+    });
+    if (modErr) return json({ error: 'moderation verdict failed', detail: modErr.message }, 500);
   }
-  const { error: modErr } = await db.rpc('cinematic_moderation_verdict', {
-    p_generation_id: gen.id, p_approved: true, p_reason: null,
-  });
-  if (modErr) return json({ error: 'moderation verdict failed', detail: modErr.message }, 500);
 
   // ── complete: chit + cinematic fields + ownership; inactive until previewed ──────
   const { data: chitId, error: cErr } = await db.rpc('cinematic_complete_mint', {
-    p_generation_id: gen.id,
+    p_generation_id: genId,
     p_family: family,
     p_chit_type: chit_type,
     p_timing: effectTiming,
@@ -251,10 +338,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
   return json({
     status: 'pending_preview',
     chit_id: chitId,
-    generation_id: gen.id,
+    generation_id: genId,
     template_id: templateId,
     tier,
-    seed: cut.seed,
+    seed: seedUsed,
     // sim mode returns placeholder bytes (1x1 png / non-playable mp4 stub) — the client
     // shows an honest "renders when the cinematic engine is live" state instead of a
     // blank card window + dead <video>. Real art/video only when CINEMATIC_MODE=live.
@@ -266,6 +353,69 @@ Deno.serve(async (req: Request): Promise<Response> => {
     next: 'Play the preview battle, then call chit_record_preview + chit_finalize_preview',
   });
 });
+
+// Post-gen screening (Hard Rule 39): sample frames of the FINISHED cutscene via the
+// stitch worker (start / middle / last), sign them out of the private mint-staging
+// bucket, and classify with the shared fail-closed classifier. Infra failures return
+// ok:false (caller holds the generation for manual review — never approves); only a
+// definite content label (nsfw/violence/hate/minor_safety) returns a non-approved
+// verdict. With MODERATION_MODE=sim the classifier is the deterministic sim gate.
+const CONTENT_REJECT_REASONS = new Set(['nsfw', 'graphic_violence', 'hate', 'minor_safety']);
+
+async function screenCutsceneFrames(
+  db: { storage: ReturnType<typeof createClient>['storage'] },
+  genId: string, mp4Url: string, durationS: number,
+): Promise<{ ok: true; verdict: string; reason?: string } | { ok: false; detail: string }> {
+  const workerUrl = Deno.env.get('STITCH_WORKER_URL');
+  const secret = Deno.env.get('STITCH_SECRET');
+  if (!workerUrl || !secret) return { ok: false, detail: 'stitch worker not configured' };
+
+  let res: Response;
+  try {
+    res = await fetch(`${workerUrl.replace(/\/$/, '')}/frames`, {
+      method: 'POST',
+      headers: { 'X-Stitch-Secret': secret, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        video_url: mp4Url,
+        times: [0.4, Math.max(0.8, durationS / 2), 'last'],
+        upload: { bucket: 'mint-staging', prefix: `postgen/${genId}` },
+      }),
+    });
+  } catch (e) {
+    return { ok: false, detail: `frames call failed: ${(e as Error).message}` };
+  }
+  if (!res.ok) {
+    let bodyTxt = '';
+    try { bodyTxt = (await res.text()).slice(0, 300); } catch { /* keep status only */ }
+    return { ok: false, detail: `frames HTTP ${res.status}: ${bodyTxt}` };
+  }
+
+  let framePaths: string[];
+  try {
+    const payload = await res.json();
+    framePaths = ((payload.frames ?? []) as { path: string }[])
+      .map((f) => String(f.path).replace(/^mint-staging\//, ''));
+  } catch {
+    return { ok: false, detail: 'frames response unparseable' };
+  }
+  if (framePaths.length === 0) return { ok: false, detail: 'no frames extracted' };
+
+  // The staging bucket is private — sign short-lived URLs for the classifier only.
+  const urls: string[] = [];
+  for (const p of framePaths) {
+    const { data: signed } = await db.storage.from('mint-staging').createSignedUrl(p, 600);
+    if (signed?.signedUrl) urls.push(signed.signedUrl);
+  }
+  if (urls.length === 0) return { ok: false, detail: 'could not sign frame urls' };
+
+  const verdict = await preGenModerate(moderationConfigFromEnv(), { imageUrls: urls });
+  // The classifier fails closed to 'rejected' on infra errors — for POST-gen that
+  // must mean "hold for a human", not a permanent reject of a clean generation.
+  if (verdict.verdict !== 'approved' && !CONTENT_REJECT_REASONS.has(verdict.reason ?? '')) {
+    return { ok: false, detail: `classifier unavailable: ${verdict.reason ?? 'unknown'}` };
+  }
+  return { ok: true, verdict: verdict.verdict, reason: verdict.reason };
+}
 
 // Remove every battle-media object under moments/<momentId> (card art + all
 // cutscene attempts). Storage list() marks folders with a null id.
