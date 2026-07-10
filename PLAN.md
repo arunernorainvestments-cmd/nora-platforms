@@ -1,5 +1,5 @@
 # NORA Platforms — PLAN.md
-# Where we're going. Last updated: 2026-07-08.
+# Where we're going. Last updated: 2026-07-10.
 # Rules for HOW to build any of this live in CLAUDE.md ("Building future work safely").
 # Full specs / schemas / build history for anything referenced here live in ARCHIVE.md.
 # Cross-repo (nora-arena) contract: RECONCILIATION.md. Doc map: README.md.
@@ -39,6 +39,42 @@
   `battle_payments_mode=sim` · `marketplace_usd_lane=FALSE`. Flipping any is a spend/creds/founder decision.
 
 **Active build tracks — see "Where we're going next."**
+
+---
+
+## 2026-07-10 — RESUME HERE: nora-stitch redeploy to a new GCP project (trial expired)
+
+Context: **CINEMATIC_MODE=live is ON and proven end-to-end** (PR #15, main `a2122f0`: real Seedance
+cutscene + card art generated, frame-reviewed, approved, completed into a chit via the new resume
+path). Spend guards shipped in `cinematic-mint`: pending-generation RESUME (zero provider calls on
+re-click), per-user daily cap (`CINEMATIC_DAILY_CAP`, default 6), post-gen **screen** moderation
+(stitch-worker frames → fail-closed classifier — Hard Rule 39). But the old GCP account's trial
+expired → the **`nora-stitch` Cloud Run worker is DOWN** (persistent 503). Until rewired, live mints
+generate fine and HOLD at "Held for safety review"; recovery = manual verdict
+(`SELECT cinematic_moderation_verdict('<gen-id>', true, NULL)`) + re-click Generate (free resume).
+
+Agreed plan (do in the Codespace session, not Gemini):
+1. **User prerequisite (browser):** billing account with a payment method on the NEW Google account.
+   Same Google account keeps YouTube OAuth on the OLD project untouched (OAuth needs no billing —
+   but verify YT connect still works, and keep the old project alive so the OAuth client survives).
+2. Install the gcloud CLI in the Codespace; user runs `! gcloud auth login` (new account).
+3. Agent then: `gcloud projects create` → link billing → enable run/cloudbuild/artifactregistry →
+   generate `STITCH_SECRET` (`openssl rand -hex 32`, NO trailing newline — the v1 gotcha) → deploy
+   from repo root: `gcloud run deploy nora-stitch --source workers/stitch --project <NEW_ID>
+   --region us-east1 --allow-unauthenticated --memory 2Gi --cpu 2 --timeout 300 --max-instances 3
+   --min-instances 0 --set-env-vars SUPABASE_URL=https://cceisywxwhgljdpisjrl.supabase.co,
+   STITCH_SECRET=…,SUPABASE_SERVICE_ROLE_KEY=…` (service key via the Supabase management API
+   `api-keys?reveal=true` with the user's access token — ask the user for a fresh token).
+4. Verify `GET <new-url>/status` → `{"ok":true}` (NOT /healthz — Cloud Run reserves it).
+5. Update Supabase edge secrets `STITCH_WORKER_URL` + `STITCH_SECRET` (management API POST /secrets).
+6. **Free E2E test:** re-call `cinematic-mint` as the cinematic-smoke user on a moment holding a
+   'generated' row → resume re-screens via the new worker + completes, zero Segmind spend.
+   (Pattern: tools/cinematic/smoke_mint.ts; smoke pwd = 'smoke-' + last 12 of service key.)
+
+Also queued from the 2026-07-10 live test: flip `MODERATION_MODE=live` before public launch (pre-gen
++ screen classifier currently sim; ANTHROPIC_API_KEY already set); `CINEMATIC_RENDER_TIER` stays
+`fast` (720p) until final-quality flip; card-art tuning (a Nike swoosh slipped past "no logos"; art
+comes letterboxed in a white square canvas — want an aspect-ratio param or crop step).
 
 ---
 
