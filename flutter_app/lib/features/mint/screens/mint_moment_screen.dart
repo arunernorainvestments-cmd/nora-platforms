@@ -9,6 +9,7 @@ import '../../market/providers/market_providers.dart';
 import '../services/mint_service.dart';
 import '../services/trim_interop.dart';
 import '../widgets/clip_trimmer.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 /// "Create Your BattleChit" — minting v2 §1 (Minting_Workflow.md) end to end.
 ///
@@ -255,6 +256,15 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         await _confirmSwap(res['occupied_chit_id']?.toString());
         return;
       }
+      // Held for post-generation safety review (Hard Rule 39): the cutscene was
+      // generated but a moderation verdict is still needed — terminal for now.
+      if (res['status'] == 'pending_moderation') {
+        setState(() {
+          _mint = res;
+          _step = _Step.done;
+        });
+        return;
+      }
       // Pull the full chit row (tier-derived stats) so the preview shows a
       // complete card face — best-effort; the preview still renders without it.
       Map<String, dynamic>? chit;
@@ -450,6 +460,7 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/battle'),
         backgroundColor: AppTheme.background,
         title: const Text('Create Your BattleChit'),
       ),
@@ -914,9 +925,11 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
   }
 
   Widget _buildDoneStep() {
-    // Terminal states: finalized chit, or a flagged/rejected attach.
+    // Terminal states: finalized chit, held-for-review generation, or a
+    // flagged/rejected attach.
     final status = _attachResult?['clip_status']?.toString();
-    final finalized = _step == _Step.done && _mint != null;
+    final heldForReview = _mint?['status'] == 'pending_moderation';
+    final finalized = _step == _Step.done && _mint != null && !heldForReview;
     final (icon, color, title, detail) = finalized
         ? (
             Icons.check_circle,
@@ -925,7 +938,16 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
             'It\'s in your collection now. Preview it in a practice battle to lock '
                 'it into your deck.',
           )
-        : switch (status) {
+        : heldForReview
+            ? (
+                Icons.hourglass_top,
+                AppTheme.secondary,
+                'Held for safety review',
+                'Your cutscene was generated and is getting a quick safety check '
+                    'before the card is created. Check back soon — no need to '
+                    'generate again.',
+              )
+            : switch (status) {
             'similarity_flagged' => (
                 Icons.hourglass_top,
                 AppTheme.secondary,

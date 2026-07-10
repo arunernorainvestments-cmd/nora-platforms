@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../licensing_format.dart';
 import '../providers/licensing_providers.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 /// Public, no-auth page for any license. The human-readable equivalent of the
 /// verification API response — no PII. Served at /license/:licenseId.
@@ -19,6 +20,7 @@ class LicensePublicRecordScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/licenses'),
         backgroundColor: AppTheme.surface,
         title: const Text('License Record',
             style: TextStyle(color: AppTheme.textPrimary)),

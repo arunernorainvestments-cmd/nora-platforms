@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../licensing_format.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 /// Multi-step form for licensors to create a marketplace listing.
 /// On submit: lkn-create-listing → lkn-submit-template per tier (the toggle
@@ -325,6 +326,7 @@ class _CreateListingScreenState extends ConsumerState<CreateListingScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/licenses'),
         backgroundColor: AppTheme.surface,
         title: Text('Create Listing · ${titles[_step]}',
             style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16)),

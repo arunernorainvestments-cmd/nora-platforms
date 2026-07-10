@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../providers/spectate_providers.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 /// Live spectator view of a NORA Arena (mobile) card-battler match.
 /// Everything shown here is the server-authoritative state (migration 147
@@ -26,6 +27,7 @@ class BattleSpectateScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/battle'),
         backgroundColor: Colors.transparent,
         elevation: 0,
         title: Row(children: [

@@ -7,6 +7,7 @@ import '../../../core/theme/app_theme.dart';
 import '../models/poll_models.dart';
 import '../providers/poll_providers.dart';
 import '../../../core/utils/device_fingerprint.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 class PollScreen extends ConsumerStatefulWidget {
   final String pollId;
@@ -118,6 +119,7 @@ class _PollScreenState extends ConsumerState<PollScreen> {
       appBar: widget.isEmbed
           ? null
           : AppBar(
+              leading: const NBackButton(),
               backgroundColor: AppTheme.surface,
               title: const Text('Weekly Poll',
                   style: TextStyle(color: AppTheme.textPrimary)),

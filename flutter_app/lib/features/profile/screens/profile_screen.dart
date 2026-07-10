@@ -152,6 +152,33 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  Future<void> _confirmSignOut(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Sign out?',
+            style: TextStyle(color: AppTheme.textPrimary)),
+        content: const Text('You can sign back in anytime.',
+            style: TextStyle(color: AppTheme.textSecondary)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await ref.read(authActionsProvider).signOut();
+    }
+  }
+
   Future<void> _saveProfile() async {
     setState(() { _isSaving = true; });
     try {
@@ -259,224 +286,298 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
 
           return SingleChildScrollView(
             padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ── Header ────────────────────────────────────────────────
-                Center(
-                  child: Column(
-                    children: [
-                      CircleAvatar(
-                        radius: 44,
-                        backgroundColor: AppTheme.primary,
-                        child: Text(
-                          avatarLetter,
-                          style: const TextStyle(
-                              fontSize: 32,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold),
+            child: Center(
+              child: ConstrainedBox(
+                // Keeps the page readable on wide desktop-web viewports
+                // instead of stretching every card edge to edge.
+                constraints: const BoxConstraints(maxWidth: 640),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // ── Identity header ───────────────────────────────────
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppTheme.cardGradientTop,
+                            AppTheme.cardGradientBottom,
+                          ],
                         ),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppTheme.cardBorder),
+                        boxShadow: AppTheme.cardShadow(),
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        displayUsername,
-                        style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimary),
+                      child: Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 34,
+                            backgroundColor: AppTheme.primary,
+                            child: Text(
+                              avatarLetter,
+                              style: const TextStyle(
+                                  fontSize: 26,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  displayUsername,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: AppTheme.textPrimary),
+                                ),
+                                const SizedBox(height: 2),
+                                Text(
+                                  email,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.textSecondary),
+                                ),
+                                if (profile.bio != null &&
+                                    profile.bio!.trim().isNotEmpty) ...[
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    profile.bio!,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                        fontSize: 12,
+                                        height: 1.4,
+                                        color: AppTheme.textSecondary),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        email,
-                        style: const TextStyle(
-                            fontSize: 13,
-                            color: AppTheme.textSecondary),
-                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // ── Quick actions ─────────────────────────────────────
+                    if (user != null) ...[
+                      Row(children: [
+                        Expanded(
+                          child: _QuickAction(
+                            icon: Icons.visibility_outlined,
+                            label: 'Preview Profile',
+                            color: AppTheme.primary,
+                            onTap: () => context.push('/u/$displayUsername'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _QuickAction(
+                            icon: Icons.emoji_events_outlined,
+                            label: 'Challenges',
+                            color: AppTheme.secondary,
+                            onTap: () => context.push('/challenges'),
+                          ),
+                        ),
+                      ]),
+                      if (profile.isMarketMaker) ...[
+                        const SizedBox(height: 8),
+                        Row(children: [
+                          Expanded(
+                            child: _QuickAction(
+                              icon: Icons.show_chart,
+                              label: 'Score Dashboard',
+                              color: AppTheme.secondary,
+                              onTap: () => context.push('/dashboard'),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _QuickAction(
+                              icon: Icons.rocket_launch_outlined,
+                              label: 'Promote',
+                              color: AppTheme.primary,
+                              onTap: () {
+                                final userId = Supabase
+                                    .instance.client.auth.currentUser?.id;
+                                if (userId == null) return;
+                                showPromotionsSheet(context,
+                                    targetUserId: userId);
+                              },
+                            ),
+                          ),
+                        ]),
+                      ],
+                      const SizedBox(height: 20),
                     ],
-                  ),
-                ),
-                const SizedBox(height: 12),
 
-                // ── Preview Profile button ─────────────────────────────────
-                if (user != null)
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () =>
-                          context.push('/u/$displayUsername'),
-                      icon: const Icon(Icons.visibility_outlined, size: 18),
-                      label: const Text('Preview Profile'),
+                    // ── Create Your BattleChit (the /mint workflow) ────────
+                    const BattleChitBanner(),
+                    const SizedBox(height: 20),
+
+                    // ── Badges shelf ──────────────────────────────────────
+                    if (user != null) ...[
+                      BadgesShelf(userId: user.id),
+                      const SizedBox(height: 20),
+                    ],
+
+                    // ── Market Maker section ──────────────────────────────
+                    // Show Get Started card only if user has no connected
+                    // platforms. Once they have connected platforms, keep the
+                    // dashboard so the toggle remains accessible even after
+                    // fully opting out.
+                    if (!profile.isMarketMaker && !hasConnectedPlatforms)
+                      _MarketMakerOptInCard(
+                        onGetStarted: () => _openMarketMakerSheet(context),
+                      )
+                    else
+                      _MarketMakerDashboard(
+                        tierAsync: tierAsync,
+                        username: displayUsername,
+                        isMarketMaker: profile.isMarketMaker,
+                        pendingOptOut: profile.pendingOptOut,
+                        isToggling: _isTogglingMarketMaker,
+                        onToggle: () => _toggleMarketMaker(context, profile),
+                      ),
+                    const SizedBox(height: 20),
+
+                    // ── Invite friends ────────────────────────────────────
+                    if (profile.referralCode != null) ...[
+                      _InviteFriendsCard(referralCode: profile.referralCode!),
+                      const SizedBox(height: 20),
+                    ],
+
+                    // ── Edit profile ──────────────────────────────────────
+                    Container(
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppTheme.cardBorder),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const _SectionTitle('Edit Profile'),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _displayNameController,
+                            decoration: const InputDecoration(
+                              labelText: 'Display Name',
+                              prefixIcon: Icon(Icons.person_outline,
+                                  color: AppTheme.textSecondary),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _bioController,
+                            maxLines: 3,
+                            decoration: const InputDecoration(
+                              labelText: 'Bio',
+                              prefixIcon: Icon(Icons.edit_note,
+                                  color: AppTheme.textSecondary),
+                              alignLabelWithHint: true,
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          const _SectionTitle('Creator Category'),
+                          const SizedBox(height: 4),
+                          const Text(
+                            'Select your primary category, then your specialty',
+                            style: TextStyle(
+                                color: AppTheme.textSecondary, fontSize: 12),
+                          ),
+                          const SizedBox(height: 12),
+                          _CategoryPicker(
+                            selectedCategory: _selectedCategory,
+                            selectedSubcategory: _selectedSubcategory,
+                            onCategoryChanged: (cat) => setState(() {
+                              _selectedCategory = cat;
+                              _selectedSubcategory = null;
+                            }),
+                            onSubcategoryChanged: (sub) =>
+                                setState(() => _selectedSubcategory = sub),
+                          ),
+                          const SizedBox(height: 16),
+                          ElevatedButton(
+                            onPressed: _isSaving ? null : _saveProfile,
+                            child: _isSaving
+                                ? const SizedBox(
+                                    height: 20,
+                                    width: 20,
+                                    child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white))
+                                : const Text('Save Changes'),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 28),
+
+                    // ── Sign out ──────────────────────────────────────────
+                    OutlinedButton.icon(
+                      onPressed: () => _confirmSignOut(context),
+                      icon: const Icon(Icons.logout, size: 18),
+                      label: const Text('Sign Out'),
                       style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.primary,
-                        side: const BorderSide(color: AppTheme.primary),
+                        foregroundColor: AppTheme.danger,
+                        side: BorderSide(
+                            color: AppTheme.danger.withValues(alpha: 0.6)),
+                        minimumSize: const Size(double.infinity, 48),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                     ),
-                  ),
-                const SizedBox(height: 16),
-
-                // ── Create Your BattleChit (the /mint workflow) ────────────
-                const BattleChitBanner(),
-                const SizedBox(height: 16),
-
-                // ── Badges shelf ──────────────────────────────────────────
-                if (user != null) ...[
-                  BadgesShelf(userId: user.id),
-                  const SizedBox(height: 4),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => context.push('/challenges'),
-                      icon: const Icon(Icons.emoji_events_outlined, size: 18),
-                      label: const Text('Challenges'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.secondary,
-                        side: const BorderSide(color: AppTheme.secondary),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-
-                // ── Market Maker section ──────────────────────────────────
-                // Show Get Started card only if user has no connected platforms.
-                // Once they have connected platforms, keep the dashboard so the
-                // toggle remains accessible even after fully opting out.
-                if (!profile.isMarketMaker && !hasConnectedPlatforms)
-                  _MarketMakerOptInCard(
-                    onGetStarted: () => _openMarketMakerSheet(context),
-                  )
-                else
-                  _MarketMakerDashboard(
-                    tierAsync: tierAsync,
-                    username: displayUsername,
-                    isMarketMaker: profile.isMarketMaker,
-                    pendingOptOut: profile.pendingOptOut,
-                    isToggling: _isTogglingMarketMaker,
-                    onToggle: () => _toggleMarketMaker(context, profile),
-                  ),
-                if (profile.isMarketMaker) ...[
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () => context.push('/dashboard'),
-                      icon: const Icon(Icons.show_chart, size: 18),
-                      label: const Text('Score Dashboard'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.secondary,
-                        side: const BorderSide(color: AppTheme.secondary),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        final userId =
-                            Supabase.instance.client.auth.currentUser?.id;
-                        if (userId == null) return;
-                        showPromotionsSheet(context, targetUserId: userId);
-                      },
-                      icon: const Icon(Icons.rocket_launch_outlined, size: 18),
-                      label: const Text('Promote'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppTheme.primary,
-                        side: const BorderSide(color: AppTheme.primary),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 24),
-
-                // ── Invite friends ────────────────────────────────────────
-                if (profile.referralCode != null)
-                  _InviteFriendsCard(referralCode: profile.referralCode!),
-                const SizedBox(height: 24),
-
-                // ── Edit profile ──────────────────────────────────────────
-                const _SectionTitle('Edit Profile'),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _displayNameController,
-                  decoration: const InputDecoration(
-                    labelText: 'Display Name',
-                    prefixIcon: Icon(Icons.person_outline,
-                        color: AppTheme.textSecondary),
-                  ),
+                    const SizedBox(height: 24),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _bioController,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Bio',
-                    prefixIcon: Icon(Icons.edit_note,
-                        color: AppTheme.textSecondary),
-                    alignLabelWithHint: true,
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // ── Creator Category ──────────────────────────────────────
-                const _SectionTitle('Creator Category'),
-                const SizedBox(height: 4),
-                const Text(
-                  'Select your primary category, then your specialty',
-                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
-                ),
-                const SizedBox(height: 12),
-                _CategoryPicker(
-                  selectedCategory: _selectedCategory,
-                  selectedSubcategory: _selectedSubcategory,
-                  onCategoryChanged: (cat) => setState(() {
-                    _selectedCategory = cat;
-                    _selectedSubcategory = null;
-                  }),
-                  onSubcategoryChanged: (sub) =>
-                      setState(() => _selectedSubcategory = sub),
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _isSaving ? null : _saveProfile,
-                  child: _isSaving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white))
-                      : const Text('Save'),
-                ),
-                const SizedBox(height: 32),
-
-                // ── Sign out ──────────────────────────────────────────────
-                ElevatedButton.icon(
-                  onPressed: () =>
-                      ref.read(authActionsProvider).signOut(),
-                  icon: const Icon(Icons.logout),
-                  label: const Text('Sign Out'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.danger,
-                    minimumSize: const Size(double.infinity, 50),
-                  ),
-                ),
-                const SizedBox(height: 24),
-              ],
+              ),
             ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// A compact half-width action button for the quick-actions grid under the
+/// profile header — replaces the old stack of full-width buttons.
+class _QuickAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18),
+      label: Text(label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 13)),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: color,
+        side: BorderSide(color: color.withValues(alpha: 0.55)),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
       ),
     );
   }
@@ -514,12 +615,14 @@ class _MarketMakerOptInCard extends StatelessWidget {
                     color: AppTheme.primary, size: 22),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Become a Market Maker',
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary),
+              const Expanded(
+                child: Text(
+                  'Become a Market Maker',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary),
+                ),
               ),
             ],
           ),
@@ -567,8 +670,10 @@ class _StepIndicator extends StatelessWidget {
           children: [
             const Icon(Icons.circle, size: 6, color: AppTheme.primary),
             const SizedBox(width: 8),
-            Text(s, style: const TextStyle(
-                color: AppTheme.textSecondary, fontSize: 13)),
+            Expanded(
+              child: Text(s, style: const TextStyle(
+                  color: AppTheme.textSecondary, fontSize: 13)),
+            ),
           ],
         ),
       )).toList(),
@@ -629,12 +734,14 @@ class _MarketMakerDashboard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
-                'Market Maker',
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary),
+              const Expanded(
+                child: Text(
+                  'Market Maker',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary),
+                ),
               ),
               tierAsync.when(
                 data: (tier) => tier != null
@@ -1703,12 +1810,14 @@ class _InviteFriendsCard extends StatelessWidget {
                     color: AppTheme.secondary, size: 20),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Invite Friends',
-                style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary),
+              const Expanded(
+                child: Text(
+                  'Invite Friends',
+                  style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary),
+                ),
               ),
             ],
           ),

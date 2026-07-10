@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/ubi_models.dart';
 import '../providers/ubi_providers.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 class MyRequestsScreen extends ConsumerWidget {
   const MyRequestsScreen({super.key});
@@ -16,6 +17,7 @@ class MyRequestsScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/emergency-fund'),
         backgroundColor: AppTheme.surface,
         title: const Text('Emergency Fund',
             style: TextStyle(color: AppTheme.textPrimary)),

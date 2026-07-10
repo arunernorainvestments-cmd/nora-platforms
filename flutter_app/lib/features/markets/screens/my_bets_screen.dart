@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:timeago/timeago.dart' as timeago;
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/n_back_button.dart';
 import '../providers/markets_providers.dart';
 
 class MyBetsScreen extends ConsumerWidget {
@@ -12,7 +13,10 @@ class MyBetsScreen extends ConsumerWidget {
     final betsAsync = ref.watch(myBetsProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('My Bets')),
+      appBar: AppBar(
+        leading: const NBackButton(fallback: '/markets'),
+        title: const Text('My Bets'),
+      ),
       body: betsAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(

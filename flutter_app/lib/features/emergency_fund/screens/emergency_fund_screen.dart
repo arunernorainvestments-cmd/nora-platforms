@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/ubi_models.dart';
 import '../providers/ubi_providers.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 class EmergencyFundScreen extends ConsumerWidget {
   const EmergencyFundScreen({super.key});
@@ -19,6 +20,7 @@ class EmergencyFundScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/home'),
         backgroundColor: AppTheme.surface,
         title: const Text('N.O.R.A. Emergency Fund',
             style: TextStyle(color: AppTheme.textPrimary)),

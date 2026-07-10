@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../providers/search_providers.dart';
 import '../models/profile_search_result.dart';
 import '../../../core/widgets/settings_menu_button.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 class SearchScreen extends ConsumerStatefulWidget {
   const SearchScreen({super.key});
@@ -27,6 +28,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/home'),
         title: const Text('Search'),
         actions: const [SettingsMenuButton()],
       ),

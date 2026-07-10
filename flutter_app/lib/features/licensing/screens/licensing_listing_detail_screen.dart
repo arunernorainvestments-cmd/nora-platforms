@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../licensing_format.dart';
 import '../providers/licensing_providers.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 /// Detail page for a single marketplace listing. Shows the licensor, the
 /// rights covered, and each priced tier with its permitted-uses / restrictions.
@@ -18,6 +19,7 @@ class LicensingListingDetailScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/licenses'),
         backgroundColor: AppTheme.surface,
         title: const Text('License Listing',
             style: TextStyle(color: AppTheme.textPrimary)),

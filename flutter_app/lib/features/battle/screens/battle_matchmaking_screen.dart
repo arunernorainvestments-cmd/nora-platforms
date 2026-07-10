@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/battle_models.dart';
 import '../providers/battle_providers.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 const _formats = [
   ('1v1', 'Duel', '2 players'),
@@ -90,6 +91,7 @@ class _BattleMatchmakingScreenState
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/battle'),
         backgroundColor: AppTheme.surface,
         title: const Text('Quick Match',
             style: TextStyle(color: AppTheme.textPrimary)),
