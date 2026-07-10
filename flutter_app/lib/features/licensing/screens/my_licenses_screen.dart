@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../licensing_format.dart';
 import '../providers/licensing_providers.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 /// Licenses the current user holds. Each card links to the public record and
 /// offers a "Sync to Arena App" deep link (doc6 integration).
@@ -18,6 +19,7 @@ class MyLicensesScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/licenses'),
         backgroundColor: AppTheme.surface,
         title: const Text('My Licenses',
             style: TextStyle(color: AppTheme.textPrimary)),

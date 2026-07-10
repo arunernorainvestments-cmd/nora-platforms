@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../licensing_format.dart';
 import '../providers/licensing_providers.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 /// Public landing page for the Right of Publicity Licensing Marketplace.
 /// Search + category filter against active lkn_listings.
@@ -54,6 +55,7 @@ class _LicensingMarketplaceHomeScreenState
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/home'),
         backgroundColor: AppTheme.surface,
         title: const Text('Licensing',
             style: TextStyle(color: AppTheme.textPrimary)),

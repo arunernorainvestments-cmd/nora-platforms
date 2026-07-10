@@ -15,7 +15,7 @@ class BattleChitBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => context.go('/mint'),
+      onTap: () => context.push('/mint'),
       child: Container(
         padding: EdgeInsets.all(compact ? 14 : 20),
         decoration: BoxDecoration(
@@ -108,7 +108,7 @@ class BattleChitButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () => context.go('/mint'),
+      onTap: () => context.push('/mint'),
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.symmetric(vertical: 12),

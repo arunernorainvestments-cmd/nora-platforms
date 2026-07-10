@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/open_url.dart';
 import '../providers/kyc_providers.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 /// /verify-identity — identity verification status + start CTA.
 /// Used to satisfy the staking KYC gate (one verified human → one staking account).
@@ -45,6 +46,7 @@ class _KycScreenState extends ConsumerState<KycScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/profile'),
         title: const Text('Identity Verification',
             style: TextStyle(
                 color: AppTheme.textPrimary, fontWeight: FontWeight.bold, fontSize: 18)),

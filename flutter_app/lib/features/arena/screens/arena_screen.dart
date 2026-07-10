@@ -7,6 +7,7 @@ import '../providers/arena_providers.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../markets/providers/markets_providers.dart';
 import '../../markets/widgets/battle_bet_sheet.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 class ArenaScreen extends ConsumerWidget {
   const ArenaScreen({super.key});
@@ -16,6 +17,7 @@ class ArenaScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/battle'),
         title: const Text(
           'Arena',
           style: TextStyle(

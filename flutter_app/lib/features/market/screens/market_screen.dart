@@ -7,6 +7,7 @@ import '../../auth/providers/auth_provider.dart';
 import '../../collection/providers/collection_providers.dart';
 import '../../wallet/providers/wallet_providers.dart';
 import '../providers/market_providers.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 /// `/market` — the fixed-price chit marketplace (token lane). Browse every
 /// active listing, buy with tokens, delist your own. Prices are config-fixed
@@ -21,6 +22,7 @@ class MarketScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/battle'),
         backgroundColor: AppTheme.background,
         title: const Text('Chit Market'),
         actions: [

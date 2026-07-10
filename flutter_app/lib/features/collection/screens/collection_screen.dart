@@ -4,9 +4,11 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/card_face.dart';
 import '../../market/providers/market_providers.dart';
+import '../../mint/services/mint_service.dart';
 import '../../wallet/providers/wallet_providers.dart';
 import '../providers/collection_providers.dart';
 import '../services/ascension_service.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 /// "My BattleChits" — the minted moment chits the user owns. This is where a
 /// freshly minted card lands after the mint wizard finalizes it.
@@ -19,6 +21,7 @@ class CollectionScreen extends ConsumerWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/battle'),
         backgroundColor: AppTheme.background,
         title: const Text('My BattleChits'),
         actions: [
@@ -26,12 +29,12 @@ class CollectionScreen extends ConsumerWidget {
           IconButton(
             tooltip: 'Chit Market',
             icon: const Icon(Icons.storefront_outlined),
-            onPressed: () => context.go('/market'),
+            onPressed: () => context.push('/market'),
           ),
           IconButton(
             tooltip: 'Mint a new one',
             icon: const Icon(Icons.add),
-            onPressed: () => context.go('/mint'),
+            onPressed: () => context.push('/mint'),
           ),
         ],
       ),
@@ -45,7 +48,7 @@ class CollectionScreen extends ConsumerWidget {
             detail: '$e',
           ),
           data: (chits) => chits.isEmpty
-              ? _EmptyState(onMint: () => context.go('/mint'))
+              ? _EmptyState(onMint: () => context.push('/mint'))
               : _grid(context, chits),
         ),
       ),
@@ -100,7 +103,10 @@ class CollectionScreen extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              _MarketActions(chit: chit, dialogContext: ctx),
+              if (chit.isPending)
+                _PendingActions(chit: chit, dialogContext: ctx)
+              else
+                _MarketActions(chit: chit, dialogContext: ctx),
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
                 child: const Text('Close',
@@ -111,6 +117,127 @@ class CollectionScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+}
+
+/// Actions for a chit still stuck at the mint Preview gate (is_active = false,
+/// the "Pending" pill). Happens when the tab closed or refreshed before "add to
+/// my collection" — the chit is owned but never previewed/finalized. Viewing
+/// the card here satisfies the preview (chit_record_preview), then finalize
+/// activates it; both RPCs are owner-scoped server-side.
+class _PendingActions extends ConsumerStatefulWidget {
+  const _PendingActions({required this.chit, required this.dialogContext});
+  final CollectionChit chit;
+  final BuildContext dialogContext;
+
+  @override
+  ConsumerState<_PendingActions> createState() => _PendingActionsState();
+}
+
+class _PendingActionsState extends ConsumerState<_PendingActions> {
+  bool _busy = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Container(
+        constraints: const BoxConstraints(maxWidth: 360),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+              color: AppTheme.secondary.withValues(alpha: 0.5)),
+        ),
+        child: const Text(
+          'This card isn\'t finished yet — the mint stopped before the final '
+          'step. Finalize it to add it to your collection, or discard it to '
+          'free up your mint slot.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+        ),
+      ),
+      const SizedBox(height: 10),
+      FilledButton.icon(
+        onPressed: _busy ? null : _finalize,
+        icon: _busy
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.check_circle_outline),
+        label: const Text('Add to my collection'),
+      ),
+      TextButton.icon(
+        onPressed: _busy ? null : _discard,
+        icon: const Icon(Icons.delete_outline, size: 18, color: AppTheme.danger),
+        label: const Text('Discard this card',
+            style: TextStyle(color: AppTheme.danger)),
+      ),
+    ]);
+  }
+
+  Future<void> _finalize() async {
+    final messenger = ScaffoldMessenger.of(widget.dialogContext);
+    setState(() => _busy = true);
+    try {
+      await MintService.recordPreview(widget.chit.id);
+      await MintService.finalizePreview(widget.chit.id);
+      if (widget.dialogContext.mounted) Navigator.pop(widget.dialogContext);
+      messenger.showSnackBar(SnackBar(
+          content: Text('${widget.chit.name} is now in your collection.'),
+          backgroundColor: AppTheme.surface));
+    } catch (e) {
+      if (mounted) setState(() => _busy = false);
+      messenger.showSnackBar(SnackBar(
+          content: Text('Could not finalize — $e'),
+          backgroundColor: AppTheme.danger));
+    } finally {
+      ref.invalidate(myCollectionProvider);
+    }
+  }
+
+  Future<void> _discard() async {
+    final messenger = ScaffoldMessenger.of(widget.dialogContext);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Discard this card?',
+            style: TextStyle(color: AppTheme.textPrimary)),
+        content: const Text(
+          'This permanently deletes the generated card and its cutscene, and '
+          'frees your self-mint slot. Your original moment stays linked, so '
+          'you can mint it again. This can\'t be undone.',
+          style: TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Keep it')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Discard')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await MintService.cancelMint(widget.chit.id);
+      if (widget.dialogContext.mounted) Navigator.pop(widget.dialogContext);
+      messenger.showSnackBar(SnackBar(
+          content: Text('${widget.chit.name} discarded.'),
+          backgroundColor: AppTheme.surface));
+    } catch (e) {
+      if (mounted) setState(() => _busy = false);
+      messenger.showSnackBar(SnackBar(
+          content: Text('Could not discard — $e'),
+          backgroundColor: AppTheme.danger));
+    } finally {
+      ref.invalidate(myCollectionProvider);
+    }
   }
 }
 
@@ -496,7 +623,7 @@ class _ChitCard extends StatelessWidget {
                   Positioned(
                     top: 8,
                     left: 8,
-                    child: _pill('Pending', AppTheme.secondary),
+                    child: _pill('Tap to finish', AppTheme.secondary),
                   )
                 else if (chit.isListed)
                   Positioned(

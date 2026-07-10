@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 /// Public portal for management, labels, and legal representation to apply for
 /// licensor partner status. Submits to lkn-partner-apply.
@@ -91,6 +92,7 @@ class _PartnersPortalScreenState extends ConsumerState<PartnersPortalScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/licenses'),
         backgroundColor: AppTheme.surface,
         title: const Text('Partners',
             style: TextStyle(color: AppTheme.textPrimary)),

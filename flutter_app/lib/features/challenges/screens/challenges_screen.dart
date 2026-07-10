@@ -4,6 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../profile/providers/profile_providers.dart';
 import '../models/challenge_models.dart';
 import '../providers/challenge_providers.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SCREEN
@@ -43,6 +44,7 @@ class _ChallengesBody extends ConsumerWidget {
       length: 3,
       child: Scaffold(
         appBar: AppBar(
+          leading: const NBackButton(fallback: '/profile'),
           title: const Text('Challenges'),
           bottom: const TabBar(
             tabs: [

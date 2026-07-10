@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../models/ubi_models.dart';
 import '../providers/ubi_providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 class VoteScreen extends ConsumerStatefulWidget {
   final String assignmentId;
@@ -76,6 +77,7 @@ class _VoteScreenState extends ConsumerState<VoteScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/emergency-fund'),
         backgroundColor: AppTheme.surface,
         title: const Text('Community Vote',
             style: TextStyle(color: AppTheme.textPrimary)),

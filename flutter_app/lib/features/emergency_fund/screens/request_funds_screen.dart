@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../providers/ubi_providers.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/widgets/n_back_button.dart';
 
 class RequestFundsScreen extends ConsumerStatefulWidget {
   const RequestFundsScreen({super.key});
@@ -147,6 +148,7 @@ class _RequestFundsScreenState extends ConsumerState<RequestFundsScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
+        leading: const NBackButton(fallback: '/emergency-fund'),
         backgroundColor: AppTheme.surface,
         title: const Text('Request Funds',
             style: TextStyle(color: AppTheme.textPrimary)),
