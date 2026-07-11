@@ -42,6 +42,53 @@
 
 ---
 
+## 2026-07-11 — NEXT PHASE: UI/UX shell + mint-flow polish (diagnostic-driven)
+
+Founder asked for a UX audit ahead of today's live user mint test. Diagnostic run 2026-07-11:
+`flutter analyze` 0 issues · `flutter test` 5/5 pass · **new repeatable check
+`tools/site_diagnostic.sh`** (curl-based launch-surface audit; run against prod any time).
+Result: routing (8 routes incl. /mint /market /battle), www→apex 308, and payload budget
+(main.dart.js 1.26 MB gzipped < 1.5 MB) all PASS; **8 launch-hygiene checks FAIL** — those
+failures are this phase's checklist. Acceptance = the script exits 0 against prod.
+
+**A. Web shell / first impression (all in `flutter_app/web/` — no Dart, one PR):**
+1. **Branded loading splash** in `index.html` (`id="nora-splash"`): logo + spinner on the
+   existing #0A0A0F body; Flutter's first frame removes it. Today a first visit is a blank
+   dark screen while 1.26 MB of JS loads. Add the missing `<meta name="viewport">` too.
+2. **v3 meta copy**: `<title>` + description still say "creator prediction market" (pre-pivot).
+   Rewrite for Moments (card-battler + markets, launch framing).
+3. **Open Graph + Twitter card tags** — currently ZERO; links shared to socials render bare.
+   Needs a 1200×630 og-image asset (founder to supply, or generate from card art).
+4. **manifest.json**: still stock Flutter (`nora_platforms`, "A new Flutter project",
+   theme #0175C2). Brand name/short_name/description; theme_color #6C63FF, background
+   #0A0A0F; replace stock `icons/Icon-*.png` with NORA icons.
+5. **Branded 404**: GoRouter has no `errorBuilder` — unknown URLs get the stock error text.
+   Add a themed not-found screen with a home CTA.
+6. **Per-route document titles** (browser tab/history currently one static title for every
+   screen) — small GoRouter observer setting `document.title` per route.
+
+**B. Mint flow, live-mode wait UX (`mint_moment_screen.dart` — matters now that Seedance is live):**
+7. The `generating` step is one indeterminate spinner + "this can take a moment". Live renders
+   take minutes. Stage the copy (illustrating → animating → safety screening), add an elapsed
+   hint ("usually 1–3 minutes"), "keep this tab open", and — since the server resume path makes
+   re-clicking Generate free — say so on failure/timeout instead of looking like a dead end.
+8. Friendly held-for-review state for the 202 `pending_moderation` response (fail-closed screen
+   moderation): explain the card isn't lost, it's queued for review; /collection already has the
+   finalize-pending flow to complete it after approval.
+9. Review step: show the server-selected effect + rules preview before Generate (carried from
+   APP_INVENTORY §3 — user currently confirms a card without seeing its effect).
+
+**C. Payload watch (not urgent — budget passes):**
+10. CI builds with `--no-tree-shake-icons`; try re-enabling icon tree-shaking (find and fix
+    whatever dynamic-icon usage forced it off) before the bundle creeps past budget.
+
+**D. Carried from APP_INVENTORY (cheap, protects launch demos):**
+11. Zero-risk dead-code deletions (campaigns/, discover/, notifications/, dead spotlight provider).
+12. Spectate screen: verify Wave-1 effect-event vocabulary renders (migs 151/152 added kinds
+    after the screen shipped) + confirm vibe meter displays.
+
+---
+
 ## 2026-07-10 — ✅ SHIPPED 2026-07-11: nora-stitch redeployed to a new GCP project
 
 Context: **CINEMATIC_MODE=live is ON and proven end-to-end** (PR #15, main `a2122f0`: real Seedance
