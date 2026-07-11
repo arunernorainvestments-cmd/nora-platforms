@@ -1,5 +1,5 @@
 # NORA Platforms — PLAN.md
-# Where we're going. Last updated: 2026-07-10.
+# Where we're going. Last updated: 2026-07-11.
 # Rules for HOW to build any of this live in CLAUDE.md ("Building future work safely").
 # Full specs / schemas / build history for anything referenced here live in ARCHIVE.md.
 # Cross-repo (nora-arena) contract: RECONCILIATION.md. Doc map: README.md.
@@ -42,7 +42,7 @@
 
 ---
 
-## 2026-07-10 — RESUME HERE: nora-stitch redeploy to a new GCP project (trial expired)
+## 2026-07-10 — ✅ SHIPPED 2026-07-11: nora-stitch redeployed to a new GCP project
 
 Context: **CINEMATIC_MODE=live is ON and proven end-to-end** (PR #15, main `a2122f0`: real Seedance
 cutscene + card art generated, frame-reviewed, approved, completed into a chit via the new resume
@@ -70,6 +70,19 @@ Agreed plan (do in the Codespace session, not Gemini):
 6. **Free E2E test:** re-call `cinematic-mint` as the cinematic-smoke user on a moment holding a
    'generated' row → resume re-screens via the new worker + completes, zero Segmind spend.
    (Pattern: tools/cinematic/smoke_mint.ts; smoke pwd = 'smoke-' + last 12 of service key.)
+
+**Resolution (2026-07-11):** all six steps executed. New GCP project **`nora-stitch-v2`**
+(account aruner.insurance@gmail.com, billing `014702-575901-BCFDD2`); worker live at
+**`https://nora-stitch-747216546694.us-east1.run.app`** (`GET /status` → `{"ok":true}`); fresh
+`STITCH_SECRET` set on both Cloud Run and Supabase edge secrets alongside the new
+`STITCH_WORKER_URL`. Zero-spend E2E passed: no held row existed (yesterday's completed), so a
+`'generated'` row was planted on storage-copied media from the 2026-07-10 live output → resume →
+the NEW worker extracted 3 postgen frames into `mint-staging` → approved → chit `74a91243`
+finalized (proof chit; yesterday's `cee4f6a2` was retired by the smoke slot-cleanup, its media
+kept). Old GCP project stays alive for the YouTube OAuth client — verify YT connect on the next
+real mint. Found in passing: **GoTrue admin `listUsers` 500s** ("Database error finding users") on
+this project — `createUser`/`updateUserById` work fine; `tools/cinematic/smoke_mint.ts` relies on
+listUsers as fallback, so set `SMOKE_USER_ID=42e7c0c8-5504-4aab-9aa3-f809fb97fc3c` when running it.
 
 Also queued from the 2026-07-10 live test: flip `MODERATION_MODE=live` before public launch (pre-gen
 + screen classifier currently sim; ANTHROPIC_API_KEY already set); `CINEMATIC_RENDER_TIER` stays
