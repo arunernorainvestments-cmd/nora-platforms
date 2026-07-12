@@ -4,12 +4,16 @@
 // chit_type, subject_desc) from an already-approved, clip-attached moment so the web
 // mint wizard can offer a "Review your card" step before generation.
 //
-// POST { moment_id }
-// Returns { family, suggested_name, subject_desc, chit_type }.
+// POST { moment_id, family_override?, subject_desc? }
+// Returns { family, suggested_name, subject_desc, chit_type, effect_* }.
 //
-// The archetype FAMILY is content-derived, never user-set (Hard Rule 34) — it is
-// classified here and persisted to moments.archetype_family. Name is a suggestion the
-// user may edit; chit_type defaults to creature.
+// The archetype FAMILY defaults to content-derived, but the user may override it with
+// any family from the fixed 10-family allowlist (family_override — the wizard's
+// "Automatic / pick it yourself" selector). Either way the family is persisted to
+// moments.archetype_family and the EFFECT is always server-selected from that family's
+// authored, balanced library — the override changes the card's effect STYLE, never its
+// power: tier/cost/atk/hp stay engagement-derived (Hard Rule 34). Name is a suggestion
+// the user may edit; chit_type defaults to creature.
 //
 // MOMENT_CLASSIFY_MODE=sim (default) → deterministic heuristic (no model spend).
 // live → Claude (claude-sonnet-4-6), reusing the call shape in _shared/moderation.ts.
@@ -36,23 +40,77 @@ const FAMILIES: Family[] = [
 ];
 const FALLBACK_FAMILY: Family = 'influencer';
 
-// Keyword → family, scanned against handle + title in sim mode (and as the fallback
-// if a live verdict is unparseable). First match wins; order is intentional.
-const FAMILY_HINTS: [Family, RegExp][] = [
-  ['athlete', /\b(sport|athlet|ball|game winning|dunk|goal|touchdown|workout|gym|lift|race|match)\b/i],
-  ['musician', /\b(music|song|beat|sing|rap|guitar|piano|dj|concert|album|cover|remix)\b/i],
-  ['comedian', /\b(comedy|funny|joke|prank|skit|meme|lol|laugh)\b/i],
-  ['gamer', /\b(gaming|gamer|stream|twitch|speedrun|clutch|fps|valorant|fortnite|clip)\b/i],
-  ['scientist', /\b(science|experiment|physics|chemistry|space|math|engineer|tech|coding|build)\b/i],
-  ['artist', /\b(art|paint|draw|sketch|design|craft|sculpt|animation|illustrat)\b/i],
-  ['politician', /\b(politic|senat|congress|governor|campaign|policy|vote|debate)\b/i],
-  ['business', /\b(business|startup|entrepreneur|founder|invest|market|brand|hustle|money)\b/i],
-  ['actor', /\b(acting|actor|actress|film|movie|scene|theater|drama|monologue)\b/i],
+// Keyword → family, scanned against title + handle + url in sim mode (and as the
+// fallback if a live verdict is unparseable). Each family has several signal groups
+// (identity / activity / scene terms); the family with the MOST matching groups wins —
+// scored, not first-match-wins, so "gym prank" reads comedian+athlete and the stronger
+// signal decides. Ties resolve in array order (specific families before the
+// influencer fallback). No group hit at all → influencer.
+const FAMILY_PATTERNS: [Family, RegExp[]][] = [
+  ['athlete', [
+    /\b(sports?|athletes?|athletic|basketball|football|soccer|baseball|hockey|tennis|golf|boxing|mma|ufc|wrestling|skate\w*|surf(ing|er)?|track|marathon|sprint(s|er)?)\b/i,
+    /\b(dunks?|goals?|touchdowns?|home\s?runs?|knockouts?|buzzer\s?beaters?|game[- ]winn\w*|hat\s?trick|personal\s?record|championship|league|tournament|playoffs?)\b/i,
+    /\b(gym|workouts?|fitness|lift(ing)?|deadlift|squats?|bench\s?press|crossfit|training|coach(ing)?)\b/i,
+  ]],
+  ['musician', [
+    /\b(music|musicians?|songs?|albums?|singles?|beats?|melod\w*|lyrics?|vocals?|choir)\b/i,
+    /\b(sing(er|ers|ing)?|rap(per|pers|ping)?|hip\s?hop|guitar\w*|piano|drum\w*|bass(ist)?|violin\w*|saxophone|dj|produc(er|ing)\b)\b/i,
+    /\b(concerts?|tours?|studio\s?session|covers?|remix\w*|freestyle|acoustic|unplugged|mixtape|soundcheck)\b/i,
+  ]],
+  ['comedian', [
+    /\b(comedy|comedians?|stand\s?up|roasts?|parod\w*|impressions?|improv)\b/i,
+    /\b(funny|jokes?|pranks?|skits?|sketch(es)?|humor|hilarious|gags?)\b/i,
+    /\b(memes?|lol|lmao|laugh\w*|punchlines?|crowd\s?work)\b/i,
+  ]],
+  ['gamer', [
+    /\b(gam(ing|er|ers)|video\s?games?|esports?|speedrun\w*|ranked|lobby|respawn)\b/i,
+    /\b(twitch|stream(er|ers|ing)|fps|mmo|battle\s?royale|minecraft|fortnite|valorant|warzone|roblox|league\s?of\s?legends|elden|zelda|mario)\b/i,
+    /\b(clutch(ed)?|no\s?scope|killstreak|console|controller|ps[45]|xbox|nintendo|pc\s?build|gg)\b/i,
+  ]],
+  ['scientist', [
+    /\b(science|scientists?|experiments?|research(er)?|lab(oratory)?|hypothesis|physics|chemistry|biology|astronom\w*|geolog\w*)\b/i,
+    /\b(space|nasa|spacex|rockets?|robots?|robotics|drones?|engineer\w*|inventions?|3d\s?print\w*)\b/i,
+    /\b(tech(nology)?|coding|programm\w*|software|hardware|ai|machine\s?learning|math(s|ematics)?|calculus|data\s?science)\b/i,
+  ]],
+  ['artist', [
+    /\b(artists?|artwork|paint(er|ing|ings)?|draw(ing|ings)?|sketch(ing|es)?|illustrat\w*|canvas)\b/i,
+    /\b(design(er|ers|ing)?|animation|animator|sculpt\w*|pottery|ceramics|murals?|tattoos?|calligraphy|origami)\b/i,
+    /\b(crafts?|diy|handmade|digital\s?art|procreate|watercolor|acrylic|charcoal|time\s?lapse\s?art)\b/i,
+  ]],
+  ['politician', [
+    /\b(politic\w*|senat\w*|congress\w*|governor|mayor|president(ial)?|parliament|legislat\w*|councilman|councilwoman)\b/i,
+    /\b(campaigns?|elections?|polic(y|ies)|votes?|voting|voters?|ballots?|debates?|caucus)\b/i,
+    /\b(rall(y|ies)|activis\w*|protests?|petitions?|town\s?hall|civic|constituents?)\b/i,
+  ]],
+  ['business', [
+    /\b(business(es)?|startups?|entrepreneurs?\w*|founders?|ceo|cfo|llc|agency)\b/i,
+    /\b(invest(or|ors|ing|ments?)?|finance|financial|revenue|profits?|sales?|e-?commerce|dropship\w*|real\s?estate|stocks?|crypto\w*)\b/i,
+    /\b(hustle|side\s?hustle|pitch(ing|ed)?|shark\s?tank|network(ing)?|brand\s?deal|marketing|passive\s?income)\b/i,
+  ]],
+  ['actor', [
+    /\b(act(or|ors|ress|resses|ing)|films?|movies?|cinema|hollywood|screenplay)\b/i,
+    /\b(scenes?|theater|theatre|drama|monologues?|dialogue|improv\s?scene|table\s?read)\b/i,
+    /\b(auditions?|casting|netflix|series|sitcom|behind\s?the\s?scenes|on\s?set|premiere|cosplay)\b/i,
+  ]],
+  // influencer is the explicit lifestyle bucket AND the no-signal fallback.
+  ['influencer', [
+    /\b(vlog\w*|influencers?|lifestyle|day\s?in\s?the\s?life|storytime|grwm|get\s?ready\s?with\s?me)\b/i,
+    /\b(fashion|makeup|beauty|skincare|outfit|ootd|hauls?|unboxing|try\s?on)\b/i,
+    /\b(travel\w*|food(ie)?|mukbang|recipes?|asmr|challenges?|viral|trend(ing|s)?)\b/i,
+  ]],
 ];
 
 function heuristicFamily(text: string): Family {
-  for (const [family, re] of FAMILY_HINTS) if (re.test(text)) return family;
-  return FALLBACK_FAMILY;
+  let best: Family = FALLBACK_FAMILY;
+  let bestScore = 0;
+  for (const [family, groups] of FAMILY_PATTERNS) {
+    const score = groups.reduce((n, re) => n + (re.test(text) ? 1 : 0), 0);
+    if (score > bestScore) {
+      best = family;
+      bestScore = score;
+    }
+  }
+  return best;
 }
 
 Deno.serve(async (req: Request): Promise<Response> => {
@@ -65,16 +123,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const { data: { user }, error: authError } = await anon.auth.getUser(authHeader.replace('Bearer ', ''));
   if (authError || !user) return json({ error: 'Unauthorized' }, 401);
 
-  let body: { moment_id?: string };
+  let body: { moment_id?: string; family_override?: string; subject_desc?: string; chit_type?: string };
   try { body = await req.json(); } catch { return json({ error: 'Invalid JSON body' }, 400); }
   const momentId = body.moment_id?.trim();
   if (!momentId) return json({ error: 'Missing required field: moment_id' }, 400);
+  const override = body.family_override?.trim() || null;
+  if (override && !FAMILIES.includes(override as Family)) {
+    return json({ error: 'invalid_family', detail: `family_override must be one of: ${FAMILIES.join(', ')}` }, 400);
+  }
 
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
   // ── ownership + approval + not-yet-minted (same guards as moment-clip-attach) ─────
   const { data: moment } = await db.from('moments')
-    .select('id, owner_user_id, moderation_status, mint_status, creator_handle, source_url, thumbnail_url')
+    .select('id, owner_user_id, moderation_status, mint_status, creator_handle, source_url, thumbnail_url, post_title')
     .eq('id', momentId).eq('owner_user_id', user.id)
     .maybeSingle();
   if (!moment) return json({ error: 'moment_not_found' }, 404);
@@ -83,15 +145,29 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   if (moment.mint_status === 'minted') return json({ error: 'already_minted' }, 409);
 
-  // No post title is persisted on moments, so the sim signal is handle + url; live
-  // mode leans on the thumbnail image itself (the real classification signal).
+  // Text signal: post title (persisted at ingest, mig 158) + handle + url; live mode
+  // additionally leans on the thumbnail image itself (the strongest signal).
   const handle = String(moment.creator_handle ?? '').replace(/^@/, '');
-  const context = `${handle} ${moment.source_url ?? ''}`.trim();
+  const title = String(moment.post_title ?? '').trim();
+  const context = `${title} ${handle} ${moment.source_url ?? ''}`.trim();
 
   const mode = Deno.env.get('MOMENT_CLASSIFY_MODE') === 'live' ? 'live' : 'sim';
   let result: { family: Family; suggested_name: string; subject_desc: string; chit_type: 'creature' | 'spell_moment' };
 
-  if (mode === 'live') {
+  if (override) {
+    // User-chosen family (allowlist-validated above): no family detection runs. The
+    // wizard keeps its existing name/subject state; these fields are echo/fallback only.
+    result = {
+      family: override as Family,
+      suggested_name: prettyName(handle) || 'My Moment',
+      subject_desc: sanitizeSubjectDesc(
+        body.subject_desc?.trim() ||
+          `${prettyName(handle) || 'a creator'} in their signature ${override} moment`,
+      ),
+      // Honor the wizard's current card-type choice so the effect pool filters right.
+      chit_type: body.chit_type === 'spell_moment' ? 'spell_moment' : 'creature',
+    };
+  } else if (mode === 'live') {
     result = await liveClassify(context, moment.thumbnail_url ?? null, handle);
   } else {
     const family = heuristicFamily(context);
@@ -214,11 +290,32 @@ function prettyName(handle: string): string {
 }
 
 // ── live: Claude classification (reuses the _shared/moderation.ts call shape) ───────
+// Family criteria are explicit and content-first: classify WHAT IS HAPPENING in the
+// moment, not who posted it or how popular they are. Signal priority: thumbnail image
+// (visible activity, setting, props) > post title/caption > creator handle. The
+// influencer family is a real category (lifestyle/vlog/fashion/beauty/travel content),
+// but it is also the ONLY permitted fallback — it must never absorb a moment that
+// clearly fits a specific family.
 const CLASSIFIER_SYSTEM =
-  'You name and classify a collectible battle card minted from a social-media post. ' +
+  'You name and classify a collectible battle card minted from a social-media post.\n\n' +
+  'Choose "family" = the category of WHAT IS HAPPENING in the moment (the activity and ' +
+  'setting), never merely who posted it. Judge the thumbnail image first (visible ' +
+  'activity, setting, props, clothing), then the post title/caption, then the handle.\n' +
+  'Family definitions:\n' +
+  '- athlete: sports, fitness, physical competition or feats (game plays, gym, races, martial arts)\n' +
+  '- musician: performing or making music — singing, rapping, instruments, DJing, studio work\n' +
+  '- artist: visual/creative arts — drawing, painting, design, animation, sculpture, crafts, tattoos\n' +
+  '- scientist: science, engineering, technology, coding, experiments, space, robotics, math\n' +
+  '- comedian: content whose PURPOSE is comedy — jokes, pranks, skits, stand-up, parody (comedic intent, not merely an amusing clip)\n' +
+  '- politician: politics and civic life — campaigns, debates, policy, activism, public office\n' +
+  '- business: entrepreneurship, startups, finance, investing, sales, commerce\n' +
+  '- gamer: video games — gameplay, streaming, esports, speedruns, consoles\n' +
+  '- actor: film/TV/theater performance — scripted scenes, monologues, auditions, on-set moments\n' +
+  '- influencer: lifestyle/vlog/fashion/beauty/food/travel content; ALSO the only fallback when no ' +
+  'specific family above fits. Never use it for a moment that clearly fits another family.\n\n' +
   'Respond with ONLY a JSON object, no prose:\n' +
   '{"family": <one of: athlete, musician, artist, scientist, comedian, influencer, ' +
-  'politician, business, gamer, actor — the effect-family that best fits the creator/moment>,\n' +
+  'politician, business, gamer, actor>,\n' +
   ' "name": <a short punchy card name, <= 4 words, no quotes>,\n' +
   ' "subject_desc": <one vivid sentence describing the visible subject for card art, no names of ' +
   'real third parties>,\n' +
@@ -239,7 +336,7 @@ async function liveClassify(
 
   const content: unknown[] = [];
   if (thumbnailUrl) content.push({ type: 'image', source: { type: 'url', url: thumbnailUrl } });
-  content.push({ type: 'text', text: `Creator handle + context: ${context}\n\nClassify and name now.` });
+  content.push({ type: 'text', text: `Post title + creator handle + context: ${context}\n\nClassify and name now.` });
 
   let res: Response;
   try {

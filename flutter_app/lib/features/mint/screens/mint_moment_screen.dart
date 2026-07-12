@@ -58,6 +58,14 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
   // Step-4 state.
   Map<String, dynamic>? _classify;
   String _chitType = 'creature';
+  String? _autoFamily; // the automatic recommendation, kept for the selector label
+  String _familySelection = 'auto'; // 'auto' or one of _families
+  bool _familyBusy = false;
+
+  static const _families = [
+    'athlete', 'musician', 'artist', 'scientist', 'comedian',
+    'influencer', 'politician', 'business', 'gamer', 'actor',
+  ];
 
   // Step-5 state.
   Map<String, dynamic>? _mint;
@@ -221,6 +229,8 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       setState(() {
         _classify = c;
         _chitType = (c['chit_type'] ?? 'creature').toString();
+        _autoFamily = c['family']?.toString();
+        _familySelection = 'auto';
         _step = _Step.review;
       });
     } catch (e) {
@@ -229,6 +239,45 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         _error = e is MintException ? e.message : 'Could not read your moment — $e';
         _step = _Step.clip;
       });
+    }
+  }
+
+  /// Family selector: 'auto' re-runs the content classification; a named family
+  /// re-calls moment-classify with family_override so the effect is re-selected
+  /// server-side from that family's authored library (style changes, power doesn't).
+  Future<void> _setFamily(String selection, {bool force = false}) async {
+    final momentId = _moment?['moment_id'] as String?;
+    final c = _classify;
+    if (momentId == null || c == null || (!force && selection == _familySelection)) {
+      return;
+    }
+    setState(() {
+      _familyBusy = true;
+      _error = null;
+    });
+    try {
+      final res = await MintService.classify(
+        momentId,
+        familyOverride: selection == 'auto' ? null : selection,
+        subjectDesc: c['subject_desc']?.toString(),
+        chitType: _chitType,
+      );
+      if (!mounted) return;
+      setState(() {
+        _familySelection = selection;
+        c['family'] = res['family'];
+        c['effect_template_id'] = res['effect_template_id'];
+        c['effect_timing'] = res['effect_timing'];
+        c['effect_name'] = res['effect_name'];
+        if (selection == 'auto') _autoFamily = res['family']?.toString();
+      });
+    } catch (e) {
+      if (mounted) {
+        setState(() =>
+            _error = e is MintException ? e.message : 'Could not set family — $e');
+      }
+    } finally {
+      if (mounted) setState(() => _familyBusy = false);
     }
   }
 
@@ -449,6 +498,9 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       _probe = null;
       _filmstrip = const [];
       _chitType = 'creature';
+      _autoFamily = null;
+      _familySelection = 'auto';
+      _familyBusy = false;
       _urlController.clear();
       _nameController.clear();
       _revokeObjectUrl();
@@ -738,12 +790,54 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         if (tier != null) _tierChip(tier),
       ]),
       const SizedBox(height: 12),
-      Row(children: [
-        _lockedChip(Icons.category_outlined, 'Family: $family'),
-      ]),
+      const Text('Family',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+      const SizedBox(height: 6),
+      DropdownButtonFormField<String>(
+        initialValue: _familySelection,
+        dropdownColor: AppTheme.surfaceLight,
+        style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
+        decoration: InputDecoration(
+          prefixIcon: _familyBusy
+              ? const Padding(
+                  padding: EdgeInsets.all(14),
+                  child: SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2)),
+                )
+              : const Icon(Icons.category_outlined,
+                  size: 18, color: AppTheme.secondary),
+        ),
+        items: [
+          DropdownMenuItem(
+            value: 'auto',
+            child: Text(_autoFamily == null
+                ? 'Automatic'
+                : 'Automatic — ${_pretty(_autoFamily!)} (recommended)'),
+          ),
+          for (final f in _families)
+            DropdownMenuItem(value: f, child: Text(_pretty(f))),
+        ],
+        onChanged: _familyBusy ? null : (v) => v == null ? null : _setFamily(v),
+      ),
       const SizedBox(height: 4),
-      const Text('Family is set by your content — it decides the card\'s effect style.',
-          style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+      Text(
+        _familySelection == 'auto'
+            ? 'Automatic reads your content to pick the family — it decides the '
+                'card\'s effect style, never its power. Think it fits a different '
+                'family? Pick it yourself above.'
+            : 'You chose ${_pretty(family)}. The card\'s effect is re-drawn from the '
+                '${_pretty(family)} playbook — its power still comes from your '
+                'engagement tier.',
+        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+      ),
+      if ((c['effect_name'] ?? '').toString().isNotEmpty) ...[
+        const SizedBox(height: 8),
+        Row(children: [
+          _lockedChip(Icons.bolt_outlined, 'Effect: ${c['effect_name']}'),
+        ]),
+      ],
       const SizedBox(height: 16),
       const Text('Card name',
           style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
@@ -764,7 +858,13 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
           ButtonSegment(value: 'spell_moment', label: Text('Spell')),
         ],
         selected: {_chitType},
-        onSelectionChanged: (s) => setState(() => _chitType = s.first),
+        onSelectionChanged: _familyBusy
+            ? null
+            : (s) {
+                setState(() => _chitType = s.first);
+                // Spells draw from a narrower effect pool — re-select server-side.
+                _setFamily(_familySelection, force: true);
+              },
       ),
       const SizedBox(height: 16),
       Container(
@@ -783,13 +883,17 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       ),
       const SizedBox(height: 16),
       FilledButton.icon(
-        onPressed: _generate,
+        onPressed: _familyBusy ? null : _generate,
         icon: const Icon(Icons.movie_filter_outlined),
         label: const Text('Generate my BattleChit'),
       ),
       _errorBanner(),
     ]);
   }
+
+  /// 'spell_moment' aside, families are single words — just capitalize.
+  static String _pretty(String s) =>
+      s.isEmpty ? s : s[0].toUpperCase() + s.substring(1);
 
   Widget _buildGeneratingStep() {
     return _card(children: [

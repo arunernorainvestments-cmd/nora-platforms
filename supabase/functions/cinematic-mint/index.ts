@@ -64,6 +64,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   if (moment.minted_chit_id) return json({ error: 'Moment already minted' }, 409);
 
+  // The family moment-classify persisted (auto-classified or user-override, both
+  // allowlist-validated) wins over the client body — it is what the persisted effect
+  // template was selected from, so the two can never disagree on the chit.
+  const chitFamily = (moment.archetype_family as Family | null) ?? family;
+
   // ── spend guards (BEFORE any generation — each mint is paid provider calls) ───────
   // Guard 1: a generation for this moment already awaits a moderation verdict →
   // RESUME it (re-screen the stored media + complete) instead of generating again.
@@ -186,7 +191,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   } else {
     // ── illustration (card art; also the cutscene subject reference) ───────────────
     const illo = await generateIllustration(cfg, {
-      prompt: illustrationPrompt(subject_desc, family),
+      prompt: illustrationPrompt(subject_desc, chitFamily),
       referenceImageUrl: moment.thumbnail_url ?? undefined,
       seed,
       width: 1024,   // portrait 4:5 card-art window — the app frames it, not 16:9
@@ -207,7 +212,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     artUrl = db.storage.from('battle-media').getPublicUrl(artPath).data.publicUrl;
 
     // ── cutscene: bracketed by the plates, seeded, style-locked ────────────────────
-    const fAction = familyAction(family, templateId);
+    const fAction = familyAction(chitFamily, templateId);
     const intensity = TIER_INTENSITY[tier as Tier];
     // {VIDEO_DESC} is the attached clip's description (moment-clip-attach) — a VARIABLE
     // slot for the V2V core only; the agnostic bridge templates carry no placeholder for
@@ -311,7 +316,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // ── complete: chit + cinematic fields + ownership; inactive until previewed ──────
   const { data: chitId, error: cErr } = await db.rpc('cinematic_complete_mint', {
     p_generation_id: genId,
-    p_family: family,
+    p_family: chitFamily,
     p_chit_type: chit_type,
     p_timing: effectTiming,
     p_effect_template_id: effectTemplateId,
