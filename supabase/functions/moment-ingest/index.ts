@@ -113,6 +113,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     p_engagement: meta.engagement,
     p_consent: true,
     p_handle: meta.handle,
+    p_title: meta.title ?? null,
   });
   if (recErr || !momentId) return json({ error: 'moment_record failed', detail: recErr?.message }, 500);
 

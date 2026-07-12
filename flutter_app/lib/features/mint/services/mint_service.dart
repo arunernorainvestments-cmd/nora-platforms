@@ -73,13 +73,26 @@ class MintService {
   }
 
   /// The recommend/classify stage: derives the creative inputs generation needs.
-  /// Returns { family, suggested_name, subject_desc, chit_type }. Family is
-  /// content-derived (Hard Rule 34) — the UI shows it locked.
-  static Future<Map<String, dynamic>> classify(String momentId) async {
+  /// Returns { family, suggested_name, subject_desc, chit_type, effect_* }. Family
+  /// defaults to content-derived (automatic); pass [familyOverride] to let the user
+  /// pick one of the 10 families instead — the effect is then re-selected server-side
+  /// from that family's authored library, so power never changes (Hard Rule 34).
+  static Future<Map<String, dynamic>> classify(
+    String momentId, {
+    String? familyOverride,
+    String? subjectDesc,
+    String? chitType,
+  }) async {
     try {
       final res = await _client.functions.invoke(
         'moment-classify',
-        body: {'moment_id': momentId},
+        body: {
+          'moment_id': momentId,
+          if (familyOverride != null) 'family_override': familyOverride,
+          if (subjectDesc != null && subjectDesc.trim().isNotEmpty)
+            'subject_desc': subjectDesc.trim(),
+          if (chitType != null) 'chit_type': chitType,
+        },
       );
       return Map<String, dynamic>.from(res.data as Map);
     } on FunctionException catch (e) {
