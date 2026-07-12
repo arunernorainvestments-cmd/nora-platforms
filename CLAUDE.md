@@ -159,6 +159,7 @@ Everything queued in PLAN.md must respect these, in addition to the Hard Rules a
 - Minting workflow v2 (device-clip upload + trimmer, V2V middle, AGNOSTIC plates + bridge stitch — **governs where it conflicts with the two specs above**; naming: its "battle_chits" = `moment_chits`): **Minting_Workflow.md**
 - Cinematic Engine spec (anchor plates + motion prompts + Seedance/Segmind generation; supersedes the anchor-plate doc; §4 prompt grammar + moderation stack still govern under v2): **NORA_PLATFORMS_CINEMATIC_ENGINE_SPEC.md**
 - Chit marketplace spec (fixed-price, token-first; M1+M2 shipped, M3+ queued): **NORA_PLATFORMS_MARKETPLACE_SPEC.md**
+- Crossplay spec (web↔Arena shared matchmaking queue + play/spectate contract; migs 159–160 LIVE): **NORA_PLATFORMS_CROSSPLAY_SPEC.md**
 - Effect system: design principles **NORA_CHIT_EFFECT_DESIGN_FRAMEWORK.md** · reactive-depth roadmap
   **NORA_INTERACTION_LAYER_SPEC.md** (the live Wave-1 library is the DB `effect_templates`; design record in ARCHIVE)
 - Where we're going, with build checklists (incl. the v3 P7 remainder): **PLAN.md**

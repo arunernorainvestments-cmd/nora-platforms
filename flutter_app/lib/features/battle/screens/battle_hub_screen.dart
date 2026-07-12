@@ -3,17 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/battlechit_cta.dart';
+import '../providers/matchmaking_providers.dart';
 import '../providers/spectate_providers.dart';
 
-/// The web Battle page under the two-app structure: matches are PLAYED in the
-/// NORA Arena mobile app; here you mint BattleChits and SPECTATE real matches
-/// live. (The legacy web lobby survives at /battle/legacy for dev testing.)
+/// The web Battle page under the crossplay structure (NORA_PLATFORMS_CROSSPLAY_
+/// SPEC.md): mint BattleChits, FIND A MATCH in the shared web+Arena queue, play
+/// right here, and SPECTATE live matches from either platform.
 class BattleHubScreen extends ConsumerWidget {
   const BattleHubScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final matchesAsync = ref.watch(liveCcgMatchesProvider);
+    final activeMatch = ref.watch(myActiveCcgMatchProvider).valueOrNull;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -29,44 +31,80 @@ class BattleHubScreen extends ConsumerWidget {
             child: ListView(
               padding: const EdgeInsets.all(20),
               children: [
-                // ── Where the game lives ───────────────────────────────────
-                Container(
-                  padding: const EdgeInsets.all(20),
-                  decoration: BoxDecoration(
+                // ── Resume a live match you're seated in ───────────────────
+                if (activeMatch != null) ...[
+                  InkWell(
+                    onTap: () => context.push('/battle/play/$activeMatch'),
                     borderRadius: BorderRadius.circular(16),
-                    gradient: const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFF1A1050), Color(0xFF0D2A24)],
-                    ),
-                    border: Border.all(color: AppTheme.primary, width: 1.5),
-                  ),
-                  child: const Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(children: [
-                        Icon(Icons.smartphone, color: AppTheme.secondary, size: 22),
-                        SizedBox(width: 8),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        color: AppTheme.success.withValues(alpha: 0.10),
+                        border: Border.all(color: AppTheme.success),
+                      ),
+                      child: const Row(children: [
+                        Icon(Icons.play_circle_fill,
+                            color: AppTheme.success, size: 26),
+                        SizedBox(width: 10),
                         Expanded(
-                          child: Text('Matches are played on NORA Arena',
+                          child: Text('You have a match in progress — tap to resume',
                               style: TextStyle(
                                   color: AppTheme.textPrimary,
-                                  fontSize: 17,
-                                  fontWeight: FontWeight.w800)),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700)),
                         ),
+                        Icon(Icons.chevron_right, color: AppTheme.success),
                       ]),
-                      SizedBox(height: 8),
-                      Text(
-                        'The Moments card-battler lives in the NORA Arena mobile app '
-                        '(coming to app stores). This is your companion hub: mint '
-                        'BattleChits, build your collection, and watch real matches '
-                        'live as they happen in the Arena.',
-                        style: TextStyle(
-                            color: AppTheme.textSecondary,
-                            fontSize: 13,
-                            height: 1.5),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
+
+                // ── Find a match (crossplay: one queue, web + Arena app) ───
+                InkWell(
+                  onTap: () => context.push('/battle/find'),
+                  borderRadius: BorderRadius.circular(16),
+                  child: Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF1A1050), Color(0xFF0D2A24)],
                       ),
-                    ],
+                      border: Border.all(color: AppTheme.primary, width: 1.5),
+                    ),
+                    child: const Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(children: [
+                          Icon(Icons.sports_kabaddi,
+                              color: AppTheme.secondary, size: 22),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text('Find a match',
+                                style: TextStyle(
+                                    color: AppTheme.textPrimary,
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w800)),
+                          ),
+                          Icon(Icons.chevron_right, color: AppTheme.primary),
+                        ]),
+                        SizedBox(height: 8),
+                        Text(
+                          'One queue across web and the NORA Arena app: bring a '
+                          '20-card deck of your BattleChits and battle whoever is '
+                          'up next — they might be on their phone, you\'re right '
+                          'here in the browser.',
+                          style: TextStyle(
+                              color: AppTheme.textSecondary,
+                              fontSize: 13,
+                              height: 1.5),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -95,7 +133,7 @@ class BattleHubScreen extends ConsumerWidget {
                           fontSize: 17,
                           fontWeight: FontWeight.w700)),
                   SizedBox(width: 8),
-                  Text('Happening now in the Arena',
+                  Text('Web + Arena app, live now',
                       style:
                           TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
                 ]),
@@ -121,14 +159,6 @@ class BattleHubScreen extends ConsumerWidget {
                               .toList()),
                 ),
 
-                const SizedBox(height: 24),
-                Center(
-                  child: TextButton(
-                    onPressed: () => context.push('/battle/legacy'),
-                    child: const Text('Legacy web battle (dev)',
-                        style: TextStyle(color: Colors.white24, fontSize: 12)),
-                  ),
-                ),
               ],
             ),
           ),
@@ -160,7 +190,7 @@ class _NoLiveMatches extends StatelessWidget {
                 fontSize: 15,
                 fontWeight: FontWeight.w600)),
         SizedBox(height: 4),
-        Text('When players battle in the NORA Arena app,\ntheir matches appear here in real time.',
+        Text('When players battle — on web or in the NORA Arena app —\ntheir matches appear here in real time.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
       ]),

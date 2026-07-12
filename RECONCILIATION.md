@@ -265,3 +265,22 @@ for any list/buy/delist action. Do NOT wire IAP to marketplace purchases.
 **Currency wall (Hard Rule 33) restated for the client:** a token sale never touches USD state; a USD
 sale never touches `token_transactions`. The client must never convert or display one as the other
 (the 100🪙=$1 peg is display copy only, never an exchange).
+
+---
+
+## 9. Crossplay matchmaking + play contract (added 2026-07-12 — migs 159–160 LIVE)
+
+Spec: **`NORA_PLATFORMS_CROSSPLAY_SPEC.md`** (governs both repos). One shared queue,
+one match, either platform per seat. Proven E2E on prod (`tools/battle/smoke_crossplay.ts`).
+
+| Platforms provides | Arena consumes | Status |
+|---|---|---|
+| `ccg_queue` + RPCs `ccg_queue_join(p_deck_id, p_platform)` / `ccg_queue_poll()` / `ccg_queue_leave()` — FIFO pool, 90s heartbeat sweep, deck revalidated at join; realtime UPDATE on own queue row signals the pair | wire `MatchmakingUI` (currently a mock) to these with `p_platform:'arena'`; scaffold `Core/Services/MatchmakingService.cs` added | 🟢 BUILT here; 🟡 mobile wiring pending |
+| `ccg_forfeit_match(p_match_id)` — concede; settle triggers fire as a normal win | concede button in the battle scene | 🟢 BUILT |
+| Engine-grant lockdown (mig 159): internal `ccg_*` helpers no longer client-EXECUTE; client verbs are queue RPCs + `ccg_submit_turn` + `ccg_forfeit_match` + bet/vibe reads | nothing to change unless it called internals directly (it must not) | 🟢 BUILT |
+| mig 160: `ccg_create_match` deck path fixed (int4→int2, sibling of mig 143) — first real deck-based matches now work | — | 🟢 FIXED |
+| **⚠️ v3 events are `ccg_events`, not `battle_events`** — `BattleSubscriberService` must repoint (same ordering keys: `turn_number`, `sequence_in_turn`) | Phase-3 battle client | 🔴 mobile change required |
+| Web play surface `/battle/play/:id` + spectate `/battle/spectate/:id` — an Arena player's opponent/spectators may be on web | FYI: matches are no longer mobile-exclusive; copy updated web-side | 🟢 |
+
+Web legacy 1v1 fighter CLIENT removed 2026-07-12 (lobby/matchmaking/Flame match screens,
+dead "Animation test" buttons). Backend `battle_*` stays archived-not-dropped — R3 unchanged.

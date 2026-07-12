@@ -29,7 +29,6 @@ dependencies:
   google_fonts: ^6.2.1
 
   # Battle
-  flame: ^1.18.0
   lottie: ^3.1.2
   
   # Crypto (SHA-256 for device fingerprint hashing)
