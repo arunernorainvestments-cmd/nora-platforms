@@ -82,9 +82,14 @@ function fnv1a(s: string): number {
 }
 
 function pickSeed(explicit: number | undefined, promptForSim: string, mode: 'sim' | 'live'): number {
-  if (explicit !== undefined && Number.isFinite(explicit)) return Math.floor(explicit);
-  if (mode === 'sim') return fnv1a(promptForSim);
-  return crypto.getRandomValues(new Uint32Array(1))[0];
+  // ByteDance (Seedream/Seedance) rejects seeds outside int32 — clamp every path to
+  // [0, 2^31-1]. Also normalizes stored uint32 seeds from before this clamp existed.
+  const raw = explicit !== undefined && Number.isFinite(explicit)
+    ? Math.floor(explicit)
+    : mode === 'sim'
+      ? fnv1a(promptForSim)
+      : crypto.getRandomValues(new Uint32Array(1))[0];
+  return raw & 0x7fffffff;
 }
 
 // Minimal valid placeholder bytes (sim mode) — enough for storage round-trips.
