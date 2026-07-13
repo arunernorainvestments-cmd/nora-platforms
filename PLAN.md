@@ -1,5 +1,5 @@
 # NORA Platforms — PLAN.md
-# Where we're going. Last updated: 2026-07-11.
+# Where we're going. Last updated: 2026-07-13.
 # Rules for HOW to build any of this live in CLAUDE.md ("Building future work safely").
 # Full specs / schemas / build history for anything referenced here live in ARCHIVE.md.
 # Cross-repo (nora-arena) contract: RECONCILIATION.md. Doc map: README.md.
@@ -39,6 +39,54 @@
   `battle_payments_mode=sim` · `marketplace_usd_lane=FALSE`. Flipping any is a spend/creds/founder decision.
 
 **Active build tracks — see "Where we're going next."**
+
+---
+
+## 2026-07-13 — Generation quality: the "DBZ card" audit (RESUME HERE for mint output tuning)
+
+First fully-live user mint succeeded (async `mint_jobs` pipeline, migs 158–161, PRs #16–#19) but the
+OUTPUT was wrong end to end: card art was a Dragon Ball–style character (nothing to do with the moment)
+and the cutscene, while opening/closing exactly on the anchor plates, contained zero content from the
+uploaded clip. Full trace (prod `cinematic_generations` row + code + Segmind/ByteDance docs) found five
+causes — audit report artifact: https://claude.ai/code/artifact/cb7c960c-f87e-4c27-bbc2-4b1e19b3ec3c
+(also summarized in agent memory `segmind-live`). None are fixed yet; this section is the checklist.
+
+**Root causes (evidence in the report):**
+- `MOMENT_CLASSIFY_MODE=sim` → `subject_desc` was the placeholder *"N O R A Platforms in their signature
+  influencer moment"*; with the style-lock's "cel-shaded anime, dynamic hero pose" and no visual subject,
+  Seedream drew the archetypal anime hero. The classifier never saw the thumbnail/clip.
+- `MODERATION_MODE` **unset** on prod (→ sim) → the pre/post-gen safety screen is a deterministic stub
+  AND `describeClipFrames` returned the stub `video_desc` ("the subject moves through their signature moment").
+- The uploaded clip is **not wired into generation at all** in the current build (only moderated /
+  described / stored) — the V2V core + bridges + stitch is Track A below, unbuilt. The live prompt
+  templates carry no `{VIDEO_DESC}` slot (mig 149 feeds the future V2V node only).
+- **API bug:** the Seedance call sends `reference_image_url` (singular, wrong name) ALONGSIDE
+  first/last-frame conditioning — per Segmind docs the real param is `reference_images[]` and it is
+  **mutually exclusive** with frame conditioning, so the card-art reference is silently dropped while the
+  prompt says "kept exactly on-model from the reference illustration" → subjectless plates + light ribbons.
+- **IP exposure:** the illustration CONSTRAINTS block never forbids existing/copyrighted characters or
+  celebrity likeness, and the moderation screen classifies only nsfw/violence/hate/minor-safety — a
+  recognizable copyrighted character passes onto a tradeable asset.
+
+**Fix checklist (order matters; 1–4 are one short session):**
+- [ ] 1. Flip `MOMENT_CLASSIFY_MODE=live` — Claude vision derives a real `subject_desc`. Biggest single
+      quality jump for both art and cutscene.
+- [ ] 2. Set `MODERATION_MODE=live` — real safety classification + real `{VIDEO_DESC}` persistence
+      (ANTHROPIC_API_KEY already set; this is also a launch gate).
+- [ ] 3. Harden `illustrationPrompt` CONSTRAINTS: "original character design, not any existing
+      anime/manga/game/comic character, no celebrity likeness"; consider steering the style-lock off
+      generic "cel-shaded anime" toward a distinctive house look.
+- [ ] 4. Fix the Seedance call in `_shared/segmind.ts`: stop sending `reference_image_url` with frame
+      conditioning; carry subject identity via the (now-real) prompt; micro-trial `reference_images[]`
+      mode vs frame mode for on-model cutscene subjects.
+- [ ] 5. **Micro-trial Seedance 2.0 native video input** (clip as input video + restyle prompt + plates)
+      BEFORE building Track A as specced — Seedance 2.0 accepts up to 3 input videos / 9 reference
+      images natively and may collapse the Wan/Kling/stitch three-node plan into one call. NOTE:
+      ByteDance blocks reference images with real human faces — the stylize-first order is load-bearing.
+- [ ] 6. Persist the FULL assembled prompts + provider request IDs on `cinematic_generations` (only the
+      slot values are stored today); log whether the image reference was accepted.
+- [ ] 7. Once MODERATION_MODE=live: add an IP/likeness flag to the post-gen screen prompt (hold
+      recognizable copyrighted characters for review).
 
 ---
 
