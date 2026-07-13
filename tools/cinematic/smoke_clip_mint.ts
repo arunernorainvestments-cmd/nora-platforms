@@ -127,16 +127,38 @@ const mint = await res.json();
 if (res.status !== 202 || !mint.job_id) fail(`cinematic-mint HTTP ${res.status}: ${JSON.stringify(mint)}`);
 console.log(`job accepted: ${mint.job_id} (mode=${mint.mode})`);
 
-// 5. poll the job to a terminal state (live renders take minutes)
+// 5. poll the job to a terminal state (live renders take minutes). When the worker
+// parks the job at cutscene_rendering (edge wall-clock budget out, render still going
+// provider-side), re-call cinematic-mint — that resumes the SAME provider request
+// from the mig-164 stash, zero new spend (this is also what a user's re-click does).
 let job: Record<string, unknown> | null = null;
 for (let i = 0; i < 90; i++) {
   await new Promise((r) => setTimeout(r, 10_000));
   const { data } = await admin.from('mint_jobs')
-    .select('stage,status,error,detail,generation_id,chit_id,result').eq('id', mint.job_id).single();
+    .select('stage,status,error,detail,generation_id,chit_id,result,updated_at').eq('id', mint.job_id).single();
   job = data;
   if (!job) continue;
   if (i % 3 === 0) console.log(`  t+${(i + 1) * 10}s stage=${job.stage} status=${job.status}`);
   if (job.status && job.status !== 'running') break;
+  const idleMs = Date.now() - new Date(String(job.updated_at)).getTime();
+  if (job.stage === 'cutscene_rendering' && idleMs > 8.5 * 60 * 1000) {
+    console.log('  job parked at cutscene_rendering + stale — re-calling cinematic-mint to resume (free)');
+    const re = await fetch(`${URL_}/functions/v1/cinematic-mint`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.session!.access_token}`,
+        apikey: ANON,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        moment_id: momentId, family: 'actor', chit_type: 'creature',
+        timing_type: 'on_summon', name: 'Clip Trial',
+        subject_desc: 'a confident man in a dark suit pointing forward mid-declaration',
+      }),
+    });
+    const rj = await re.json();
+    console.log(`  resume call: HTTP ${re.status} job=${rj.job_id} resume=${rj.resume}`);
+  }
 }
 if (!job) fail('job row never appeared');
 console.log(`terminal: status=${job!.status} stage=${job!.stage} error=${job!.error ?? '-'} detail=${job!.detail ?? '-'}`);
