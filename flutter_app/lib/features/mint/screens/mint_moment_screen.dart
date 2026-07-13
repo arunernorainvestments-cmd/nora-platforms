@@ -67,6 +67,12 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
     'influencer', 'politician', 'business', 'gamer', 'actor',
   ];
 
+  // Generating-step progress (cinematic-mint is an async job — mig 161): the
+  // polled mint_jobs.stage maps to a target percent; the bar tweens toward it and
+  // the long cutscene stage creeps with elapsed time so the number keeps moving.
+  double _genTarget = 0;
+  String _genLabel = 'Starting…';
+
   // Step-5 state.
   Map<String, dynamic>? _mint;
   Map<String, dynamic>? _chitRow;
@@ -288,9 +294,11 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
     setState(() {
       _step = _Step.generating;
       _error = null;
+      _genTarget = 2;
+      _genLabel = 'Starting…';
     });
     try {
-      final res = await MintService.generate(
+      var res = await MintService.generate(
         momentId: momentId,
         family: c['family'].toString(),
         chitType: _chitType,
@@ -304,6 +312,12 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         setState(() => _step = _Step.review);
         await _confirmSwap(res['occupied_chit_id']?.toString());
         return;
+      }
+      // The server now answers 202 { job_id } and generates in the background —
+      // poll the job to drive the progress bar and collect the terminal payload.
+      if (res['status'] == 'accepted' && res['job_id'] != null) {
+        res = await _awaitMintJob(res['job_id'].toString());
+        if (!mounted) return;
       }
       // Held for post-generation safety review (Hard Rule 39): the cutscene was
       // generated but a moderation verdict is still needed — terminal for now.
@@ -335,6 +349,84 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         _error = e is MintException ? e.message : 'Generation failed — $e';
         _step = _Step.review;
       });
+    }
+  }
+
+  /// stage → (target %, label). The cutscene render dominates wall time, so its
+  /// slice of the bar is the widest and creeps with elapsed time (below).
+  static const Map<String, (double, String)> _stageTargets = {
+    'queued': (6, 'Queued…'),
+    'illustration': (25, 'Painting your card art…'),
+    'card_art_stored': (32, 'Card art locked in'),
+    'cutscene': (75, 'Directing your match-cut cutscene…'),
+    'cutscene_stored': (80, 'Cutscene saved'),
+    'screening': (90, 'Running the safety check…'),
+    'completing': (97, 'Forging your BattleChit…'),
+    'done': (100, 'Done!'),
+  };
+
+  /// Polls the mint job until it leaves `running`, updating the progress state
+  /// each tick. Returns the terminal mint payload (the old synchronous response);
+  /// a rejected/failed job surfaces as [MintException] like any other error.
+  Future<Map<String, dynamic>> _awaitMintJob(String jobId) async {
+    const poll = Duration(seconds: 2);
+    final deadline = DateTime.now().add(const Duration(minutes: 9));
+    String? stage;
+    var stageStart = DateTime.now();
+
+    while (true) {
+      await Future.delayed(poll);
+      if (!mounted) throw const MintException('Cancelled');
+      Map<String, dynamic>? job;
+      try {
+        job = await MintService.fetchMintJob(jobId);
+      } catch (_) {/* transient poll failure — keep waiting */}
+
+      if (job != null) {
+        final s = job['stage']?.toString() ?? 'queued';
+        if (s != stage) {
+          stage = s;
+          stageStart = DateTime.now();
+        }
+        final (base, label) = _stageTargets[s] ?? (6.0, 'Working…');
+        var target = base;
+        if (s == 'cutscene') {
+          // Creep 35 → 75 over ~90s so the number keeps moving mid-render.
+          final elapsed = DateTime.now().difference(stageStart).inSeconds;
+          target = (35 + (elapsed / 90) * 40).clamp(35, 75).toDouble();
+        }
+        if (mounted && (target > _genTarget || label != _genLabel)) {
+          setState(() {
+            _genTarget = target > _genTarget ? target : _genTarget;
+            _genLabel = label;
+          });
+        }
+
+        final status = job['status']?.toString() ?? 'running';
+        if (status != 'running') {
+          final result = job['result'];
+          switch (status) {
+            case 'succeeded':
+              if (mounted) setState(() => _genTarget = 100);
+              return result is Map
+                  ? Map<String, dynamic>.from(result)
+                  : {'status': 'pending_preview', 'chit_id': job['chit_id']};
+            case 'held_moderation':
+              return result is Map
+                  ? Map<String, dynamic>.from(result)
+                  : {'status': 'pending_moderation'};
+            default: // rejected_moderation / failed
+              throw MintException(job['detail']?.toString() ??
+                  'Generation failed — please try again.');
+          }
+        }
+      }
+
+      if (DateTime.now().isAfter(deadline)) {
+        throw const MintException(
+            'Generation is taking longer than expected. Your progress is saved — '
+            'try Generate again in a minute (it resumes without re-rendering).');
+      }
     }
   }
 
@@ -906,13 +998,42 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         ),
       ),
       const SizedBox(height: 20),
-      const Center(
-        child: Text('Generating your cutscene…',
-            style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+      // Progressive percentage: tween the bar/number toward the polled stage
+      // target so it advances smoothly between job updates.
+      TweenAnimationBuilder<double>(
+        tween: Tween(end: _genTarget),
+        duration: const Duration(milliseconds: 900),
+        curve: Curves.easeOut,
+        builder: (context, value, _) => Column(children: [
+          Center(
+            child: Text('${value.round()}%',
+                style: const TextStyle(
+                    color: AppTheme.secondary,
+                    fontSize: 28,
+                    fontWeight: FontWeight.w700)),
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: value / 100,
+              minHeight: 6,
+              backgroundColor: AppTheme.background,
+              color: AppTheme.secondary,
+            ),
+          ),
+        ]),
+      ),
+      const SizedBox(height: 16),
+      Center(
+        child: Text(_genLabel,
+            style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
       ),
       const SizedBox(height: 8),
       const Center(
-        child: Text('Rendering the card art and match-cut — this can take a moment.',
+        child: Text(
+            'Rendering the card art and match-cut — this takes a minute or two. '
+            'Keep this tab open.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
       ),

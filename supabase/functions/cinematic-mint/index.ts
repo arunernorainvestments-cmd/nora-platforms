@@ -9,14 +9,25 @@
 // moderation → store in battle-media → cinematic_complete_mint (chit inactive until
 // the user previews + finalizes). All DB invariants re-checked server-side (mig 140).
 // Deployed --no-verify-jwt (ES256 project); auth via supabase.auth.getUser().
+//
+// ASYNC (mig 161): generation takes minutes of provider calls — holding the HTTP
+// request open hit the edge-runtime resource limit (HTTP 546). Validation + spend
+// guards stay synchronous; the paid pipeline then runs in a background task
+// (EdgeRuntime.waitUntil) that writes stage progress to mint_jobs, and the request
+// returns 202 { job_id } immediately. The client polls its own mint_jobs row
+// (owner-scoped RLS) to drive the progress UI and read the terminal payload.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { cinematicConfigFromEnv, generateCutscene, generateIllustration } from '../_shared/segmind.ts';
 import {
   assembleMotionPrompt, familyAction, illustrationPrompt, sanitizeSubjectDesc,
   selectTemplate, TIER_INTENSITY, type Family, type Tier,
 } from '../_shared/cinematic_directives.ts';
 import { moderationConfigFromEnv, preGenModerate } from '../_shared/moderation.ts';
+
+// Supabase edge runtime background-task hook (keeps the worker alive after the
+// response is sent, up to the per-request wall clock).
+declare const EdgeRuntime: { waitUntil(p: Promise<unknown>): void } | undefined;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': 'https://noraplatforms.com',
@@ -28,6 +39,19 @@ const json = (body: unknown, status = 200) =>
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+
+// A 'running' job older than this is a background task the runtime killed (it can
+// never mark itself failed) — treat as dead so the user can retry.
+const JOB_STALE_MS = 8 * 60 * 1000;
+
+// deno-lint-ignore no-explicit-any
+type Db = SupabaseClient<any, 'public', 'public', any, any>;
+
+async function jobUpdate(db: Db, jobId: string, patch: Record<string, unknown>): Promise<void> {
+  const { error } = await db.from('mint_jobs')
+    .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', jobId);
+  if (error) console.warn(`cinematic-mint: mint_jobs update failed (${jobId}): ${error.message}`);
+}
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
@@ -68,6 +92,23 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // allowlist-validated) wins over the client body — it is what the persisted effect
   // template was selected from, so the two can never disagree on the chit.
   const chitFamily = (moment.archetype_family as Family | null) ?? family;
+
+  // ── job dedup: a live job for this moment means generation is ALREADY running —
+  // hand back its id instead of double-spending; a stale 'running' row is a killed
+  // background task, so mark it failed and start fresh.
+  const { data: liveJobs } = await db.from('mint_jobs')
+    .select('id, updated_at').eq('moment_id', moment_id).eq('status', 'running')
+    .order('created_at', { ascending: false }).limit(1);
+  if (liveJobs?.[0]) {
+    const ageMs = Date.now() - new Date(liveJobs[0].updated_at as string).getTime();
+    if (ageMs < JOB_STALE_MS) {
+      return json({ status: 'accepted', job_id: liveJobs[0].id, mode: cfg.mode, deduped: true }, 202);
+    }
+    await jobUpdate(db, liveJobs[0].id as string, {
+      status: 'failed', error: 'stale',
+      detail: 'The generation task was interrupted. It has been marked failed so you can retry.',
+    });
+  }
 
   // ── spend guards (BEFORE any generation — each mint is paid provider calls) ───────
   // Guard 1: a generation for this moment already awaits a moderation verdict →
@@ -172,7 +213,62 @@ Deno.serve(async (req: Request): Promise<Response> => {
     attempt = prev.attempt + 1;
   }
 
-  // ── generate, or resume the pending generation with no new provider spend ────────
+  // ── everything paid/slow happens in a background job; respond with its id now ────
+  const { data: job, error: jobErr } = await db.from('mint_jobs').insert({
+    moment_id, user_id: user.id,
+    ...(resumeGen ? { generation_id: resumeGen.id } : {}),
+  }).select('id').single();
+  if (jobErr || !job) return json({ error: 'job create failed', detail: jobErr?.message }, 500);
+  const jobId = job.id as string;
+
+  const task = runMintJob({
+    db, cfg, jobId, momentId: moment_id, moment, body,
+    chitFamily, chitType: chit_type, subjectDesc: subject_desc,
+    effectTemplateId, effectTiming, grantKeywords,
+    templateId, tier: tier as Tier, plate, promptTpl, tpl,
+    seed, attempt, resumeGen, swapOf, oldMomentId,
+  }).catch(async (e) => {
+    console.error(`cinematic-mint job ${jobId}: uncaught`, e);
+    await jobUpdate(db, jobId, {
+      status: 'failed', error: 'internal',
+      detail: (e as Error)?.message ?? 'Unexpected error during generation',
+    });
+  });
+  if (typeof EdgeRuntime !== 'undefined' && EdgeRuntime) EdgeRuntime.waitUntil(task);
+
+  return json({
+    status: 'accepted',
+    job_id: jobId,
+    mode: cfg.mode,
+    resume: !!resumeGen,
+    next: 'Poll your mint_jobs row until status leaves running, then read result',
+  }, 202);
+});
+
+// ── the background pipeline: generation → post-gen moderation → completion ─────────
+// Terminal states land on the job row (never thrown): succeeded / held_moderation /
+// rejected_moderation / failed, with `result` mirroring the old synchronous payload.
+interface MintJobCtx {
+  db: Db; cfg: ReturnType<typeof cinematicConfigFromEnv>; jobId: string;
+  momentId: string; moment: Record<string, unknown>;
+  body: { name?: string; vibe_gate?: number };
+  chitFamily: Family; chitType: 'creature' | 'spell_moment'; subjectDesc: string;
+  effectTemplateId: string | null; effectTiming: string | null; grantKeywords: string[];
+  templateId: string; tier: Tier;
+  plate: Record<string, unknown>; promptTpl: Record<string, unknown>;
+  tpl: { duration_min_s?: number; duration_max_s?: number } | null;
+  seed: number | undefined; attempt: number;
+  resumeGen: Record<string, unknown> | null;
+  swapOf: string | null; oldMomentId: string | null;
+}
+
+async function runMintJob(ctx: MintJobCtx): Promise<void> {
+  const {
+    db, cfg, jobId, momentId, moment, body, chitFamily, chitType, subjectDesc,
+    effectTemplateId, effectTiming, grantKeywords, templateId, tier,
+    plate, promptTpl, tpl, seed, attempt, resumeGen, swapOf, oldMomentId,
+  } = ctx;
+
   let genId: string;
   let artUrl: string;
   let mp4Url: string;
@@ -188,70 +284,83 @@ Deno.serve(async (req: Request): Promise<Response> => {
     durationS = Math.round(((tpl?.duration_min_s ?? 4) + (tpl?.duration_max_s ?? 6)) / 2);
     seedUsed = Number(resumeGen.generation_seed);
     console.log(`cinematic-mint: resuming pending generation ${genId} (no provider calls)`);
+    await jobUpdate(db, jobId, { stage: 'screening', generation_id: genId });
   } else {
     // ── illustration (card art; also the cutscene subject reference) ───────────────
+    await jobUpdate(db, jobId, { stage: 'illustration' });
     const illo = await generateIllustration(cfg, {
-      prompt: illustrationPrompt(subject_desc, chitFamily),
-      referenceImageUrl: moment.thumbnail_url ?? undefined,
+      prompt: illustrationPrompt(subjectDesc, chitFamily),
+      referenceImageUrl: (moment.thumbnail_url as string | null) ?? undefined,
       seed,
       width: 1024,   // portrait 4:5 card-art window — the app frames it, not 16:9
       height: 1280,
     });
     if (!illo.ok) {
       console.warn(`cinematic-mint illustration: ${illo.reason} status=${illo.status ?? ''} ${illo.detail ?? ''}`);
-      return json({
-        error: 'generation_unavailable', stage: 'illustration', reason: illo.reason,
-        provider_status: illo.status ?? null, detail: illo.detail ?? null,
-      }, illo.reason === 'rate_limited' ? 429 : 502);
+      await jobUpdate(db, jobId, {
+        status: 'failed', error: 'generation_unavailable',
+        detail: `illustration: ${illo.reason}${illo.detail ? ` — ${illo.detail}` : ''}`,
+      });
+      return;
     }
-    const artPath = `moments/${moment_id}/card_art.png`;
+    const artPath = `moments/${momentId}/card_art.png`;
     const artUp = await db.storage.from('battle-media').upload(artPath, illo.bytes, {
       contentType: illo.contentType, upsert: true,
     });
-    if (artUp.error) return json({ error: 'card art store failed', detail: artUp.error.message }, 500);
+    if (artUp.error) {
+      await jobUpdate(db, jobId, { status: 'failed', error: 'storage', detail: `card art store failed: ${artUp.error.message}` });
+      return;
+    }
     artUrl = db.storage.from('battle-media').getPublicUrl(artPath).data.publicUrl;
+    await jobUpdate(db, jobId, { stage: 'card_art_stored' });
 
     // ── cutscene: bracketed by the plates, seeded, style-locked ────────────────────
     const fAction = familyAction(chitFamily, templateId);
-    const intensity = TIER_INTENSITY[tier as Tier];
+    const intensity = TIER_INTENSITY[tier];
     // {VIDEO_DESC} is the attached clip's description (moment-clip-attach) — a VARIABLE
     // slot for the V2V core only; the agnostic bridge templates carry no placeholder for
     // it (Hard Rule 39). Absent (e.g. link-only ingest, no clip) → the slot collapses.
     const videoDesc = (moment.clip_video_desc as string | null) ?? null;
-    const motionPrompt = assembleMotionPrompt(promptTpl.prompt_body, {
-      subjectDesc: subject_desc, familyAction: fAction, tierIntensity: intensity,
+    const motionPrompt = assembleMotionPrompt(promptTpl.prompt_body as string, {
+      subjectDesc, familyAction: fAction, tierIntensity: intensity,
       videoDesc,
     });
     durationS = Math.round(((tpl?.duration_min_s ?? 4) + (tpl?.duration_max_s ?? 6)) / 2);
+    await jobUpdate(db, jobId, { stage: 'cutscene' });
     const cut = await generateCutscene(cfg, {
       prompt: motionPrompt,
-      firstFrameUrl: plate.start_plate_url,
-      lastFrameUrl: plate.end_plate_url,
+      firstFrameUrl: plate.start_plate_url as string,
+      lastFrameUrl: plate.end_plate_url as string,
       referenceImageUrl: artUrl,
       durationS,
       seed,
     });
     if (!cut.ok) {
       console.warn(`cinematic-mint cutscene: ${cut.reason} status=${cut.status ?? ''} ${cut.detail ?? ''}`);
-      return json({
-        error: 'generation_unavailable', stage: 'cutscene', reason: cut.reason,
-        provider_status: cut.status ?? null, detail: cut.detail ?? null,
-      }, cut.reason === 'rate_limited' ? 429 : 502);
+      await jobUpdate(db, jobId, {
+        status: 'failed', error: 'generation_unavailable',
+        detail: `cutscene: ${cut.reason}${cut.detail ? ` — ${cut.detail}` : ''}`,
+      });
+      return;
     }
-    const mp4Path = `moments/${moment_id}/attempt${attempt}/cutscene.mp4`;
+    const mp4Path = `moments/${momentId}/attempt${attempt}/cutscene.mp4`;
     const mp4Up = await db.storage.from('battle-media').upload(mp4Path, cut.bytes, {
       contentType: 'video/mp4', upsert: true,
     });
-    if (mp4Up.error) return json({ error: 'cutscene store failed', detail: mp4Up.error.message }, 500);
+    if (mp4Up.error) {
+      await jobUpdate(db, jobId, { status: 'failed', error: 'storage', detail: `cutscene store failed: ${mp4Up.error.message}` });
+      return;
+    }
     mp4Url = db.storage.from('battle-media').getPublicUrl(mp4Path).data.publicUrl;
+    await jobUpdate(db, jobId, { stage: 'cutscene_stored' });
 
     // ── generation ledger row ───────────────────────────────────────────────────────
     const { data: gen, error: gErr } = await db.from('cinematic_generations').insert({
-      moment_id,
+      moment_id: momentId,
       template_id: templateId,
       anchor_plate_version: plate.version,
       prompt_template_version: promptTpl.version,
-      subject_desc: sanitizeSubjectDesc(subject_desc),
+      subject_desc: sanitizeSubjectDesc(subjectDesc),
       video_desc: videoDesc,
       family_action: fAction,
       tier_intensity: intensity,
@@ -262,9 +371,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
       illustration_path: artPath,
       mp4_path: mp4Path,
     }).select('id').single();
-    if (gErr || !gen) return json({ error: 'ledger write failed', detail: gErr?.message }, 500);
+    if (gErr || !gen) {
+      await jobUpdate(db, jobId, { status: 'failed', error: 'ledger', detail: `ledger write failed: ${gErr?.message}` });
+      return;
+    }
     genId = gen.id as string;
     seedUsed = cut.seed;
+    await jobUpdate(db, jobId, { generation_id: genId });
   }
 
   // ── post-gen moderation (mandatory — Hard Rule 39) ───────────────────────────────
@@ -277,47 +390,58 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const moderation = Deno.env.get('CINEMATIC_MODERATION') ?? (cfg.mode === 'sim' ? 'auto' : 'screen');
   const alreadyApproved = resumeGen?.status === 'moderation_approved';
   if (!alreadyApproved) {
+    await jobUpdate(db, jobId, { stage: 'screening' });
     if (moderation === 'manual') {
-      return json({
-        status: 'pending_moderation', generation_id: genId,
+      await jobUpdate(db, jobId, {
+        status: 'held_moderation',
         detail: 'Post-generation moderation verdict required before the chit is created' +
           (swapOf ? '; the swap is NOT executed yet — pass swap_of_chit_id again at completion' : ''),
-      }, 202);
+        result: { status: 'pending_moderation', generation_id: genId },
+      });
+      return;
     }
     if (moderation === 'screen') {
       const screen = await screenCutsceneFrames(db, genId, mp4Url, durationS);
       if (!screen.ok) {
         // Fail CLOSED: status stays 'generated' → a human verdict is required.
         console.warn(`cinematic-mint post-gen screen unavailable (${screen.detail}) — holding for manual review`);
-        return json({
-          status: 'pending_moderation', generation_id: genId,
+        await jobUpdate(db, jobId, {
+          status: 'held_moderation',
           detail: 'Automated screening was unavailable, so the cutscene is held for manual review' +
             (swapOf ? '; the swap is NOT executed yet' : ''),
-        }, 202);
+          result: { status: 'pending_moderation', generation_id: genId },
+        });
+        return;
       }
       if (screen.verdict !== 'approved') {
         const { error: rejErr } = await db.rpc('cinematic_moderation_verdict', {
           p_generation_id: genId, p_approved: false, p_reason: screen.reason ?? screen.verdict,
         });
         if (rejErr) console.warn(`cinematic-mint: reject verdict write failed: ${rejErr.message}`);
-        return json({
-          error: 'moderation_rejected', generation_id: genId,
+        await jobUpdate(db, jobId, {
+          status: 'rejected_moderation', error: 'moderation_rejected',
           detail: 'The generated cutscene did not pass content moderation, so no card was ' +
             'created. You can adjust the description and generate again.',
-        }, 422);
+          result: { status: 'moderation_rejected', generation_id: genId },
+        });
+        return;
       }
     }
     const { error: modErr } = await db.rpc('cinematic_moderation_verdict', {
       p_generation_id: genId, p_approved: true, p_reason: null,
     });
-    if (modErr) return json({ error: 'moderation verdict failed', detail: modErr.message }, 500);
+    if (modErr) {
+      await jobUpdate(db, jobId, { status: 'failed', error: 'moderation', detail: `moderation verdict failed: ${modErr.message}` });
+      return;
+    }
   }
 
   // ── complete: chit + cinematic fields + ownership; inactive until previewed ──────
+  await jobUpdate(db, jobId, { stage: 'completing' });
   const { data: chitId, error: cErr } = await db.rpc('cinematic_complete_mint', {
     p_generation_id: genId,
     p_family: chitFamily,
-    p_chit_type: chit_type,
+    p_chit_type: chitType,
     p_timing: effectTiming,
     p_effect_template_id: effectTemplateId,
     p_name: body.name ?? null,
@@ -327,7 +451,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
     p_mp4_url: mp4Url,
     p_swap_of: swapOf,
   });
-  if (cErr) return json({ error: 'mint completion failed', detail: cErr.message }, 500);
+  if (cErr) {
+    await jobUpdate(db, jobId, { status: 'failed', error: 'completion', detail: `mint completion failed: ${cErr.message}` });
+    return;
+  }
 
   // ── swap aftermath: the old chit is retired (same tx as the mint above); its
   // media goes now — only after the new mint is confirmed (minting spec P4).
@@ -340,24 +467,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
     }
   }
 
-  return json({
-    status: 'pending_preview',
-    chit_id: chitId,
-    generation_id: genId,
-    template_id: templateId,
-    tier,
-    seed: seedUsed,
-    // sim mode returns placeholder bytes (1x1 png / non-playable mp4 stub) — the client
-    // shows an honest "renders when the cinematic engine is live" state instead of a
-    // blank card window + dead <video>. Real art/video only when CINEMATIC_MODE=live.
-    mode: cfg.mode,
-    media_placeholder: cfg.mode === 'sim',
-    card_art_url: artUrl,
-    mp4_cutscene_url: mp4Url,
-    ...(swapOf ? { swapped_out_chit_id: swapOf, swapped_media_deleted: swappedMediaDeleted } : {}),
-    next: 'Play the preview battle, then call chit_record_preview + chit_finalize_preview',
+  await jobUpdate(db, jobId, {
+    stage: 'done', status: 'succeeded', chit_id: chitId,
+    result: {
+      status: 'pending_preview',
+      chit_id: chitId,
+      generation_id: genId,
+      template_id: templateId,
+      tier,
+      seed: seedUsed,
+      // sim mode returns placeholder bytes (1x1 png / non-playable mp4 stub) — the client
+      // shows an honest "renders when the cinematic engine is live" state instead of a
+      // blank card window + dead <video>. Real art/video only when CINEMATIC_MODE=live.
+      mode: cfg.mode,
+      media_placeholder: cfg.mode === 'sim',
+      card_art_url: artUrl,
+      mp4_cutscene_url: mp4Url,
+      ...(swapOf ? { swapped_out_chit_id: swapOf, swapped_media_deleted: swappedMediaDeleted } : {}),
+      next: 'Play the preview battle, then call chit_record_preview + chit_finalize_preview',
+    },
   });
-});
+}
 
 // Post-gen screening (Hard Rule 39): sample frames of the FINISHED cutscene via the
 // stitch worker (start / middle / last), sign them out of the private mint-staging
@@ -368,7 +498,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 const CONTENT_REJECT_REASONS = new Set(['nsfw', 'graphic_violence', 'hate', 'minor_safety']);
 
 async function screenCutsceneFrames(
-  db: { storage: ReturnType<typeof createClient>['storage'] },
+  db: { storage: Db['storage'] },
   genId: string, mp4Url: string, durationS: number,
 ): Promise<{ ok: true; verdict: string; reason?: string } | { ok: false; detail: string }> {
   const workerUrl = Deno.env.get('STITCH_WORKER_URL');
@@ -425,7 +555,7 @@ async function screenCutsceneFrames(
 // Remove every battle-media object under moments/<momentId> (card art + all
 // cutscene attempts). Storage list() marks folders with a null id.
 async function deleteMomentMedia(
-  db: { storage: ReturnType<typeof createClient>['storage'] }, momentId: string,
+  db: { storage: Db['storage'] }, momentId: string,
 ): Promise<number> {
   const root = `moments/${momentId}`;
   const files: string[] = [];

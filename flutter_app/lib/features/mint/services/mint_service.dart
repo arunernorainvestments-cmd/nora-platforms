@@ -100,9 +100,12 @@ class MintService {
     }
   }
 
-  /// Runs the cinematic generation pipeline for the reviewed card. Returns the
-  /// mint payload (status, chit_id, card_art_url, mp4_cutscene_url, tier, ...) or,
-  /// when a self-minted card already occupies the single slot, an
+  /// Kicks off the cinematic generation pipeline for the reviewed card. The
+  /// server validates + guards synchronously, then generates in a background job
+  /// and returns `status: accepted` + `job_id` immediately (the old synchronous
+  /// path hit the edge-runtime wall clock — HTTP 546). Poll [fetchMintJob] until
+  /// the job leaves `running`; its `result` mirrors the old mint payload. When a
+  /// self-minted card already occupies the single slot this returns the
   /// `error: self_mint_slot_occupied` payload with `occupied_chit_id` for the
   /// swap-confirm flow. HTTP-level failures still surface as [MintException].
   static Future<Map<String, dynamic>> generate({
@@ -137,6 +140,17 @@ class MintService {
       }
       throw MintException(_messageFrom(e));
     }
+  }
+
+  /// Reads the caller's mint job row (owner-scoped RLS) — stage drives the
+  /// progressive loader; a terminal status carries the mint payload in `result`.
+  static Future<Map<String, dynamic>?> fetchMintJob(String jobId) async {
+    final res = await _client
+        .from('mint_jobs')
+        .select('id, stage, status, chit_id, error, detail, result, updated_at')
+        .eq('id', jobId)
+        .maybeSingle();
+    return res == null ? null : Map<String, dynamic>.from(res);
   }
 
   /// Loads the freshly minted chit's full row (tier-derived aura/atk/hp/keywords)
