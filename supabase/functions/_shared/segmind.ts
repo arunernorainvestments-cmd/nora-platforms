@@ -62,12 +62,15 @@ export interface IllustrationRequest {
 
 export interface CutsceneRequest {
   prompt: string;              // assembled from the motion prompt template (§4)
-  firstFrameUrl: string;       // template start-plate — mandatory bookend
-  lastFrameUrl: string;        // template end-plate — mandatory bookend
-  // The user's moderated uploaded clip (signed mint-staging URL). Seedance 2.0
-  // reference_videos[] IS combinable with first/last-frame conditioning — unlike
-  // reference_images, which is mutually exclusive with it (and whose old singular
-  // spelling reference_image_url was silently dropped; 2026-07-13 audit cause #4).
+  firstFrameUrl: string;       // template start-plate — ALWAYS anchored (the card seam)
+  // Template end-plate. Live-trial 2026-07-13: ByteDance rejects ANY reference
+  // content (image/video/audio) combined with BOTH first and last frames — so when a
+  // reference clip rides along, the caller omits the last frame and the prompt's
+  // ENDING directive steers into the impact-flash whiteout instead (Unity's local
+  // impact-flash particle covers that seam). No clip → both bookends, as always.
+  lastFrameUrl?: string;
+  // The user's moderated uploaded clip (signed mint-staging URL) — the old singular
+  // reference_image_url spelling was silently dropped (2026-07-13 audit cause #4).
   referenceVideoUrls?: string[];
   durationS: number;
   seed?: number;
@@ -197,28 +200,27 @@ export async function generateIllustration(cfg: CinematicConfig, req: Illustrati
 // ── Cutscene (Seedance 2.0): bracketed by the anchor plates ───────────────────────
 export async function generateCutscene(cfg: CinematicConfig, req: CutsceneRequest): Promise<GenResult> {
   if (!req.prompt?.trim()) return { ok: false, reason: 'invalid_request', detail: 'empty prompt' };
-  // The engine's core mechanic: both bookends are mandatory, always.
-  if (!req.firstFrameUrl || !req.lastFrameUrl) {
-    return { ok: false, reason: 'invalid_request', detail: 'firstFrameUrl and lastFrameUrl (anchor plates) are required' };
+  // The start plate is always anchored; the end plate is required UNLESS a reference
+  // clip rides along (ByteDance: reference content + both frames = invalid request).
+  if (!req.firstFrameUrl || (!req.lastFrameUrl && !req.referenceVideoUrls?.length)) {
+    return { ok: false, reason: 'invalid_request', detail: 'firstFrameUrl required; lastFrameUrl required without a reference clip' };
   }
+  const withClip = !!req.referenceVideoUrls?.length;
   const durationS = Math.min(15, Math.max(4, Math.round(req.durationS)));  // Seedance clip bounds
-  const seed = pickSeed(req.seed, `cutscene:${req.prompt}:${req.firstFrameUrl}:${req.lastFrameUrl}`, cfg.mode);
+  const seed = pickSeed(req.seed, `cutscene:${req.prompt}:${req.firstFrameUrl}:${req.lastFrameUrl ?? ''}`, cfg.mode);
 
   if (cfg.mode === 'sim') {
     return { ok: true, bytes: SIM_MP4, contentType: 'video/mp4', seed, model: 'sim-seedance', mode: 'sim' };
   }
   const tier = req.tierOverride ?? cfg.renderTier;
   const model = tier === 'standard' ? cfg.seedanceStandardModel : cfg.seedanceFastModel;
-  // NOTE: never send reference_images here — it is mutually exclusive with the
-  // first/last-frame conditioning the anchor-plate bookends require (Hard Rule 39).
-  // Subject identity travels in the prompt + reference_videos (the user's clip).
+  // NOTE: never send reference_images here — like all reference content it conflicts
+  // with dual-frame conditioning. Subject identity travels in the prompt + the clip.
   return await callSegmind(cfg, model, {
     prompt: req.prompt,
     first_frame_url: req.firstFrameUrl,
-    last_frame_url: req.lastFrameUrl,   // requires first — both always set here
-    ...(req.referenceVideoUrls?.length
-      ? { reference_videos: req.referenceVideoUrls.slice(0, 3) }
-      : {}),
+    ...(req.lastFrameUrl && !withClip ? { last_frame_url: req.lastFrameUrl } : {}),
+    ...(withClip ? { reference_videos: req.referenceVideoUrls!.slice(0, 3) } : {}),
     duration: durationS,
     resolution: tier === 'standard' ? '1080p' : '720p',
     seed,

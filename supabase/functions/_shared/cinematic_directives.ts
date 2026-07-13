@@ -85,6 +85,15 @@ export function clipRefDirective(videoDesc: string | null | undefined): string {
   );
 }
 
+// Appended (house-owned constant) when a reference clip rides along: ByteDance forbids
+// reference content + BOTH frame anchors, so clip mode keeps only the start plate and
+// this directive steers the ending into the impact-flash whiteout the end plate depicts
+// (Unity's local impact-flash particle then covers the seam — Hard Rule 39 amended by
+// the 2026-07-13 live trial).
+export const CLIP_MODE_ENDING_DIRECTIVE =
+  '[ENDING] at the final moment the action culminates and the entire frame is consumed ' +
+  'by a blinding violet-and-cyan cyber energy flash, whiting out the whole frame.';
+
 export function assembleMotionPrompt(
   promptBody: string,
   slots: {

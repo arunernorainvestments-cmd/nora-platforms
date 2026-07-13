@@ -20,8 +20,8 @@
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { cinematicConfigFromEnv, generateCutscene, generateIllustration } from '../_shared/segmind.ts';
 import {
-  assembleMotionPrompt, familyAction, illustrationPrompt, sanitizeSubjectDesc,
-  selectTemplate, TIER_INTENSITY, type Family, type Tier,
+  assembleMotionPrompt, CLIP_MODE_ENDING_DIRECTIVE, familyAction, illustrationPrompt,
+  sanitizeSubjectDesc, selectTemplate, TIER_INTENSITY, type Family, type Tier,
 } from '../_shared/cinematic_directives.ts';
 
 // Seedance reference_videos accepts 2–15s clips; the browser trimmer allows 1–15s.
@@ -339,16 +339,22 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       clipRefUrl = signedClip?.signedUrl ?? null;
     }
 
-    let motionPrompt = assembleMotionPrompt(promptTpl.prompt_body as string, {
-      subjectDesc, familyAction: fAction, tierIntensity: intensity,
-      videoDesc, clipAttached: !!clipRefUrl,
-    });
+    // Clip mode (2026-07-13 live trial): reference content cannot combine with BOTH
+    // frame anchors, so the clip rides with the start plate only and the constant
+    // ENDING directive steers into the end plate's impact-flash whiteout (Unity's
+    // impact-flash particle covers that seam). No clip → both bookends, unchanged.
+    const buildPrompt = (withClip: boolean) =>
+      assembleMotionPrompt(promptTpl.prompt_body as string, {
+        subjectDesc, familyAction: fAction, tierIntensity: intensity,
+        videoDesc, clipAttached: withClip,
+      }) + (withClip ? `\n${CLIP_MODE_ENDING_DIRECTIVE}` : '');
+    let motionPrompt = buildPrompt(!!clipRefUrl);
     durationS = Math.round(((tpl?.duration_min_s ?? 4) + (tpl?.duration_max_s ?? 6)) / 2);
     await jobUpdate(db, jobId, { stage: 'cutscene' });
     let cut = await generateCutscene(cfg, {
       prompt: motionPrompt,
       firstFrameUrl: plate.start_plate_url as string,
-      lastFrameUrl: plate.end_plate_url as string,
+      lastFrameUrl: clipRefUrl ? undefined : (plate.end_plate_url as string),
       referenceVideoUrls: clipRefUrl ? [clipRefUrl] : undefined,
       durationS,
       seed,
@@ -357,13 +363,10 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     // celebrity clip → InputVideoSensitiveContentDetected/copyright). A flagged clip
     // must degrade to the prompt-only cutscene — never brick the whole mint (and the
     // already-paid illustration) on a provider input-policy call.
-    if (!cut.ok && cut.reason === 'provider_moderation' && clipRefUrl) {
-      console.warn(`cinematic-mint: provider rejected the reference clip (${cut.detail?.slice(0, 200)}) — retrying without it`);
+    if (!cut.ok && (cut.reason === 'provider_moderation' || cut.reason === 'invalid_request') && clipRefUrl) {
+      console.warn(`cinematic-mint: clip-referenced call failed ${cut.reason} (${cut.detail?.slice(0, 200)}) — retrying without the clip`);
       clipRefUrl = null;
-      motionPrompt = assembleMotionPrompt(promptTpl.prompt_body as string, {
-        subjectDesc, familyAction: fAction, tierIntensity: intensity,
-        videoDesc, clipAttached: false,
-      });
+      motionPrompt = buildPrompt(false);
       cut = await generateCutscene(cfg, {
         prompt: motionPrompt,
         firstFrameUrl: plate.start_plate_url as string,
