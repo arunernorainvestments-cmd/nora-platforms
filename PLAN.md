@@ -68,25 +68,37 @@ causes — audit report artifact: https://claude.ai/code/artifact/cb7c960c-f87e-
   celebrity likeness, and the moderation screen classifies only nsfw/violence/hate/minor-safety — a
   recognizable copyrighted character passes onto a tradeable asset.
 
-**Fix checklist (order matters; 1–4 are one short session):**
-- [ ] 1. Flip `MOMENT_CLASSIFY_MODE=live` — Claude vision derives a real `subject_desc`. Biggest single
-      quality jump for both art and cutscene.
-- [ ] 2. Set `MODERATION_MODE=live` — real safety classification + real `{VIDEO_DESC}` persistence
-      (ANTHROPIC_API_KEY already set; this is also a launch gate).
-- [ ] 3. Harden `illustrationPrompt` CONSTRAINTS: "original character design, not any existing
-      anime/manga/game/comic character, no celebrity likeness"; consider steering the style-lock off
-      generic "cel-shaded anime" toward a distinctive house look.
-- [ ] 4. Fix the Seedance call in `_shared/segmind.ts`: stop sending `reference_image_url` with frame
-      conditioning; carry subject identity via the (now-real) prompt; micro-trial `reference_images[]`
-      mode vs frame mode for on-model cutscene subjects.
-- [ ] 5. **Micro-trial Seedance 2.0 native video input** (clip as input video + restyle prompt + plates)
-      BEFORE building Track A as specced — Seedance 2.0 accepts up to 3 input videos / 9 reference
-      images natively and may collapse the Wan/Kling/stitch three-node plan into one call. NOTE:
-      ByteDance blocks reference images with real human faces — the stylize-first order is load-bearing.
-- [ ] 6. Persist the FULL assembled prompts + provider request IDs on `cinematic_generations` (only the
-      slot values are stored today); log whether the image reference was accepted.
-- [ ] 7. Once MODERATION_MODE=live: add an IP/likeness flag to the post-gen screen prompt (hold
-      recognizable copyrighted characters for review).
+**Fix checklist — items 1–6 SHIPPED 2026-07-13 (migs 162–163 applied; cinematic-mint / mint-cancel /
+moment-classify / moment-clip-attach redeployed):**
+- [x] 1. `MOMENT_CLASSIFY_MODE=live` — Claude vision derives a real `subject_desc`.
+- [x] 2. `MODERATION_MODE=live` — real safety classification + real `{VIDEO_DESC}` persistence.
+      NOTE: moments clip-attached BEFORE the flip still carry the stub desc — re-attach (or re-mint
+      after delete) to get a real one.
+- [x] 3. `illustrationPrompt` hardened: "original character design… never any existing anime/manga/
+      video-game/comic/cartoon character, no celebrity likeness, no franchise costume or hairstyle";
+      style-lock reworded off "cel-shaded anime" to a house cel-shaded look.
+- [x] 4. Seedance call fixed: `reference_image_url` removed (wrong name, silently dropped; the real
+      `reference_images[]` is mutually exclusive with the mandatory plate bookends). Subject identity
+      now travels in the prompt + the clip reference (below).
+- [x] 5. **Clip wired into generation** — better than the specced three-node Track A: Segmind docs
+      confirm `reference_videos[]` (≤3, 2–15s, V2V token rate) IS combinable with first/last-frame
+      conditioning, so `cinematic-mint` signs the moderated `mint-staging` clip and sends it as
+      `reference_videos[0]` alongside the plates; **prompt template v2** (mig 163, all 6 templates)
+      carries a `{CLIP_REF}` slot ("recreate the subject and action of reference video 1…") that
+      collapses when no clip ≥2s is attached. Live trial: `tools/cinematic/smoke_clip_mint.ts`.
+      Track A (Wan/Kling/stitch) stays parked unless this path proves insufficient.
+- [x] 6. Full assembled prompts + provider request ids + `clip_reference_used` persisted on
+      `cinematic_generations` (mig 163).
+- [ ] 7. DEFERRED (founder call 2026-07-13: IP-exposure work is secondary to a working pipeline) —
+      add an IP/likeness flag to the post-gen screen prompt (hold recognizable copyrighted characters
+      for review). The prompt-side constraints from item 3 are in force.
+
+**Also shipped 2026-07-13 — delete a minted card (founder testing need):** `chit_delete_owned`
+(mig 162) retires a FINALIZED self-minted chit (minter-only, no foreign-held copies, not
+wagered/listed), frees the self-mint slot, purges decks, and releases the source moment for an
+immediate re-mint; `mint-cancel` gained `allow_finalized: true` (deletes media too); /collection
+card dialog gained a danger "Delete this card" action. Deleting + re-minting the same moment is
+now the intended test loop.
 
 ---
 

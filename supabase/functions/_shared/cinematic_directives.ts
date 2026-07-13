@@ -72,6 +72,19 @@ export function sanitizeSubjectDesc(raw: string): string {
   return raw.replace(/[{}\[\]<>|`]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
+// {CLIP_REF} fill (prompt template v2, mig 163): house-owned constant text telling
+// Seedance to recreate the user's actual uploaded clip (passed as reference_videos[0])
+// — the only variable inside is the sanitized clip_video_desc. Built here so the
+// wording can never drift per-call, and collapses to empty when no clip is attached.
+export function clipRefDirective(videoDesc: string | null | undefined): string {
+  const desc = videoDesc ? sanitizeSubjectDesc(videoDesc) : '';
+  return (
+    '[SOURCE] reference video 1 is the real source moment: recreate its subject and ' +
+    `action${desc ? ` — ${desc} —` : ''} fully restyled into the cel-shaded look below; ` +
+    'the character design follows the person in reference video 1, stylized.'
+  );
+}
+
 export function assembleMotionPrompt(
   promptBody: string,
   slots: {
@@ -79,17 +92,25 @@ export function assembleMotionPrompt(
     familyAction: string;
     tierIntensity: string;
     videoDesc?: string | null;
+    // TRUE only when the clip is actually being sent as reference_videos[0] —
+    // the directive must never promise a video the request doesn't carry.
+    clipAttached?: boolean;
   },
 ): string {
   // {VIDEO_DESC} is a VARIABLE slot filled only for the V2V core node (Hard Rule 39:
   // the constant STYLE-LOCK/CONSTRAINTS still win; the agnostic bridge templates carry
   // no {VIDEO_DESC} placeholder, so a bridge prompt is a no-op replace and stays
   // character-agnostic). Absent description → the slot collapses to empty.
+  // {CLIP_REF} (template v2) collapses the same way when no clip rides along.
   return promptBody
     .replaceAll('{SUBJECT_DESC}', sanitizeSubjectDesc(slots.subjectDesc))
     .replaceAll('{FAMILY_ACTION}', slots.familyAction)
     .replaceAll('{TIER_INTENSITY}', slots.tierIntensity)
-    .replaceAll('{VIDEO_DESC}', slots.videoDesc ? sanitizeSubjectDesc(slots.videoDesc) : '');
+    .replaceAll('{VIDEO_DESC}', slots.videoDesc ? sanitizeSubjectDesc(slots.videoDesc) : '')
+    .replaceAll('{CLIP_REF}', slots.clipAttached ? clipRefDirective(slots.videoDesc) : '')
+    .replace(/\n{3,}/g, '\n\n')   // a collapsed slot never leaves a hole in the prompt
+    .replace(/\n\s*\n/g, '\n')
+    .trim();
 }
 
 // ── {VIDEO_DESC} generation: a Vision-LLM read of the clip's sampled frames ───────
@@ -188,11 +209,17 @@ export function illustrationPrompt(subjectDesc: string, family: Family): string 
   const accent = FAMILY_ACCENT[family];
   return [
     'Stylized trading-card character illustration,',
-    'cel-shaded anime, bold black ink outlines, flat cel shadows,',
+    'cel-shaded, bold black ink outlines, flat cel shadows, painterly rim-lit accents,',
     'dynamic hero pose, centered subject, dark studio void background,',
     'portrait 4:5 composition,',
     `subject: ${sanitizeSubjectDesc(subjectDesc)},`,
     `${accent.phrase} accent rim-light and energy glow around the subject,`,
+    // 2026-07-13 audit cause #5: without these, an under-specified subject defaulted
+    // to the archetypal shonen-anime hero (a recognizable DBZ likeness) — a quality
+    // AND IP failure. The subject must be an original design derived from the moment.
+    'an original character design unique to this card,',
+    'never any existing anime, manga, video-game, comic, or cartoon character,',
+    'no celebrity likeness, no franchise costume or hairstyle,',
     'no text, no words, no letters, no logos, no card frame, no border, no UI panels,',
     'no photographic realism',
   ].join(' ');

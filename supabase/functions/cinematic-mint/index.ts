@@ -23,6 +23,9 @@ import {
   assembleMotionPrompt, familyAction, illustrationPrompt, sanitizeSubjectDesc,
   selectTemplate, TIER_INTENSITY, type Family, type Tier,
 } from '../_shared/cinematic_directives.ts';
+
+// Seedance reference_videos accepts 2–15s clips; the browser trimmer allows 1–15s.
+const CLIP_REF_MIN_MS = 2000;
 import { moderationConfigFromEnv, preGenModerate } from '../_shared/moderation.ts';
 
 // Supabase edge runtime background-task hook (keeps the worker alive after the
@@ -286,10 +289,11 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     console.log(`cinematic-mint: resuming pending generation ${genId} (no provider calls)`);
     await jobUpdate(db, jobId, { stage: 'screening', generation_id: genId });
   } else {
-    // ── illustration (card art; also the cutscene subject reference) ───────────────
+    // ── illustration (card art) ─────────────────────────────────────────────────────
     await jobUpdate(db, jobId, { stage: 'illustration' });
+    const illoPrompt = illustrationPrompt(subjectDesc, chitFamily);
     const illo = await generateIllustration(cfg, {
-      prompt: illustrationPrompt(subjectDesc, chitFamily),
+      prompt: illoPrompt,
       referenceImageUrl: (moment.thumbnail_url as string | null) ?? undefined,
       seed,
       width: 1024,   // portrait 4:5 card-art window — the app frames it, not 16:9
@@ -321,9 +325,23 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     // slot for the V2V core only; the agnostic bridge templates carry no placeholder for
     // it (Hard Rule 39). Absent (e.g. link-only ingest, no clip) → the slot collapses.
     const videoDesc = (moment.clip_video_desc as string | null) ?? null;
+
+    // The user's moderated uploaded clip rides along as reference_videos[0] (2026-07-13
+    // audit item 5): Seedance 2.0 combines reference videos WITH the mandatory plate
+    // bookends, so the cutscene's middle can finally recreate the real moment. The
+    // mint-staging bucket is private — sign a short-lived URL for the provider fetch
+    // only (the clip was pre-gen moderated at attach; Hard Rule 37).
+    let clipRefUrl: string | null = null;
+    const trimMs = Number(moment.clip_trim_end_ms ?? 0) - Number(moment.clip_trim_start_ms ?? 0);
+    if (moment.clip_status === 'attached' && moment.raw_clip_path && trimMs >= CLIP_REF_MIN_MS) {
+      const { data: signedClip } = await db.storage.from('mint-staging')
+        .createSignedUrl(moment.raw_clip_path as string, 3600);
+      clipRefUrl = signedClip?.signedUrl ?? null;
+    }
+
     const motionPrompt = assembleMotionPrompt(promptTpl.prompt_body as string, {
       subjectDesc, familyAction: fAction, tierIntensity: intensity,
-      videoDesc,
+      videoDesc, clipAttached: !!clipRefUrl,
     });
     durationS = Math.round(((tpl?.duration_min_s ?? 4) + (tpl?.duration_max_s ?? 6)) / 2);
     await jobUpdate(db, jobId, { stage: 'cutscene' });
@@ -331,7 +349,7 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       prompt: motionPrompt,
       firstFrameUrl: plate.start_plate_url as string,
       lastFrameUrl: plate.end_plate_url as string,
-      referenceImageUrl: artUrl,
+      referenceVideoUrls: clipRefUrl ? [clipRefUrl] : undefined,
       durationS,
       seed,
     });
@@ -355,6 +373,8 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     await jobUpdate(db, jobId, { stage: 'cutscene_stored' });
 
     // ── generation ledger row ───────────────────────────────────────────────────────
+    // Full assembled prompts + provider request ids + clip usage (mig 163, audit item
+    // 6) — so the next bad output is traceable without re-deriving what was sent.
     const { data: gen, error: gErr } = await db.from('cinematic_generations').insert({
       moment_id: momentId,
       template_id: templateId,
@@ -370,6 +390,11 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       attempt,
       illustration_path: artPath,
       mp4_path: mp4Path,
+      illustration_prompt: illoPrompt,
+      motion_prompt: motionPrompt,
+      illustration_request_id: illo.requestId ?? null,
+      cutscene_request_id: cut.requestId ?? null,
+      clip_reference_used: !!clipRefUrl,
     }).select('id').single();
     if (gErr || !gen) {
       await jobUpdate(db, jobId, { status: 'failed', error: 'ledger', detail: `ledger write failed: ${gErr?.message}` });

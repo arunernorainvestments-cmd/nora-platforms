@@ -188,6 +188,19 @@ class MintService {
     }
   }
 
+  /// Deletes a FINALIZED card the user minted (collection "Delete card"): retires it,
+  /// deletes its media, frees the self-mint slot, and releases the source moment so
+  /// the same moment can be minted again. Server refuses if copies are held by other
+  /// users, or the chit is wager-escrowed or listed on the market.
+  static Future<void> deleteChit(String chitId) async {
+    try {
+      await _client.functions.invoke('mint-cancel',
+          body: {'chit_id': chitId, 'allow_finalized': true});
+    } on FunctionException catch (e) {
+      throw MintException(_messageFrom(e));
+    }
+  }
+
   static String _messageFrom(FunctionException e) {
     final d = e.details;
     if (d is Map) {

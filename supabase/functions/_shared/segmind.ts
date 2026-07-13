@@ -49,7 +49,7 @@ export type GenFailureReason =
   | 'provider_error';
 
 export type GenResult =
-  | { ok: true; bytes: Uint8Array; contentType: string; seed: number; model: string; mode: 'sim' | 'live' }
+  | { ok: true; bytes: Uint8Array; contentType: string; seed: number; model: string; mode: 'sim' | 'live'; requestId?: string }
   | { ok: false; reason: GenFailureReason; status?: number; detail?: string };
 
 export interface IllustrationRequest {
@@ -64,7 +64,11 @@ export interface CutsceneRequest {
   prompt: string;              // assembled from the motion prompt template (§4)
   firstFrameUrl: string;       // template start-plate — mandatory bookend
   lastFrameUrl: string;        // template end-plate — mandatory bookend
-  referenceImageUrl?: string;  // the stylized illustration (subject reference)
+  // The user's moderated uploaded clip (signed mint-staging URL). Seedance 2.0
+  // reference_videos[] IS combinable with first/last-frame conditioning — unlike
+  // reference_images, which is mutually exclusive with it (and whose old singular
+  // spelling reference_image_url was silently dropped; 2026-07-13 audit cause #4).
+  referenceVideoUrls?: string[];
   durationS: number;
   seed?: number;
   tierOverride?: 'fast' | 'standard';
@@ -138,6 +142,9 @@ async function callSegmind(
     return { ok: false, reason: 'provider_error', status: res.status, detail: (await res.text()).slice(0, 500) };
   }
 
+  // Provider request id (audit item 6) — for support tickets / dashboard lookups.
+  const requestId = res.headers.get('x-request-id') ?? res.headers.get('request-id') ?? undefined;
+
   const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
   if (contentType.includes('application/json')) {
     // Some Segmind models return JSON with an output URL: download it so callers
@@ -156,6 +163,7 @@ async function callSegmind(
       seed: Number(body.seed),
       model,
       mode: 'live',
+      requestId,
     };
   }
   return {
@@ -165,6 +173,7 @@ async function callSegmind(
     seed: Number(body.seed),
     model,
     mode: 'live',
+    requestId,
   };
 }
 
@@ -200,11 +209,16 @@ export async function generateCutscene(cfg: CinematicConfig, req: CutsceneReques
   }
   const tier = req.tierOverride ?? cfg.renderTier;
   const model = tier === 'standard' ? cfg.seedanceStandardModel : cfg.seedanceFastModel;
+  // NOTE: never send reference_images here — it is mutually exclusive with the
+  // first/last-frame conditioning the anchor-plate bookends require (Hard Rule 39).
+  // Subject identity travels in the prompt + reference_videos (the user's clip).
   return await callSegmind(cfg, model, {
     prompt: req.prompt,
     first_frame_url: req.firstFrameUrl,
     last_frame_url: req.lastFrameUrl,   // requires first — both always set here
-    ...(req.referenceImageUrl ? { reference_image_url: req.referenceImageUrl } : {}),
+    ...(req.referenceVideoUrls?.length
+      ? { reference_videos: req.referenceVideoUrls.slice(0, 3) }
+      : {}),
     duration: durationS,
     resolution: tier === 'standard' ? '1080p' : '720p',
     seed,
