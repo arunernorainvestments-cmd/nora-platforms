@@ -140,9 +140,12 @@ for (let i = 0; i < 90; i++) {
   if (!job) continue;
   if (i % 3 === 0) console.log(`  t+${(i + 1) * 10}s stage=${job.stage} status=${job.status}`);
   if (job.status && job.status !== 'running') break;
+  // A parked job (cutscene_rendering) resumes immediately; a worker killed before it
+  // could park resumes once the stale window passes. Either way the server continues
+  // the SAME provider request from the stash — zero re-spend.
   const idleMs = Date.now() - new Date(String(job.updated_at)).getTime();
-  if (job.stage === 'cutscene_rendering' && idleMs > 8.5 * 60 * 1000) {
-    console.log('  job parked at cutscene_rendering + stale — re-calling cinematic-mint to resume (free)');
+  if (job.stage === 'cutscene_rendering' || idleMs > 8.5 * 60 * 1000) {
+    console.log(`  job resumable (stage=${job.stage}, idle ${Math.round(idleMs / 1000)}s) — re-calling cinematic-mint (free)`);
     const re = await fetch(`${URL_}/functions/v1/cinematic-mint`, {
       method: 'POST',
       headers: {

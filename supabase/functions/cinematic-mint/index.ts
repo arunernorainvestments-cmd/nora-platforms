@@ -111,10 +111,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   if (liveJobs?.[0]) {
     const j = liveJobs[0];
     const ageMs = Date.now() - new Date(j.updated_at as string).getTime();
-    if (ageMs < JOB_STALE_MS) {
+    const ps = j.provider_state as RenderStash | null;
+    // A job parked at cutscene_rendering has NO live worker by definition (parking is
+    // the worker's last act) — resume it immediately, no need to wait out staleness.
+    const parked = j.stage === 'cutscene_rendering' && !!ps?.request_id;
+    if (ageMs < JOB_STALE_MS && !parked) {
       return json({ status: 'accepted', job_id: j.id, mode: cfg.mode, deduped: true }, 202);
     }
-    const ps = j.provider_state as RenderStash | null;
     if (ps?.request_id) {
       renderResume = ps;
       resumeJobId = j.id as string;
@@ -306,8 +309,12 @@ interface MintJobCtx {
 // job row while waiting so the client's dedup window doesn't read it as stale.
 // 'pending' = budget exhausted with the render still going — the caller parks the
 // job at stage cutscene_rendering and a later call resumes from the stash.
+// Budget is deliberately short: trial 4 (2026-07-13) showed the background worker
+// being reaped ~90s in, well before the documented wall clock — parking cleanly
+// beats being killed mid-poll (a parked job resumes instantly; a killed one waits
+// out the stale window).
 const RENDER_POLL_MS = 10_000;
-const RENDER_BUDGET_MS = 240_000;
+const RENDER_BUDGET_MS = 60_000;
 
 async function awaitCutscene(
   db: Db, cfg: CinematicConfig, jobId: string,
