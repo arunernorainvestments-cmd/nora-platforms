@@ -80,13 +80,21 @@ moment-classify / moment-clip-attach redeployed):**
 - [x] 4. Seedance call fixed: `reference_image_url` removed (wrong name, silently dropped; the real
       `reference_images[]` is mutually exclusive with the mandatory plate bookends). Subject identity
       now travels in the prompt + the clip reference (below).
-- [x] 5. **Clip wired into generation** — better than the specced three-node Track A: Segmind docs
-      confirm `reference_videos[]` (≤3, 2–15s, V2V token rate) IS combinable with first/last-frame
-      conditioning, so `cinematic-mint` signs the moderated `mint-staging` clip and sends it as
-      `reference_videos[0]` alongside the plates; **prompt template v2** (mig 163, all 6 templates)
-      carries a `{CLIP_REF}` slot ("recreate the subject and action of reference video 1…") that
-      collapses when no clip ≥2s is attached. Live trial: `tools/cinematic/smoke_clip_mint.ts`.
-      Track A (Wan/Kling/stitch) stays parked unless this path proves insufficient.
+- [x] 5. **Clip wired into generation** (one call, replaces the specced three-node Track A):
+      `cinematic-mint` signs the moderated `mint-staging` clip (≥2s trim) and sends it as
+      `reference_videos[0]`; **prompt template v2** (mig 163, all 6 templates) carries a `{CLIP_REF}`
+      slot ("recreate the subject and action of reference video 1…") that collapses when no clip
+      rides. **Live-trial findings (2026-07-13, tools/cinematic/smoke_clip_mint.ts):**
+      (a) ByteDance rejects ANY reference content combined with BOTH frame anchors (Segmind's doc
+      claims only `reference_images` conflicts — wrong), so clip mode anchors the START plate only
+      and a constant `[ENDING]` directive steers into the end plate's impact-flash whiteout —
+      Unity's local impact-flash particle covers that seam. No-clip mode keeps both bookends.
+      (b) ByteDance also MODERATES input clips: third-party celebrity footage → 
+      `InputVideoSensitiveContentDetected` (copyright). cinematic-mint degrades gracefully — one
+      retry without the clip (prompt-only, both plates, `clip_reference_used=false`) so a flagged
+      clip never bricks the mint. Whether ordinary self-shot face footage passes is UNVERIFIED —
+      the founder's next real mint answers it. Track A (Wan/Kling/stitch) stays parked unless
+      this path proves insufficient.
 - [x] 6. Full assembled prompts + provider request ids + `clip_reference_used` persisted on
       `cinematic_generations` (mig 163).
 - [ ] 7. DEFERRED (founder call 2026-07-13: IP-exposure work is secondary to a working pipeline) —
