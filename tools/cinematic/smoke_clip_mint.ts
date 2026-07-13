@@ -8,15 +8,22 @@
 // removed at the pre-launch reset (ARCHIVE §A8).
 //
 // SUPABASE_URL=… SUPABASE_SERVICE_ROLE_KEY=… SUPABASE_ANON_KEY=… \
-//   SOURCE_CLIP_MOMENT_ID=<moment with clip_status=attached> [SMOKE_USER_ID=…] \
-//   deno run --allow-net --allow-env tools/cinematic/smoke_clip_mint.ts
+//   (SOURCE_CLIP_MOMENT_ID=<moment with clip_status=attached> | SOURCE_CLIP_FILE=<local mp4>) \
+//   [SMOKE_USER_ID=…] \
+//   deno run --allow-net --allow-env --allow-read tools/cinematic/smoke_clip_mint.ts
+//
+// NOTE (trial 2026-07-13): ByteDance moderates input assets — a third-party celebrity
+// clip is rejected with InputVideoSensitiveContentDetected/copyright. Use owned or
+// synthetic footage (SOURCE_CLIP_FILE) to exercise the happy path; the flagged-clip
+// path now degrades to a prompt-only cutscene inside cinematic-mint.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const URL_ = Deno.env.get('SUPABASE_URL')!;
 const SR = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const ANON = Deno.env.get('SUPABASE_ANON_KEY')!;
-const SOURCE_MOMENT = Deno.env.get('SOURCE_CLIP_MOMENT_ID')!;
+const SOURCE_MOMENT = Deno.env.get('SOURCE_CLIP_MOMENT_ID');
+const SOURCE_FILE = Deno.env.get('SOURCE_CLIP_FILE');
 const EMAIL = 'cinematic-smoke@noraplatforms.com';
 const PASS = 'smoke-' + SR.slice(-12);
 
@@ -53,17 +60,27 @@ for (let i = 0; i < 5; i++) {
     .eq('id', slot);
 }
 
-// 2. copy the source clip into the smoke user's mint-staging prefix
-const { data: srcRow } = await admin.from('moments')
-  .select('raw_clip_path, clip_trim_start_ms, clip_trim_end_ms')
-  .eq('id', SOURCE_MOMENT).single();
-const src = (srcRow ?? fail(`source moment ${SOURCE_MOMENT} not found`)) as {
-  raw_clip_path: string | null; clip_trim_start_ms: number | null; clip_trim_end_ms: number | null;
-};
-if (!src.raw_clip_path) fail(`source moment ${SOURCE_MOMENT} has no attached clip`);
-const dl = await admin.storage.from('mint-staging').download(src.raw_clip_path!);
-const clipBlob = (dl.data ?? fail(`clip download: ${dl.error?.message}`)) as Blob;
-console.log(`source clip: ${src.raw_clip_path} (${clipBlob.size} bytes, trim ${src.clip_trim_start_ms}–${src.clip_trim_end_ms}ms)`);
+// 2. source clip: a local file, or a copy of an existing attached clip
+let clipBlob: Blob;
+let trim = { start: 0, end: 4000 };
+if (SOURCE_FILE) {
+  clipBlob = new Blob([await Deno.readFile(SOURCE_FILE)], { type: 'video/mp4' });
+  console.log(`source clip: ${SOURCE_FILE} (${clipBlob.size} bytes)`);
+} else if (SOURCE_MOMENT) {
+  const { data: srcRow } = await admin.from('moments')
+    .select('raw_clip_path, clip_trim_start_ms, clip_trim_end_ms')
+    .eq('id', SOURCE_MOMENT).single();
+  const src = (srcRow ?? fail(`source moment ${SOURCE_MOMENT} not found`)) as {
+    raw_clip_path: string | null; clip_trim_start_ms: number | null; clip_trim_end_ms: number | null;
+  };
+  if (!src.raw_clip_path) fail(`source moment ${SOURCE_MOMENT} has no attached clip`);
+  const dl = await admin.storage.from('mint-staging').download(src.raw_clip_path!);
+  clipBlob = (dl.data ?? fail(`clip download: ${dl.error?.message}`)) as Blob;
+  trim = { start: src.clip_trim_start_ms ?? 0, end: src.clip_trim_end_ms ?? 4000 };
+  console.log(`source clip: ${src.raw_clip_path} (${clipBlob.size} bytes, trim ${trim.start}–${trim.end}ms)`);
+} else {
+  clipBlob = fail('set SOURCE_CLIP_FILE or SOURCE_CLIP_MOMENT_ID');
+}
 
 // 3. moment: recorded + approved + clip attached (60k engagement → tier C creature)
 const { data: momentId, error: mErr } = await admin.rpc('moment_record', {
@@ -80,8 +97,8 @@ const { error: modErr } = await admin.rpc('moment_moderate', { p_moment_id: mome
 if (modErr) fail(`moment_moderate: ${modErr.message}`);
 const { error: attachErr } = await admin.rpc('moment_attach_clip', {
   p_moment_id: momentId, p_owner: userId, p_clip_path: clipPath,
-  p_frame_paths: [], p_trim_start_ms: src.clip_trim_start_ms ?? 0,
-  p_trim_end_ms: src.clip_trim_end_ms ?? 4000, p_keep_audio: true, p_verdict: 'attached',
+  p_frame_paths: [], p_trim_start_ms: trim.start,
+  p_trim_end_ms: trim.end, p_keep_audio: true, p_verdict: 'attached',
 });
 if (attachErr) fail(`moment_attach_clip: ${attachErr.message}`);
 await admin.rpc('moment_set_clip_video_desc', {

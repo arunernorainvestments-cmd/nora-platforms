@@ -339,13 +339,13 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       clipRefUrl = signedClip?.signedUrl ?? null;
     }
 
-    const motionPrompt = assembleMotionPrompt(promptTpl.prompt_body as string, {
+    let motionPrompt = assembleMotionPrompt(promptTpl.prompt_body as string, {
       subjectDesc, familyAction: fAction, tierIntensity: intensity,
       videoDesc, clipAttached: !!clipRefUrl,
     });
     durationS = Math.round(((tpl?.duration_min_s ?? 4) + (tpl?.duration_max_s ?? 6)) / 2);
     await jobUpdate(db, jobId, { stage: 'cutscene' });
-    const cut = await generateCutscene(cfg, {
+    let cut = await generateCutscene(cfg, {
       prompt: motionPrompt,
       firstFrameUrl: plate.start_plate_url as string,
       lastFrameUrl: plate.end_plate_url as string,
@@ -353,6 +353,25 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       durationS,
       seed,
     });
+    // ByteDance moderates the INPUT assets too (trial 2026-07-13: a third-party
+    // celebrity clip → InputVideoSensitiveContentDetected/copyright). A flagged clip
+    // must degrade to the prompt-only cutscene — never brick the whole mint (and the
+    // already-paid illustration) on a provider input-policy call.
+    if (!cut.ok && cut.reason === 'provider_moderation' && clipRefUrl) {
+      console.warn(`cinematic-mint: provider rejected the reference clip (${cut.detail?.slice(0, 200)}) — retrying without it`);
+      clipRefUrl = null;
+      motionPrompt = assembleMotionPrompt(promptTpl.prompt_body as string, {
+        subjectDesc, familyAction: fAction, tierIntensity: intensity,
+        videoDesc, clipAttached: false,
+      });
+      cut = await generateCutscene(cfg, {
+        prompt: motionPrompt,
+        firstFrameUrl: plate.start_plate_url as string,
+        lastFrameUrl: plate.end_plate_url as string,
+        durationS,
+        seed,
+      });
+    }
     if (!cut.ok) {
       console.warn(`cinematic-mint cutscene: ${cut.reason} status=${cut.status ?? ''} ${cut.detail ?? ''}`);
       await jobUpdate(db, jobId, {
