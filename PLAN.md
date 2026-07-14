@@ -69,10 +69,22 @@ live classify → illustration → async render → park/auto-resume → live sc
       candidate; also evaluate Grok Imagine per founder, Wan/Kling on Segmind), then feed the
       STYLIZED (no-real-likeness) footage to Seedance as the reference / core. May fix both
       the likeness-filter and copyright-filter false positives without policy games.
-   c. **Provider evaluation**: which video models accept reference video with permissive
-      input policy (Grok Imagine, Runway, Kling direct, self-hosted Wan). Understand what
-      triggers ByteDance's InputVideoSensitiveContentDetected (fingerprint match vs face
-      detection) to know which inputs are viable where.
+   c. **Provider evaluation** — docs-verified 2026-07-14, micro-trial is the next step
+      (founder OK with dropping ByteDance for the core):
+      * **Kling O3 video2video-edit (Segmind, Kuaishou)** — strongest fit: input video →
+        prompt restyle, 3–15s output, **keep_audio preserves the ORIGINAL soundtrack by
+        default** (kills feedback item 2 for free), up to 4 `@Image` refs (pass the card
+        illustration for character consistency). Input moderation undocumented → trial with
+        the Arnold/Brady clips decides.
+      * **Runway Gen-4 Aleph (Segmind)** — required `video` (≤16MB; our trims are 1–3MB),
+        restyle prompt + `reference_image`, seeded; "Content/RAI blocks surface as FAILED"
+        (nature unknown). Silent output → lay original clip audio via the stitch worker's
+        existing audio-overlay path.
+      * Pipeline either way = Track A collapsed to one V2V call: trimmed clip → restyle with
+        the style-lock prompt + card-art reference → cel-shaded core WITH audio → Unity
+        zoom-in/impact-flash covers the seams (or stitch plate bridges) → battle-media.
+        Seedance remains for no-clip mints only. Also on the eval list: Grok Imagine
+        (off-Segmind), Wan (self-hosted, zero input policy).
    d. For genuinely third-party celebrity moments (like this NFL clip): that content is what
       the **licensed lane (lkn_*) exists for** — the consent story only covers the LINKED
       account's own posts. Product answer may be "self/owned moments = clip-referenced;
