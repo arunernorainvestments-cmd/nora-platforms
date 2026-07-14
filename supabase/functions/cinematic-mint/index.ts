@@ -25,8 +25,8 @@ import {
 } from '../_shared/segmind.ts';
 import {
   assembleMotionPrompt, CLIP_MODE_ENDING_DIRECTIVE, CLIP_MODE_OPENING_DIRECTIVE,
-  familyAction, illustrationPrompt, sanitizeSubjectDesc, selectTemplate,
-  TIER_INTENSITY, v2vRestylePrompt, type Family, type Tier,
+  describeClipFrames, familyAction, illustrationPrompt, sanitizeSubjectDesc,
+  selectTemplate, TIER_INTENSITY, v2vRestylePrompt, type Family, type Tier,
 } from '../_shared/cinematic_directives.ts';
 
 // Seedance reference_videos accepts 2–15s clips; the browser trimmer allows 1–15s.
@@ -355,8 +355,17 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
   let mp4Url: string;
   let durationS: number;
   let seedUsed: number;
+  // Provenance surfaced to the client (founder feedback 2026-07-14 eve: a silent
+  // fallback read as "the pipeline ignores my media" — the card completed with no
+  // hint the clip wasn't used). Set from the ledger on resume, live values otherwise.
+  let provClipUsed: boolean | null = null;
+  let provV2V: string | null = null;
+  let provAudio: string | null = null;
 
   if (resumeGen) {
+    provClipUsed = (resumeGen.clip_reference_used as boolean | null) ?? null;
+    provV2V = (resumeGen.v2v_provider as string | null) ?? null;
+    provAudio = (resumeGen.audio_source as string | null) ?? null;
     genId = resumeGen.id as string;
     artUrl = db.storage.from('battle-media')
       .getPublicUrl(resumeGen.illustration_path as string).data.publicUrl;
@@ -367,6 +376,18 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     console.log(`cinematic-mint: resuming pending generation ${genId} (no provider calls)`);
     await jobUpdate(db, jobId, { stage: 'screening', generation_id: genId });
   } else {
+    // Trim frames of the ACTUAL uploaded clip (moment-clip-attach stores f0..f3 in
+    // mint-staging) — used as the card-art visual reference and to backfill a real
+    // clip description. Founder feedback 2026-07-14 eve: art/desc must be tied to
+    // the real media, not just the post thumbnail.
+    const clipFrames = moment.clip_status === 'attached'
+      ? ((moment.clip_frame_paths as string[] | null) ?? [])
+      : [];
+    const signFrame = async (p: string): Promise<string | null> => {
+      const { data: s } = await db.storage.from('mint-staging').createSignedUrl(p, 3600);
+      return s?.signedUrl ?? null;
+    };
+
     // ── illustration (card art) — skipped on a render resume (already stored) ──────
     let artPath: string;
     let illoPrompt: string | null;
@@ -379,9 +400,16 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     } else {
       await jobUpdate(db, jobId, { stage: 'illustration' });
       illoPrompt = illustrationPrompt(subjectDesc, chitFamily);
+      // Visual reference: a mid-clip frame of the user's actual upload beats the
+      // post thumbnail (which can be arbitrary framing, e.g. a YouTube hqdefault).
+      let illoRefUrl = (moment.thumbnail_url as string | null) ?? undefined;
+      if (clipFrames.length > 0) {
+        const framed = await signFrame(clipFrames[Math.min(1, clipFrames.length - 1)]);
+        if (framed) illoRefUrl = framed;
+      }
       const illo = await generateIllustration(cfg, {
         prompt: illoPrompt,
-        referenceImageUrl: (moment.thumbnail_url as string | null) ?? undefined,
+        referenceImageUrl: illoRefUrl,
         seed,
         width: 1024,   // portrait 4:5 card-art window — the app frames it, not 16:9
         height: 1280,
@@ -413,7 +441,21 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     // {VIDEO_DESC} is the attached clip's description (moment-clip-attach) — a VARIABLE
     // slot for the V2V core only; the agnostic bridge templates carry no placeholder for
     // it (Hard Rule 39). Absent (e.g. link-only ingest, no clip) → the slot collapses.
-    const videoDesc = (moment.clip_video_desc as string | null) ?? null;
+    let videoDesc = (moment.clip_video_desc as string | null) ?? null;
+    // Clips attached while MODERATION_MODE was sim carry the deterministic stub —
+    // regenerate a real description from the stored trim frames at mint time so the
+    // user never has to know to re-attach. Best-effort; skipped on a render resume
+    // (its prompt is already stashed).
+    const STUB_CLIP_DESC = 'the subject moves through their signature moment';
+    if (!renderResume && (!videoDesc || videoDesc === STUB_CLIP_DESC) && clipFrames.length > 0) {
+      const frameUrls = (await Promise.all(clipFrames.slice(0, 4).map(signFrame)))
+        .filter((u): u is string => !!u);
+      const fresh = await describeClipFrames(moderationConfigFromEnv(), frameUrls);
+      if (fresh && fresh !== STUB_CLIP_DESC) {
+        videoDesc = fresh;
+        await db.from('moments').update({ clip_video_desc: fresh }).eq('id', momentId);
+      }
+    }
     // Clip mode (2026-07-13 live trial): reference content cannot combine with BOTH
     // frame anchors, so the clip rides with the start plate only and the constant
     // ENDING directive steers into the end plate's impact-flash whiteout (Unity's
@@ -678,6 +720,9 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     }
     genId = gen.id as string;
     seedUsed = cut.seed;
+    provClipUsed = clipUsed || v2vUsed !== null;
+    provV2V = v2vUsed;
+    provAudio = audioSource ?? null;
     // Ledger row exists → the moderation-resume path owns recovery from here; the
     // render stash must not resurrect a second render/ledger row.
     await jobUpdate(db, jobId, { generation_id: genId, provider_state: null });
@@ -786,6 +831,13 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       media_placeholder: cfg.mode === 'sim',
       card_art_url: artUrl,
       mp4_cutscene_url: mp4Url,
+      // Generation provenance — the client must say so when an attached clip did
+      // NOT make it into the cutscene (provider fallback), instead of completing
+      // silently as if the media were used.
+      clip_attached: moment.clip_status === 'attached',
+      clip_reference_used: provClipUsed,
+      v2v_provider: provV2V,
+      audio_source: provAudio,
       ...(swapOf ? { swapped_out_chit_id: swapOf, swapped_media_deleted: swappedMediaDeleted } : {}),
       next: 'Play the preview battle, then call chit_record_preview + chit_finalize_preview',
     },

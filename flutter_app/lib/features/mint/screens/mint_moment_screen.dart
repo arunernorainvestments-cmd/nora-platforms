@@ -1129,6 +1129,12 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
   /// state. Real art + cutscene arrive when CINEMATIC_MODE=live (Segmind).
   bool get _mediaPlaceholder => _mint?['media_placeholder'] == true;
 
+  /// A clip was attached but no provider could use it — the cutscene is the
+  /// prompt-only fallback. Said out loud: a silent fallback reads as "the pipeline
+  /// ignored my media" (founder feedback 2026-07-14).
+  bool get _clipFellBack =>
+      _mint?['clip_attached'] == true && _mint?['clip_reference_used'] == false;
+
   Widget _buildPreviewStep() {
     final mp4 = _mint?['mp4_cutscene_url']?.toString();
     return _card(children: [
@@ -1161,6 +1167,34 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
             'that point.')
       else if (mp4 != null)
         AspectRatio(aspectRatio: 16 / 9, child: _CutsceneVideo(url: mp4)),
+      if (_clipFellBack) ...[
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppTheme.danger.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppTheme.danger.withValues(alpha: 0.4)),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.info_outline, size: 18, color: AppTheme.danger),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Your uploaded clip couldn\'t be used by the video provider this '
+                  'run, so this cutscene (and its audio) was generated from the '
+                  'card\'s description instead. Cancel & discard below, then '
+                  'Generate again to retry with your clip.',
+                  style: TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 12, height: 1.35),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
       const SizedBox(height: 20),
       FilledButton.icon(
         onPressed: _busy ? null : _finalize,
