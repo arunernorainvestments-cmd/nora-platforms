@@ -207,10 +207,19 @@
     }
   }
 
+  // Raw bytes of a picked file's object URL — used by the cloud-trim fallback to
+  // upload the ORIGINAL when the wasm engine can't handle it. Independent of load().
+  function readBytes(objectUrl) {
+    return fetch(objectUrl)
+      .then(function (r) { return r.arrayBuffer(); })
+      .then(function (b) { return new Uint8Array(b); });
+  }
+
   window.noraTrim = {
     load: load,
     probe: probe,
     filmstrip: filmstrip,
     process: process,
+    readBytes: readBytes,
   };
 })();

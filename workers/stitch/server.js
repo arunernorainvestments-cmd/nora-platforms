@@ -13,6 +13,11 @@
 // Endpoints (JSON in, JSON out):
 //   POST /frames  { video_url, times: number[]|"last", upload: {bucket, prefix} }
 //     -> { ok, frames: [{time, path}] }        (JPEGs at prefix/frame_<i>.jpg)
+//   POST /trim    { source: {bucket, path}, start_ms, end_ms, keep_audio,
+//                   upload: {bucket, prefix} }
+//     -> { ok, clip_path, frame_paths[4] }     (cloud fallback for the browser
+//        trimmer: same output contract as web/js/nora_trim.js — clip.mp4 capped
+//        at 1280 long edge + f0..f3.jpg moderation frames at the prefix)
 //   POST /stitch  {
 //     segments: [ { url, start?, duration? } ],   // in order; trims re-encode
 //     audio?:   { url, start?, duration?, at },   // overlay source; `at` = secs into output
@@ -86,6 +91,15 @@ function ffprobe(file) {
   });
 }
 
+// Private-bucket object fetch with the service key (mint-staging has no public URLs).
+async function downloadFromStorage(bucket, objectPath, dest) {
+  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${objectPath}`, {
+    headers: { authorization: `Bearer ${SERVICE_KEY}` },
+  });
+  if (!res.ok) throw new Error(`storage download ${res.status} for ${bucket}/${objectPath}`);
+  await fs.writeFile(dest, Buffer.from(await res.arrayBuffer()));
+}
+
 async function uploadToStorage(bucket, objectPath, file, contentType) {
   const bytes = await fs.readFile(file);
   const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${bucket}/${objectPath}`, {
@@ -128,6 +142,58 @@ async function handleFrames(body) {
       frames.push({ time: resolved[i], path: `${upload.bucket}/${objectPath}` });
     }
     return { ok: true, frames };
+  });
+}
+
+// ── /trim ───────────────────────────────────────────────────────────────────
+// Cloud fallback for the in-browser ffmpeg.wasm trimmer (it OOMs on some
+// device/file combos — real ffmpeg here has no wasm memory wall). Mirrors
+// nora_trim.js exactly: frame-accurate cut, H.264/yuv420p normalize, long edge
+// capped at 1280, optional audio strip, then the 4 moderation sample frames
+// from the TRIMMED output at the same time positions.
+async function handleTrim(body) {
+  const { source, start_ms, end_ms, keep_audio, upload } = body;
+  if (!source?.bucket || !source?.path || !upload?.bucket || !upload?.prefix) {
+    throw new Error('source.bucket, source.path, upload.bucket, upload.prefix required');
+  }
+  const startMs = Math.floor(Number(start_ms));
+  const endMs = Math.floor(Number(end_ms));
+  if (!(startMs >= 0) || !(endMs - startMs >= 1000) || !(endMs - startMs <= 15000)) {
+    throw new Error('trim window must be 1-15 seconds');
+  }
+  return await withWorkdir(async (dir) => {
+    const src = path.join(dir, 'in.bin');
+    await downloadFromStorage(source.bucket, source.path, src);
+
+    const startS = startMs / 1000;
+    const durS = (endMs - startMs) / 1000;
+    const fastSeek = Math.max(0, startS - 2);
+    const fineSeek = startS - fastSeek;
+    const clip = path.join(dir, 'clip.mp4');
+    const args = [
+      '-ss', fastSeek.toFixed(3), '-i', src,
+      '-ss', fineSeek.toFixed(3), '-t', durS.toFixed(3),
+      '-vf', "scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))'",
+      '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
+      '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+    ];
+    if (keep_audio) args.push('-c:a', 'aac', '-b:a', '128k');
+    else args.push('-an');
+    args.push(clip);
+    await ffmpeg(args);
+
+    const framePaths = [];
+    for (let i = 0; i < 4; i++) {
+      const t = Math.min(durS - 0.05, Math.max(0, (durS * i) / 3 - (i === 3 ? 0.1 : 0)));
+      const frame = path.join(dir, `f${i}.jpg`);
+      await ffmpeg(['-ss', t.toFixed(3), '-i', clip, '-frames:v', '1', '-q:v', '4', frame]);
+      const objectPath = `${upload.prefix}/f${i}.jpg`;
+      await uploadToStorage(upload.bucket, objectPath, frame, 'image/jpeg');
+      framePaths.push(objectPath);
+    }
+    const clipPath = `${upload.prefix}/clip.mp4`;
+    await uploadToStorage(upload.bucket, clipPath, clip, 'video/mp4');
+    return { ok: true, clip_path: clipPath, frame_paths: framePaths };
   });
 }
 
@@ -222,6 +288,7 @@ http.createServer(async (req, res) => {
   try {
     const body = await readBody(req);
     if (req.url === '/frames') return json(res, 200, await handleFrames(body));
+    if (req.url === '/trim') return json(res, 200, await handleTrim(body));
     if (req.url === '/stitch') return json(res, 200, await handleStitch(body));
     return json(res, 404, { error: 'not found' });
   } catch (e) {

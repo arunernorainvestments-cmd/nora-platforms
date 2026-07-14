@@ -24,6 +24,9 @@ external JSPromise<JSArray<JSString>> _filmstrip(
 external JSPromise<JSObject> _process(JSString objectUrl, JSNumber startMs,
     JSNumber endMs, JSBoolean keepAudio, JSFunction onProgress);
 
+@JS('noraTrim.readBytes')
+external JSPromise<JSUint8Array> _readBytes(JSString objectUrl);
+
 class ClipProbe {
   final int durationMs;
   final int width;
@@ -68,6 +71,14 @@ class TrimEngine {
     final r =
         await _filmstrip(objectUrl.toJS, count.toJS, thumbHeight.toJS).toDart;
     return r.toDart.map((s) => s.toDart).toList();
+  }
+
+  /// Raw bytes of the picked file (via its object URL) — for the cloud-trim
+  /// fallback upload. Works even when the wasm engine failed to load.
+  static Future<Uint8List> readBytes(String objectUrl) async {
+    _ensureShim();
+    final r = await _readBytes(objectUrl.toJS).toDart;
+    return r.toDart;
   }
 
   static Future<TrimmedClip> process({
