@@ -103,6 +103,22 @@
     return thumbs;
   }
 
+  // The wasm heap holds the WHOLE source file plus the decode/encode buffers, so big
+  // camera-roll / downloaded videos can exhaust it ("memory access out of bounds").
+  // Above TWO_PASS_BYTES a stream-copy pre-cut (no decode) shrinks the input and the
+  // big source is FREED before the memory-hungry encode pass; -copyts keeps original
+  // timestamps so the accurate seek still lands exactly on the user's trim handles.
+  const TWO_PASS_BYTES = 80 * 1024 * 1024;
+  const MAX_SOURCE_BYTES = 900 * 1024 * 1024;   // beyond this the heap can't even hold the file
+  const WASM_CRASH_RE = /memory access out of bounds|table index is out of bounds|unreachable|out of memory|Aborted/i;
+
+  function cleanupFiles(names) {
+    if (!ffmpeg) return Promise.resolve();
+    return Promise.all(names.map(function (n) {
+      return ffmpeg.deleteFile(n).catch(function (_) { /* not created */ });
+    }));
+  }
+
   async function process(objectUrl, startMs, endMs, keepAudio, onProgress) {
     await load();
     if (busy) throw new Error('trim_busy');
@@ -114,16 +130,39 @@
     try {
       const startS = Math.max(0, startMs / 1000);
       const durS = (endMs - startMs) / 1000;
-      // fast input seek to ~2s before the cut, then an accurate output-side seek —
-      // frame-accurate without decoding a long source from t=0.
-      const fastSeek = Math.max(0, startS - 2);
-      const fineSeek = startS - fastSeek;
 
-      const src = new Uint8Array(await (await fetch(objectUrl)).arrayBuffer());
-      await ffmpeg.writeFile('in.bin', src);
+      const srcBuf = await (await fetch(objectUrl)).arrayBuffer();
+      if (srcBuf.byteLength > MAX_SOURCE_BYTES) throw new Error('video_too_large');
+      await ffmpeg.writeFile('in.bin', new Uint8Array(srcBuf));
+
+      // Defaults = the original single-pass plan: fast input seek to ~2s before the
+      // cut, then an accurate output-side seek — frame-accurate without decoding a
+      // long source from t=0.
+      let input = 'in.bin';
+      let fastSeek = Math.max(0, startS - 2);
+      let fineSeek = startS - fastSeek;
+
+      if (srcBuf.byteLength > TWO_PASS_BYTES) {
+        // Pass 1: keyframe-padded stream copy of just the trim window (no decode,
+        // tiny memory), original timestamps preserved via -copyts. Nonzero exit →
+        // fall back to the single-pass path (no worse than before).
+        const pad = 5;
+        const pcode = await ffmpeg.exec([
+          '-ss', Math.max(0, startS - pad).toFixed(3), '-i', 'in.bin',
+          '-t', (pad + durS + 2).toFixed(3),
+          '-c', 'copy', '-copyts', 'pre.mp4',
+        ]);
+        if (pcode === 0) {
+          await ffmpeg.deleteFile('in.bin');   // free the big source BEFORE encoding
+          input = 'pre.mp4';
+          fastSeek = startS;                   // absolute timestamps survived the copy
+          fineSeek = 0;
+        }
+      }
+
       ffmpeg.on('progress', progressHandler);
       const args = [
-        '-ss', fastSeek.toFixed(3), '-i', 'in.bin',
+        '-ss', fastSeek.toFixed(3), '-i', input,
         '-ss', fineSeek.toFixed(3), '-t', durS.toFixed(3),
         // long edge capped at 1280 (portrait or landscape), even dims for yuv420p
         '-vf', "scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))'",
@@ -150,12 +189,21 @@
         frames.push(await ffmpeg.readFile(name));
         await ffmpeg.deleteFile(name);
       }
-      await ffmpeg.deleteFile('in.bin');
-      await ffmpeg.deleteFile('out.mp4');
+      await cleanupFiles(['in.bin', 'pre.mp4', 'out.mp4']);
       return { video: video, frames: frames };
+    } catch (err) {
+      if (WASM_CRASH_RE.test(String(err))) {
+        // The wasm heap is corrupt after an OOM — retries would fail instantly.
+        // Tear the instance down so the next attempt boots a fresh engine.
+        try { ffmpeg && ffmpeg.terminate(); } catch (_) { /* already dead */ }
+        ffmpeg = null;
+        throw new Error('video_too_large');
+      }
+      await cleanupFiles(['in.bin', 'pre.mp4', 'out.mp4']);
+      throw err;
     } finally {
       busy = false;
-      try { ffmpeg.off('progress', progressHandler); } catch (_) { /* already off */ }
+      try { ffmpeg && ffmpeg.off('progress', progressHandler); } catch (_) { /* already off */ }
     }
   }
 
