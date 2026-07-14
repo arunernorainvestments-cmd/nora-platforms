@@ -49,7 +49,7 @@ export type GenFailureReason =
   | 'provider_error';
 
 export type GenResult =
-  | { ok: true; bytes: Uint8Array; contentType: string; seed: number; model: string; mode: 'sim' | 'live' }
+  | { ok: true; bytes: Uint8Array; contentType: string; seed: number; model: string; mode: 'sim' | 'live'; requestId?: string }
   | { ok: false; reason: GenFailureReason; status?: number; detail?: string };
 
 export interface IllustrationRequest {
@@ -62,9 +62,16 @@ export interface IllustrationRequest {
 
 export interface CutsceneRequest {
   prompt: string;              // assembled from the motion prompt template (§4)
-  firstFrameUrl: string;       // template start-plate — mandatory bookend
-  lastFrameUrl: string;        // template end-plate — mandatory bookend
-  referenceImageUrl?: string;  // the stylized illustration (subject reference)
+  firstFrameUrl: string;       // template start-plate — ALWAYS anchored (the card seam)
+  // Template end-plate. Live-trial 2026-07-13: ByteDance rejects ANY reference
+  // content (image/video/audio) combined with BOTH first and last frames — so when a
+  // reference clip rides along, the caller omits the last frame and the prompt's
+  // ENDING directive steers into the impact-flash whiteout instead (Unity's local
+  // impact-flash particle covers that seam). No clip → both bookends, as always.
+  lastFrameUrl?: string;
+  // The user's moderated uploaded clip (signed mint-staging URL) — the old singular
+  // reference_image_url spelling was silently dropped (2026-07-13 audit cause #4).
+  referenceVideoUrls?: string[];
   durationS: number;
   seed?: number;
   tierOverride?: 'fast' | 'standard';
@@ -138,6 +145,9 @@ async function callSegmind(
     return { ok: false, reason: 'provider_error', status: res.status, detail: (await res.text()).slice(0, 500) };
   }
 
+  // Provider request id (audit item 6) — for support tickets / dashboard lookups.
+  const requestId = res.headers.get('x-request-id') ?? res.headers.get('request-id') ?? undefined;
+
   const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
   if (contentType.includes('application/json')) {
     // Some Segmind models return JSON with an output URL: download it so callers
@@ -156,6 +166,7 @@ async function callSegmind(
       seed: Number(body.seed),
       model,
       mode: 'live',
+      requestId,
     };
   }
   return {
@@ -165,6 +176,7 @@ async function callSegmind(
     seed: Number(body.seed),
     model,
     mode: 'live',
+    requestId,
   };
 }
 
@@ -185,28 +197,180 @@ export async function generateIllustration(cfg: CinematicConfig, req: Illustrati
   });
 }
 
+// ── Async cutscene (Seedance 2.0 via Segmind v2): submit now, poll later ──────────
+// Live V2V renders can outlive the edge-runtime wall clock, so the synchronous call
+// (generateCutscene below) is only safe for sim mode. Live mode submits to the v2
+// queue and polls; the request id is persisted by the caller so a killed worker can
+// be resumed with zero re-spend (provider retains results for 1 hour).
+function v2Base(cfg: CinematicConfig): string {
+  return cfg.baseUrl.replace(/\/v1\/?$/, '/v2');
+}
+
+function cutsceneBody(cfg: CinematicConfig, req: CutsceneRequest, seed: number): Record<string, unknown> {
+  // Probe 2026-07-13: ByteDance forbids reference media combined with ANY frame
+  // anchor ("first/last frame content cannot be mixed with reference media content")
+  // — the earlier "both frames" error text was misleading. Clip mode therefore sends
+  // NO plates; the card-back opening and impact-flash ending live in the prompt's
+  // constant [OPENING]/[ENDING] directives, and Unity's zoom-in + flash particles
+  // cover both seams. No clip → both plate bookends, exactly as before.
+  const withClip = !!req.referenceVideoUrls?.length;
+  const tier = req.tierOverride ?? cfg.renderTier;
+  return {
+    prompt: req.prompt,
+    ...(withClip
+      ? { reference_videos: req.referenceVideoUrls!.slice(0, 3) }
+      : {
+          first_frame_url: req.firstFrameUrl,
+          ...(req.lastFrameUrl ? { last_frame_url: req.lastFrameUrl } : {}),
+        }),
+    duration: Math.min(15, Math.max(4, Math.round(req.durationS))),
+    resolution: tier === 'standard' ? '1080p' : '720p',
+    seed,
+  };
+}
+
+export type CutsceneSubmit =
+  | { ok: true; requestId: string; seed: number; model: string }
+  | { ok: false; reason: GenFailureReason; status?: number; detail?: string };
+
+export async function submitCutscene(cfg: CinematicConfig, req: CutsceneRequest): Promise<CutsceneSubmit> {
+  if (!cfg.apiKey) return { ok: false, reason: 'not_configured', detail: 'SEGMIND_API_KEY missing' };
+  if (!req.prompt?.trim()) return { ok: false, reason: 'invalid_request', detail: 'empty prompt' };
+  if (!req.firstFrameUrl || (!req.lastFrameUrl && !req.referenceVideoUrls?.length)) {
+    return { ok: false, reason: 'invalid_request', detail: 'firstFrameUrl required; lastFrameUrl required without a reference clip' };
+  }
+  const tier = req.tierOverride ?? cfg.renderTier;
+  const model = tier === 'standard' ? cfg.seedanceStandardModel : cfg.seedanceFastModel;
+  const seed = pickSeed(req.seed, `cutscene:${req.prompt}:${req.firstFrameUrl}`, cfg.mode);
+
+  let res: Response;
+  try {
+    res = await fetch(`${v2Base(cfg)}/${model}`, {
+      method: 'POST',
+      headers: { 'x-api-key': cfg.apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify(cutsceneBody(cfg, req, seed)),
+    });
+  } catch (e) {
+    return { ok: false, reason: 'provider_error', detail: (e as Error).message };
+  }
+  if (res.status === 429) {
+    console.warn(`segmind ${model} submit: 429 rate-limited — skipping (Hard Rule 8)`);
+    await res.body?.cancel();
+    return { ok: false, reason: 'rate_limited', status: 429 };
+  }
+  if (!res.ok) {
+    const detail = (await res.text()).slice(0, 500);
+    const reason: GenFailureReason = res.status === 400 || res.status === 422
+      ? (/nsfw|moderat|safety|policy|sensitive/i.test(detail) ? 'provider_moderation' : 'invalid_request')
+      : 'provider_error';
+    return { ok: false, reason, status: res.status, detail };
+  }
+  try {
+    const payload = await res.json();
+    const requestId = payload?.request_id ?? payload?.id;
+    if (typeof requestId !== 'string' || !requestId) {
+      return { ok: false, reason: 'provider_error', detail: 'no request_id in async submit response' };
+    }
+    return { ok: true, requestId, seed, model };
+  } catch {
+    return { ok: false, reason: 'provider_error', detail: 'async submit response unparseable' };
+  }
+}
+
+export type CutscenePoll =
+  | { done: false }                      // queued / processing / transient poll error
+  | { done: true; result: GenResult };   // terminal: bytes or a definite failure
+
+export async function pollCutscene(cfg: CinematicConfig, requestId: string, model: string, seed: number): Promise<CutscenePoll> {
+  if (!cfg.apiKey) return { done: true, result: { ok: false, reason: 'not_configured', detail: 'SEGMIND_API_KEY missing' } };
+
+  let st: Response;
+  try {
+    st = await fetch(`${v2Base(cfg)}/requests/${requestId}/status`, { headers: { 'x-api-key': cfg.apiKey } });
+  } catch {
+    return { done: false };  // transient network error — keep polling
+  }
+  if (st.status === 429) { await st.body?.cancel(); return { done: false }; }
+  if (st.status === 404) {
+    await st.body?.cancel();
+    return { done: true, result: { ok: false, reason: 'provider_error', status: 404, detail: 'async request expired or unknown' } };
+  }
+  // A FAILED request comes back as HTTP 422 with {"status":"FAILED","error":...} —
+  // non-ok is NOT automatically transient; read the body before deciding.
+  let statusPayload: Record<string, unknown>;
+  try { statusPayload = await st.json(); } catch {
+    return st.ok ? { done: false } : { done: false };
+  }
+  const state = String(statusPayload?.status ?? '').toUpperCase();
+  if (!st.ok && (state === 'FAILED' || statusPayload?.error)) {
+    const detail = JSON.stringify(statusPayload).slice(0, 500);
+    const reason: GenFailureReason =
+      /nsfw|moderat|safety|policy|sensitive|copyright/i.test(detail) ? 'provider_moderation'
+      : /not valid|invalid/i.test(detail) ? 'invalid_request' : 'provider_error';
+    return { done: true, result: { ok: false, reason, status: st.status, detail } };
+  }
+  if (!st.ok) return { done: false };
+  if (state === 'QUEUED' || state === 'PROCESSING' || state === 'IN_PROGRESS' || state === 'PENDING') {
+    return { done: false };
+  }
+  if (state && state !== 'COMPLETED' && state !== 'SUCCEEDED') {
+    const detail = JSON.stringify(statusPayload).slice(0, 500);
+    const reason: GenFailureReason =
+      /nsfw|moderat|safety|policy|sensitive|copyright/i.test(detail) ? 'provider_moderation' : 'provider_error';
+    return { done: true, result: { ok: false, reason, detail } };
+  }
+
+  // COMPLETED → fetch the final response (JSON with an output URL, or raw bytes).
+  let out: Response;
+  try {
+    out = await fetch(`${v2Base(cfg)}/requests/${requestId}`, { headers: { 'x-api-key': cfg.apiKey } });
+  } catch {
+    return { done: false };
+  }
+  if (!out.ok) { await out.body?.cancel(); return { done: false }; }
+  const contentType = out.headers.get('content-type') ?? 'application/octet-stream';
+  if (contentType.includes('application/json')) {
+    const payload = await out.json();
+    const url = payload?.video?.url ?? payload?.output_url ?? payload?.url ?? payload?.image_url;
+    if (typeof url !== 'string') {
+      return { done: true, result: { ok: false, reason: 'provider_error', detail: 'no output url in async result' } };
+    }
+    const dl = await fetch(url);
+    if (!dl.ok) return { done: true, result: { ok: false, reason: 'provider_error', status: dl.status, detail: 'output download failed' } };
+    return {
+      done: true,
+      result: {
+        ok: true, bytes: new Uint8Array(await dl.arrayBuffer()),
+        contentType: dl.headers.get('content-type') ?? 'video/mp4',
+        seed, model, mode: 'live', requestId,
+      },
+    };
+  }
+  return {
+    done: true,
+    result: {
+      ok: true, bytes: new Uint8Array(await out.arrayBuffer()), contentType,
+      seed, model, mode: 'live', requestId,
+    },
+  };
+}
+
 // ── Cutscene (Seedance 2.0): bracketed by the anchor plates ───────────────────────
 export async function generateCutscene(cfg: CinematicConfig, req: CutsceneRequest): Promise<GenResult> {
   if (!req.prompt?.trim()) return { ok: false, reason: 'invalid_request', detail: 'empty prompt' };
-  // The engine's core mechanic: both bookends are mandatory, always.
-  if (!req.firstFrameUrl || !req.lastFrameUrl) {
-    return { ok: false, reason: 'invalid_request', detail: 'firstFrameUrl and lastFrameUrl (anchor plates) are required' };
+  // The start plate is always anchored; the end plate is required UNLESS a reference
+  // clip rides along (ByteDance: reference content + both frames = invalid request).
+  if (!req.firstFrameUrl || (!req.lastFrameUrl && !req.referenceVideoUrls?.length)) {
+    return { ok: false, reason: 'invalid_request', detail: 'firstFrameUrl required; lastFrameUrl required without a reference clip' };
   }
-  const durationS = Math.min(15, Math.max(4, Math.round(req.durationS)));  // Seedance clip bounds
-  const seed = pickSeed(req.seed, `cutscene:${req.prompt}:${req.firstFrameUrl}:${req.lastFrameUrl}`, cfg.mode);
+  const seed = pickSeed(req.seed, `cutscene:${req.prompt}:${req.firstFrameUrl}:${req.lastFrameUrl ?? ''}`, cfg.mode);
 
   if (cfg.mode === 'sim') {
     return { ok: true, bytes: SIM_MP4, contentType: 'video/mp4', seed, model: 'sim-seedance', mode: 'sim' };
   }
   const tier = req.tierOverride ?? cfg.renderTier;
   const model = tier === 'standard' ? cfg.seedanceStandardModel : cfg.seedanceFastModel;
-  return await callSegmind(cfg, model, {
-    prompt: req.prompt,
-    first_frame_url: req.firstFrameUrl,
-    last_frame_url: req.lastFrameUrl,   // requires first — both always set here
-    ...(req.referenceImageUrl ? { reference_image_url: req.referenceImageUrl } : {}),
-    duration: durationS,
-    resolution: tier === 'standard' ? '1080p' : '720p',
-    seed,
-  });
+  // NOTE: never send reference_images here — like all reference content it conflicts
+  // with dual-frame conditioning. Subject identity travels in the prompt + the clip.
+  return await callSegmind(cfg, model, cutsceneBody(cfg, req, seed));
 }

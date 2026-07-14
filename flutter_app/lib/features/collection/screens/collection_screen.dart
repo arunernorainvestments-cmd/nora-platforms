@@ -284,30 +284,85 @@ class _MarketActionsState extends ConsumerState<_MarketActions> {
 
     final pricing = ref.watch(tierPricingProvider).valueOrNull;
     final price = pricing?[chit.tier];
-    if (price == null) return const SizedBox.shrink();
 
     return Column(mainAxisSize: MainAxisSize.min, children: [
-      FilledButton.icon(
-        onPressed: _busy ? null : () => _sell(price),
-        icon: _busy
-            ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2))
-            : const Icon(Icons.sell_outlined),
-        label: Text('Sell for ${price.tokens} tokens'),
-      ),
-      if (price.feeBps > 0)
-        Padding(
-          padding: const EdgeInsets.only(top: 6),
-          child: Text(
-            '${price.feeBps ~/ 100}% is burned on sale — you receive '
-            '${price.netToSeller} tokens.',
-            style:
-                const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
-          ),
+      if (price != null) ...[
+        FilledButton.icon(
+          onPressed: _busy ? null : () => _sell(price),
+          icon: _busy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.sell_outlined),
+          label: Text('Sell for ${price.tokens} tokens'),
         ),
+        if (price.feeBps > 0)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              '${price.feeBps ~/ 100}% is burned on sale — you receive '
+              '${price.netToSeller} tokens.',
+              style:
+                  const TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+            ),
+          ),
+      ],
+      TextButton.icon(
+        onPressed: _busy ? null : _delete,
+        icon:
+            const Icon(Icons.delete_outline, size: 18, color: AppTheme.danger),
+        label: const Text('Delete this card',
+            style: TextStyle(color: AppTheme.danger)),
+      ),
     ]);
+  }
+
+  /// Permanently deletes a card the user minted (server-guarded: minter-only,
+  /// no copies held by others, not wagered/listed) and releases its source
+  /// moment so it can be minted again.
+  Future<void> _delete() async {
+    final messenger = ScaffoldMessenger.of(widget.dialogContext);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Delete this card?',
+            style: TextStyle(color: AppTheme.textPrimary)),
+        content: Text(
+          '${widget.chit.name} and its cutscene are permanently deleted, and '
+          'your self-mint slot is freed. The original moment is released, so '
+          'you can mint it again fresh. This can\'t be undone.',
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Keep it')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('Delete')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busy = true);
+    try {
+      await MintService.deleteChit(widget.chit.id);
+      if (widget.dialogContext.mounted) Navigator.pop(widget.dialogContext);
+      messenger.showSnackBar(SnackBar(
+          content: Text(
+              '${widget.chit.name} deleted — its moment is free to mint again.'),
+          backgroundColor: AppTheme.surface));
+    } catch (e) {
+      if (mounted) setState(() => _busy = false);
+      messenger.showSnackBar(SnackBar(
+          content: Text('Could not delete — $e'),
+          backgroundColor: AppTheme.danger));
+    } finally {
+      ref.invalidate(myCollectionProvider);
+    }
   }
 
   Future<void> _sell(TierPrice price) async {

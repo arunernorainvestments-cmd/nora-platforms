@@ -5,12 +5,15 @@
 // self_mint_slot, so backing out must actually retire it — not just navigate away, or
 // the next mint is stuck behind the swap-confirm flow.
 //
-// POST { chit_id }
+// POST { chit_id, allow_finalized? }
 //   1. chit_discard_pending (mig 150): owner + not-finalized + not-retired → soft-retire,
 //      zero holdings (append-only ledger), purge decks, free the slot. Returns moment_id.
+//      With allow_finalized: true (the collection "Delete card" action), the guard set
+//      is chit_delete_owned (mig 162) instead — minter-only, no foreign copies, not
+//      wagered/listed — and it also RELEASES the source moment for a clean re-mint.
 //   2. delete the chit's battle-media (card art + all cutscene attempts).
 //
-// A FINALIZED chit is a real owned collectible and is refused here (the RPC raises).
+// Without allow_finalized, a FINALIZED chit is refused here (the RPC raises).
 // Deployed --no-verify-jwt (ES256 project); auth via supabase.auth.getUser().
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
@@ -36,19 +39,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const { data: { user }, error: authError } = await anon.auth.getUser(authHeader.replace('Bearer ', ''));
   if (authError || !user) return json({ error: 'Unauthorized' }, 401);
 
-  let body: { chit_id?: string };
+  let body: { chit_id?: string; allow_finalized?: boolean };
   try { body = await req.json(); } catch { return json({ error: 'Invalid JSON body' }, 400); }
   const chitId = body.chit_id?.trim();
   if (!chitId) return json({ error: 'Missing required field: chit_id' }, 400);
 
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
-  // ── 1. retire the pending chit (owner + not-finalized enforced in the RPC) ────────
-  const { data: momentId, error: discardErr } = await db.rpc('chit_discard_pending', {
+  // ── 1. retire the chit (all ownership/state guards enforced in the RPC) ───────────
+  const rpc = body.allow_finalized === true ? 'chit_delete_owned' : 'chit_discard_pending';
+  const { data: momentId, error: discardErr } = await db.rpc(rpc, {
     p_user: user.id, p_chit: chitId,
   });
   if (discardErr) {
-    // The RPC raises for a finalized/foreign/unknown chit — surface as a 409, not 500.
+    // The RPC raises for a guarded/foreign/unknown chit — surface as a 409, not 500.
     return json({ error: 'not_discardable', detail: discardErr.message }, 409);
   }
 

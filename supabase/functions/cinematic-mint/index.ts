@@ -18,11 +18,18 @@
 // (owner-scoped RLS) to drive the progress UI and read the terminal payload.
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { cinematicConfigFromEnv, generateCutscene, generateIllustration } from '../_shared/segmind.ts';
 import {
-  assembleMotionPrompt, familyAction, illustrationPrompt, sanitizeSubjectDesc,
-  selectTemplate, TIER_INTENSITY, type Family, type Tier,
+  cinematicConfigFromEnv, generateCutscene, generateIllustration,
+  pollCutscene, submitCutscene, type CinematicConfig, type GenResult,
+} from '../_shared/segmind.ts';
+import {
+  assembleMotionPrompt, CLIP_MODE_ENDING_DIRECTIVE, CLIP_MODE_OPENING_DIRECTIVE,
+  familyAction, illustrationPrompt, sanitizeSubjectDesc, selectTemplate,
+  TIER_INTENSITY, type Family, type Tier,
 } from '../_shared/cinematic_directives.ts';
+
+// Seedance reference_videos accepts 2–15s clips; the browser trimmer allows 1–15s.
+const CLIP_REF_MIN_MS = 2000;
 import { moderationConfigFromEnv, preGenModerate } from '../_shared/moderation.ts';
 
 // Supabase edge runtime background-task hook (keeps the worker alive after the
@@ -94,20 +101,33 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const chitFamily = (moment.archetype_family as Family | null) ?? family;
 
   // ── job dedup: a live job for this moment means generation is ALREADY running —
-  // hand back its id instead of double-spending; a stale 'running' row is a killed
-  // background task, so mark it failed and start fresh.
+  // hand back its id instead of double-spending. A stale 'running' row is a killed
+  // background task: if it stashed an async provider request (mig 164), RESUME
+  // polling that request on the same job — zero new spend; otherwise mark it failed.
   const { data: liveJobs } = await db.from('mint_jobs')
-    .select('id, updated_at').eq('moment_id', moment_id).eq('status', 'running')
+    .select('id, updated_at, stage, provider_state').eq('moment_id', moment_id).eq('status', 'running')
     .order('created_at', { ascending: false }).limit(1);
+  let renderResume: RenderStash | null = null;
+  let resumeJobId: string | null = null;
   if (liveJobs?.[0]) {
-    const ageMs = Date.now() - new Date(liveJobs[0].updated_at as string).getTime();
-    if (ageMs < JOB_STALE_MS) {
-      return json({ status: 'accepted', job_id: liveJobs[0].id, mode: cfg.mode, deduped: true }, 202);
+    const j = liveJobs[0];
+    const ageMs = Date.now() - new Date(j.updated_at as string).getTime();
+    const ps = j.provider_state as RenderStash | null;
+    // A job parked at cutscene_rendering has NO live worker by definition (parking is
+    // the worker's last act) — resume it immediately, no need to wait out staleness.
+    const parked = j.stage === 'cutscene_rendering' && !!ps?.request_id;
+    if (ageMs < JOB_STALE_MS && !parked) {
+      return json({ status: 'accepted', job_id: j.id, mode: cfg.mode, deduped: true }, 202);
     }
-    await jobUpdate(db, liveJobs[0].id as string, {
-      status: 'failed', error: 'stale',
-      detail: 'The generation task was interrupted. It has been marked failed so you can retry.',
-    });
+    if (ps?.request_id) {
+      renderResume = ps;
+      resumeJobId = j.id as string;
+    } else {
+      await jobUpdate(db, j.id as string, {
+        status: 'failed', error: 'stale',
+        detail: 'The generation task was interrupted. It has been marked failed so you can retry.',
+      });
+    }
   }
 
   // ── spend guards (BEFORE any generation — each mint is paid provider calls) ───────
@@ -125,7 +145,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // Guard 2: per-user daily generation cap (bug loops, multi-tab spam, abuse).
   // A resume makes no provider calls, so it does not consume the allowance.
-  if (!resumeGen) {
+  if (!resumeGen && !renderResume) {
     const dailyCap = Math.max(1, Number(Deno.env.get('CINEMATIC_DAILY_CAP') ?? '6'));
     const { count: dayCount } = await db.from('cinematic_generations')
       .select('id, moments!inner(owner_user_id)', { count: 'exact', head: true })
@@ -214,19 +234,27 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   // ── everything paid/slow happens in a background job; respond with its id now ────
-  const { data: job, error: jobErr } = await db.from('mint_jobs').insert({
-    moment_id, user_id: user.id,
-    ...(resumeGen ? { generation_id: resumeGen.id } : {}),
-  }).select('id').single();
-  if (jobErr || !job) return json({ error: 'job create failed', detail: jobErr?.message }, 500);
-  const jobId = job.id as string;
+  // A render resume reuses the SAME job row (the client is already polling it);
+  // touch it so it stops reading as stale while the new worker takes over.
+  let jobId: string;
+  if (resumeJobId) {
+    jobId = resumeJobId;
+    await jobUpdate(db, jobId, { stage: 'cutscene' });
+  } else {
+    const { data: job, error: jobErr } = await db.from('mint_jobs').insert({
+      moment_id, user_id: user.id,
+      ...(resumeGen ? { generation_id: resumeGen.id } : {}),
+    }).select('id').single();
+    if (jobErr || !job) return json({ error: 'job create failed', detail: jobErr?.message }, 500);
+    jobId = job.id as string;
+  }
 
   const task = runMintJob({
     db, cfg, jobId, momentId: moment_id, moment, body,
     chitFamily, chitType: chit_type, subjectDesc: subject_desc,
     effectTemplateId, effectTiming, grantKeywords,
     templateId, tier: tier as Tier, plate, promptTpl, tpl,
-    seed, attempt, resumeGen, swapOf, oldMomentId,
+    seed, attempt, resumeGen, renderResume, swapOf, oldMomentId,
   }).catch(async (e) => {
     console.error(`cinematic-mint job ${jobId}: uncaught`, e);
     await jobUpdate(db, jobId, {
@@ -240,10 +268,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
     status: 'accepted',
     job_id: jobId,
     mode: cfg.mode,
-    resume: !!resumeGen,
+    resume: !!resumeGen || !!renderResume,
     next: 'Poll your mint_jobs row until status leaves running, then read result',
   }, 202);
 });
+
+// Render-in-flight stash on mint_jobs.provider_state (mig 164): everything a fresh
+// worker needs to pick up a submitted-but-unfinished async cutscene with no re-spend.
+interface RenderStash {
+  request_id: string;
+  model: string;
+  seed: number;
+  art_path: string;
+  art_url: string;
+  illustration_prompt: string | null;
+  illustration_request_id: string | null;
+  motion_prompt: string;
+  clip_reference_used: boolean;
+  duration_s: number;
+}
 
 // ── the background pipeline: generation → post-gen moderation → completion ─────────
 // Terminal states land on the job row (never thrown): succeeded / held_moderation /
@@ -259,14 +302,44 @@ interface MintJobCtx {
   tpl: { duration_min_s?: number; duration_max_s?: number } | null;
   seed: number | undefined; attempt: number;
   resumeGen: Record<string, unknown> | null;
+  renderResume: RenderStash | null;
   swapOf: string | null; oldMomentId: string | null;
+}
+
+// In-worker wait on an async render, inside the edge wall-clock budget. Touches the
+// job row while waiting so the client's dedup window doesn't read it as stale.
+// 'pending' = budget exhausted with the render still going — the caller parks the
+// job at stage cutscene_rendering and a later call resumes from the stash.
+// Budget is deliberately short: trial 4 (2026-07-13) showed the background worker
+// being reaped ~90s in, well before the documented wall clock — parking cleanly
+// beats being killed mid-poll (a parked job resumes instantly; a killed one waits
+// out the stale window).
+const RENDER_POLL_MS = 10_000;
+const RENDER_BUDGET_MS = 60_000;
+
+async function awaitCutscene(
+  db: Db, cfg: CinematicConfig, jobId: string,
+  requestId: string, model: string, seed: number,
+): Promise<GenResult | 'pending'> {
+  const deadline = Date.now() + RENDER_BUDGET_MS;
+  let lastTouch = 0;
+  while (Date.now() < deadline) {
+    const poll = await pollCutscene(cfg, requestId, model, seed);
+    if (poll.done) return poll.result;
+    if (Date.now() - lastTouch > 25_000) {
+      await jobUpdate(db, jobId, {});   // heartbeat: bump updated_at only
+      lastTouch = Date.now();
+    }
+    await new Promise((r) => setTimeout(r, RENDER_POLL_MS));
+  }
+  return 'pending';
 }
 
 async function runMintJob(ctx: MintJobCtx): Promise<void> {
   const {
     db, cfg, jobId, momentId, moment, body, chitFamily, chitType, subjectDesc,
     effectTemplateId, effectTiming, grantKeywords, templateId, tier,
-    plate, promptTpl, tpl, seed, attempt, resumeGen, swapOf, oldMomentId,
+    plate, promptTpl, tpl, seed, attempt, resumeGen, renderResume, swapOf, oldMomentId,
   } = ctx;
 
   let genId: string;
@@ -286,55 +359,154 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     console.log(`cinematic-mint: resuming pending generation ${genId} (no provider calls)`);
     await jobUpdate(db, jobId, { stage: 'screening', generation_id: genId });
   } else {
-    // ── illustration (card art; also the cutscene subject reference) ───────────────
-    await jobUpdate(db, jobId, { stage: 'illustration' });
-    const illo = await generateIllustration(cfg, {
-      prompt: illustrationPrompt(subjectDesc, chitFamily),
-      referenceImageUrl: (moment.thumbnail_url as string | null) ?? undefined,
-      seed,
-      width: 1024,   // portrait 4:5 card-art window — the app frames it, not 16:9
-      height: 1280,
-    });
-    if (!illo.ok) {
-      console.warn(`cinematic-mint illustration: ${illo.reason} status=${illo.status ?? ''} ${illo.detail ?? ''}`);
-      await jobUpdate(db, jobId, {
-        status: 'failed', error: 'generation_unavailable',
-        detail: `illustration: ${illo.reason}${illo.detail ? ` — ${illo.detail}` : ''}`,
+    // ── illustration (card art) — skipped on a render resume (already stored) ──────
+    let artPath: string;
+    let illoPrompt: string | null;
+    let illoRequestId: string | null;
+    if (renderResume) {
+      artPath = renderResume.art_path;
+      artUrl = renderResume.art_url;
+      illoPrompt = renderResume.illustration_prompt;
+      illoRequestId = renderResume.illustration_request_id;
+    } else {
+      await jobUpdate(db, jobId, { stage: 'illustration' });
+      illoPrompt = illustrationPrompt(subjectDesc, chitFamily);
+      const illo = await generateIllustration(cfg, {
+        prompt: illoPrompt,
+        referenceImageUrl: (moment.thumbnail_url as string | null) ?? undefined,
+        seed,
+        width: 1024,   // portrait 4:5 card-art window — the app frames it, not 16:9
+        height: 1280,
       });
-      return;
+      if (!illo.ok) {
+        console.warn(`cinematic-mint illustration: ${illo.reason} status=${illo.status ?? ''} ${illo.detail ?? ''}`);
+        await jobUpdate(db, jobId, {
+          status: 'failed', error: 'generation_unavailable',
+          detail: `illustration: ${illo.reason}${illo.detail ? ` — ${illo.detail}` : ''}`,
+        });
+        return;
+      }
+      illoRequestId = illo.requestId ?? null;
+      artPath = `moments/${momentId}/card_art.png`;
+      const artUp = await db.storage.from('battle-media').upload(artPath, illo.bytes, {
+        contentType: illo.contentType, upsert: true,
+      });
+      if (artUp.error) {
+        await jobUpdate(db, jobId, { status: 'failed', error: 'storage', detail: `card art store failed: ${artUp.error.message}` });
+        return;
+      }
+      artUrl = db.storage.from('battle-media').getPublicUrl(artPath).data.publicUrl;
+      await jobUpdate(db, jobId, { stage: 'card_art_stored' });
     }
-    const artPath = `moments/${momentId}/card_art.png`;
-    const artUp = await db.storage.from('battle-media').upload(artPath, illo.bytes, {
-      contentType: illo.contentType, upsert: true,
-    });
-    if (artUp.error) {
-      await jobUpdate(db, jobId, { status: 'failed', error: 'storage', detail: `card art store failed: ${artUp.error.message}` });
-      return;
-    }
-    artUrl = db.storage.from('battle-media').getPublicUrl(artPath).data.publicUrl;
-    await jobUpdate(db, jobId, { stage: 'card_art_stored' });
 
-    // ── cutscene: bracketed by the plates, seeded, style-locked ────────────────────
+    // ── cutscene: start plate always anchored; the clip rides as reference video ───
     const fAction = familyAction(chitFamily, templateId);
     const intensity = TIER_INTENSITY[tier];
     // {VIDEO_DESC} is the attached clip's description (moment-clip-attach) — a VARIABLE
     // slot for the V2V core only; the agnostic bridge templates carry no placeholder for
     // it (Hard Rule 39). Absent (e.g. link-only ingest, no clip) → the slot collapses.
     const videoDesc = (moment.clip_video_desc as string | null) ?? null;
-    const motionPrompt = assembleMotionPrompt(promptTpl.prompt_body as string, {
-      subjectDesc, familyAction: fAction, tierIntensity: intensity,
-      videoDesc,
-    });
-    durationS = Math.round(((tpl?.duration_min_s ?? 4) + (tpl?.duration_max_s ?? 6)) / 2);
-    await jobUpdate(db, jobId, { stage: 'cutscene' });
-    const cut = await generateCutscene(cfg, {
-      prompt: motionPrompt,
-      firstFrameUrl: plate.start_plate_url as string,
-      lastFrameUrl: plate.end_plate_url as string,
-      referenceImageUrl: artUrl,
-      durationS,
-      seed,
-    });
+    // Clip mode (2026-07-13 live trial): reference content cannot combine with BOTH
+    // frame anchors, so the clip rides with the start plate only and the constant
+    // ENDING directive steers into the end plate's impact-flash whiteout (Unity's
+    // impact-flash particle covers that seam). No clip → both bookends, unchanged.
+    const buildPrompt = (withClip: boolean) =>
+      assembleMotionPrompt(promptTpl.prompt_body as string, {
+        subjectDesc, familyAction: fAction, tierIntensity: intensity,
+        videoDesc, clipAttached: withClip,
+      }) + (withClip ? `\n${CLIP_MODE_OPENING_DIRECTIVE}\n${CLIP_MODE_ENDING_DIRECTIVE}` : '');
+    durationS = renderResume?.duration_s ??
+      Math.round(((tpl?.duration_min_s ?? 4) + (tpl?.duration_max_s ?? 6)) / 2);
+
+    // Live renders outlive the edge wall clock, so live mode submits to the async
+    // provider queue, persists the request id on the job (mig 164), and polls within
+    // budget. Budget out → park at cutscene_rendering; the next call resumes free.
+    const submitAndAwait = async (prompt: string, clipUrl: string | null): Promise<GenResult | 'pending'> => {
+      const submit = await submitCutscene(cfg, {
+        prompt,
+        firstFrameUrl: plate.start_plate_url as string,
+        lastFrameUrl: clipUrl ? undefined : (plate.end_plate_url as string),
+        referenceVideoUrls: clipUrl ? [clipUrl] : undefined,
+        durationS,
+        seed,
+      });
+      if (!submit.ok) return submit;
+      const stash: RenderStash = {
+        request_id: submit.requestId, model: submit.model, seed: submit.seed,
+        art_path: artPath, art_url: artUrl,
+        illustration_prompt: illoPrompt, illustration_request_id: illoRequestId,
+        motion_prompt: prompt, clip_reference_used: !!clipUrl, duration_s: durationS,
+      };
+      await jobUpdate(db, jobId, { provider_state: stash });
+      return await awaitCutscene(db, cfg, jobId, submit.requestId, submit.model, submit.seed);
+    };
+
+    let motionPrompt: string;
+    let clipUsed: boolean;
+    let cut: GenResult | 'pending';
+
+    if (renderResume) {
+      // Pick the in-flight render back up — zero new provider calls.
+      motionPrompt = renderResume.motion_prompt;
+      clipUsed = renderResume.clip_reference_used;
+      console.log(`cinematic-mint: resuming async render ${renderResume.request_id} (no new spend)`);
+      await jobUpdate(db, jobId, { stage: 'cutscene' });
+      cut = await awaitCutscene(db, cfg, jobId, renderResume.request_id, renderResume.model, renderResume.seed);
+    } else {
+      // The user's moderated uploaded clip rides along as reference_videos[0] (audit
+      // item 5) so the cutscene's middle recreates the real moment. mint-staging is
+      // private — sign a short-lived URL for the provider fetch only (the clip was
+      // pre-gen moderated at attach; Hard Rule 37).
+      let clipRefUrl: string | null = null;
+      const trimMs = Number(moment.clip_trim_end_ms ?? 0) - Number(moment.clip_trim_start_ms ?? 0);
+      if (moment.clip_status === 'attached' && moment.raw_clip_path && trimMs >= CLIP_REF_MIN_MS) {
+        const { data: signedClip } = await db.storage.from('mint-staging')
+          .createSignedUrl(moment.raw_clip_path as string, 3600);
+        clipRefUrl = signedClip?.signedUrl ?? null;
+      }
+      clipUsed = !!clipRefUrl;
+      motionPrompt = buildPrompt(clipUsed);
+      await jobUpdate(db, jobId, { stage: 'cutscene' });
+      if (cfg.mode === 'sim') {
+        // sim: instant deterministic stub — the sync path stays exercisable E2E.
+        cut = await generateCutscene(cfg, {
+          prompt: motionPrompt,
+          firstFrameUrl: plate.start_plate_url as string,
+          lastFrameUrl: clipRefUrl ? undefined : (plate.end_plate_url as string),
+          referenceVideoUrls: clipRefUrl ? [clipRefUrl] : undefined,
+          durationS,
+          seed,
+        });
+      } else {
+        cut = await submitAndAwait(motionPrompt, clipRefUrl);
+      }
+    }
+    if (cut === 'pending') {
+      await jobUpdate(db, jobId, { stage: 'cutscene_rendering' });
+      return;   // worker exits cleanly; a later call resumes from the stash, free
+    }
+
+    // ByteDance moderates the INPUT assets too (trial 2026-07-13: a third-party
+    // celebrity clip → InputVideoSensitiveContentDetected/copyright). A flagged clip
+    // must degrade to the prompt-only cutscene — never brick the whole mint (and the
+    // already-paid illustration) on a provider input-policy call.
+    if (!cut.ok && (cut.reason === 'provider_moderation' || cut.reason === 'invalid_request') && clipUsed) {
+      console.warn(`cinematic-mint: clip-referenced render failed ${cut.reason} (${cut.detail?.slice(0, 200)}) — retrying without the clip`);
+      clipUsed = false;
+      motionPrompt = buildPrompt(false);
+      cut = cfg.mode === 'sim'
+        ? await generateCutscene(cfg, {
+            prompt: motionPrompt,
+            firstFrameUrl: plate.start_plate_url as string,
+            lastFrameUrl: plate.end_plate_url as string,
+            durationS, seed,
+          })
+        : await submitAndAwait(motionPrompt, null);
+      if (cut === 'pending') {
+        await jobUpdate(db, jobId, { stage: 'cutscene_rendering' });
+        return;
+      }
+    }
     if (!cut.ok) {
       console.warn(`cinematic-mint cutscene: ${cut.reason} status=${cut.status ?? ''} ${cut.detail ?? ''}`);
       await jobUpdate(db, jobId, {
@@ -355,6 +527,8 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     await jobUpdate(db, jobId, { stage: 'cutscene_stored' });
 
     // ── generation ledger row ───────────────────────────────────────────────────────
+    // Full assembled prompts + provider request ids + clip usage (mig 163, audit item
+    // 6) — so the next bad output is traceable without re-deriving what was sent.
     const { data: gen, error: gErr } = await db.from('cinematic_generations').insert({
       moment_id: momentId,
       template_id: templateId,
@@ -370,6 +544,11 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       attempt,
       illustration_path: artPath,
       mp4_path: mp4Path,
+      illustration_prompt: illoPrompt,
+      motion_prompt: motionPrompt,
+      illustration_request_id: illoRequestId,
+      cutscene_request_id: cut.requestId ?? null,
+      clip_reference_used: clipUsed,
     }).select('id').single();
     if (gErr || !gen) {
       await jobUpdate(db, jobId, { status: 'failed', error: 'ledger', detail: `ledger write failed: ${gErr?.message}` });
@@ -377,7 +556,9 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     }
     genId = gen.id as string;
     seedUsed = cut.seed;
-    await jobUpdate(db, jobId, { generation_id: genId });
+    // Ledger row exists → the moderation-resume path owns recovery from here; the
+    // render stash must not resurrect a second render/ledger row.
+    await jobUpdate(db, jobId, { generation_id: genId, provider_state: null });
   }
 
   // ── post-gen moderation (mandatory — Hard Rule 39) ───────────────────────────────
