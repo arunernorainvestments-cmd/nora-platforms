@@ -17,6 +17,11 @@
 // - HTTP 429 → { ok:false, reason:'rate_limited' }, logged, never thrown (Hard Rule 8).
 // - The API key is never logged (Hard Rule 9).
 
+// The V2V core provider (PLAN 2026-07-14 item 1c — Track A collapsed to one call):
+// restyle the user's trimmed clip into the cel-shaded core instead of riding it as a
+// Seedance reference video. Unset → the Seedance clip-reference path, unchanged.
+export type V2VProvider = 'kling-o3' | 'runway-aleph';
+
 export interface CinematicConfig {
   mode: 'sim' | 'live';
   renderTier: 'fast' | 'standard';       // fast = drafts/dev, standard = final renders
@@ -24,12 +29,17 @@ export interface CinematicConfig {
   imageModel: string;                    // Segmind model slug for illustration/plates
   seedanceFastModel: string;             // Seedance 2.0 Fast slug
   seedanceStandardModel: string;         // Seedance 2.0 standard slug
+  seedanceAudio: boolean;                // generate_audio on Seedance calls (native SFX)
+  v2vProvider: V2VProvider | null;       // null = Seedance clip-reference path
+  klingV2VModel: string;                 // Kling O3 video2video-edit slug
+  alephV2VModel: string;                 // Runway Gen-4 Aleph slug
   baseUrl: string;
 }
 
 export function cinematicConfigFromEnv(env: (k: string) => string | undefined = Deno.env.get.bind(Deno.env)): CinematicConfig {
   const mode = env('CINEMATIC_MODE') === 'live' ? 'live' : 'sim';
   const renderTier = env('CINEMATIC_RENDER_TIER') === 'standard' ? 'standard' : 'fast';
+  const v2vRaw = env('CINEMATIC_V2V_PROVIDER') ?? '';
   return {
     mode,
     renderTier,
@@ -37,6 +47,13 @@ export function cinematicConfigFromEnv(env: (k: string) => string | undefined = 
     imageModel: env('SEGMIND_IMAGE_MODEL') ?? 'seedream-4',
     seedanceFastModel: env('SEGMIND_SEEDANCE_FAST_MODEL') ?? 'seedance-2.0-fast',
     seedanceStandardModel: env('SEGMIND_SEEDANCE_MODEL') ?? 'seedance-2.0',
+    // Founder feedback 2026-07-14 item 2: cutscenes ship silent. Seedance supports
+    // native audio co-generation (generate_audio, provider default false) — on unless
+    // explicitly switched off.
+    seedanceAudio: env('CINEMATIC_SEEDANCE_AUDIO') !== 'off',
+    v2vProvider: v2vRaw === 'kling-o3' || v2vRaw === 'runway-aleph' ? v2vRaw : null,
+    klingV2VModel: env('SEGMIND_KLING_V2V_MODEL') ?? 'kling-o3-video2video-edit',
+    alephV2VModel: env('SEGMIND_ALEPH_V2V_MODEL') ?? 'runway-gen4-aleph',
     baseUrl: env('SEGMIND_BASE_URL') ?? 'https://api.segmind.com/v1',
   };
 }
@@ -225,6 +242,10 @@ function cutsceneBody(cfg: CinematicConfig, req: CutsceneRequest, seed: number):
         }),
     duration: Math.min(15, Math.max(4, Math.round(req.durationS))),
     resolution: tier === 'standard' ? '1080p' : '720p',
+    // Native audio co-generation (SFX/ambient) — founder feedback item 2. The
+    // provider default is false; NORA's default is on (CINEMATIC_SEEDANCE_AUDIO=off
+    // to disable).
+    generate_audio: cfg.seedanceAudio,
     seed,
   };
 }
@@ -373,4 +394,122 @@ export async function generateCutscene(cfg: CinematicConfig, req: CutsceneReques
   // NOTE: never send reference_images here — like all reference content it conflicts
   // with dual-frame conditioning. Subject identity travels in the prompt + the clip.
   return await callSegmind(cfg, model, cutsceneBody(cfg, req, seed));
+}
+
+// ── V2V core restyle (PLAN 2026-07-14 item 1c: Track A collapsed to one call) ──────
+// The user's trimmed, pre-gen-moderated clip is restyled INTO the cel-shaded core —
+// the source motion is actually in the output, unlike the reference-video path where
+// the provider merely looks at it. Two docs-verified candidates (2026-07-14):
+//
+//   kling-o3-video2video-edit — video_url + prompt (+ @Image1 refs via image_urls[]),
+//     duration STRING 3–15s, keep_audio preserves the ORIGINAL soundtrack (provider
+//     default false — we set it), mode std|pro, no seed param. Input video width must
+//     be 720–2160px (the trimmer caps long edge at 1280, so small portrait sources
+//     may fall short — a micro-trial finding to watch).
+//   runway-gen4-aleph — video (≤16MB; trims run 1–3MB) + prompt + reference_image +
+//     int seed. Output is SILENT: the caller lays the original clip audio back via
+//     the stitch worker's audio-overlay path.
+//
+// Both run through Segmind's v2 async queue, so submit/poll/park/resume reuse the
+// exact machinery of the Seedance path (pollCutscene is request-id generic).
+
+export interface V2VRestyleRequest {
+  prompt: string;              // house style-lock restyle prompt (never user-authored)
+  videoUrl: string;            // signed mint-staging clip URL (pre-gen moderated)
+  referenceImageUrl?: string;  // the card art — character consistency across surfaces
+  durationS?: number;          // kling only (clamped 3–15); aleph follows the input
+  keepAudio?: boolean;         // kling only; aleph output is always silent
+  aspectRatio?: string;        // default 16:9 (the cutscene canvas)
+  seed?: number;               // aleph only; captured on the result either way (HR39)
+  tierOverride?: 'fast' | 'standard';
+}
+
+export function v2vModelFor(cfg: CinematicConfig, provider: V2VProvider): string {
+  return provider === 'kling-o3' ? cfg.klingV2VModel : cfg.alephV2VModel;
+}
+
+function v2vBody(
+  cfg: CinematicConfig, provider: V2VProvider, req: V2VRestyleRequest, seed: number,
+): Record<string, unknown> {
+  const tier = req.tierOverride ?? cfg.renderTier;
+  if (provider === 'kling-o3') {
+    return {
+      prompt: req.prompt,
+      video_url: req.videoUrl,
+      duration: String(Math.min(15, Math.max(3, Math.round(req.durationS ?? 5)))),
+      aspect_ratio: req.aspectRatio ?? '16:9',
+      mode: tier === 'standard' ? 'pro' : 'std',
+      // Founder feedback item 2 (audio) solved at the source: the original clip
+      // soundtrack survives the restyle. Explicit — the provider default is false.
+      keep_audio: req.keepAudio !== false,
+      ...(req.referenceImageUrl ? { image_urls: [req.referenceImageUrl] } : {}),
+    };
+  }
+  return {
+    prompt: req.prompt,
+    video: req.videoUrl,
+    aspect_ratio: req.aspectRatio ?? '16:9',
+    ...(req.referenceImageUrl ? { reference_image: req.referenceImageUrl } : {}),
+    seed,
+  };
+}
+
+// Sim-mode stub (governance: every pipeline is exercisable with zero spend/keys).
+export async function generateV2VRestyle(
+  cfg: CinematicConfig, provider: V2VProvider, req: V2VRestyleRequest,
+): Promise<GenResult> {
+  if (!req.prompt?.trim() || !req.videoUrl) {
+    return { ok: false, reason: 'invalid_request', detail: 'prompt and videoUrl required' };
+  }
+  const seed = pickSeed(req.seed, `v2v:${provider}:${req.prompt}:${req.videoUrl}`, cfg.mode);
+  if (cfg.mode === 'sim') {
+    return { ok: true, bytes: SIM_MP4, contentType: 'video/mp4', seed, model: `sim-${provider}`, mode: 'sim' };
+  }
+  return await callSegmind(cfg, v2vModelFor(cfg, provider), v2vBody(cfg, provider, req, seed));
+}
+
+// Live submit to the v2 async queue — poll with pollCutscene(cfg, requestId, model,
+// seed), park/resume identical to the Seedance path (results retained 1h).
+export async function submitV2VRestyle(
+  cfg: CinematicConfig, provider: V2VProvider, req: V2VRestyleRequest,
+): Promise<CutsceneSubmit> {
+  if (!cfg.apiKey) return { ok: false, reason: 'not_configured', detail: 'SEGMIND_API_KEY missing' };
+  if (!req.prompt?.trim() || !req.videoUrl) {
+    return { ok: false, reason: 'invalid_request', detail: 'prompt and videoUrl required' };
+  }
+  const model = v2vModelFor(cfg, provider);
+  const seed = pickSeed(req.seed, `v2v:${provider}:${req.prompt}:${req.videoUrl}`, cfg.mode);
+
+  let res: Response;
+  try {
+    res = await fetch(`${v2Base(cfg)}/${model}`, {
+      method: 'POST',
+      headers: { 'x-api-key': cfg.apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify(v2vBody(cfg, provider, req, seed)),
+    });
+  } catch (e) {
+    return { ok: false, reason: 'provider_error', detail: (e as Error).message };
+  }
+  if (res.status === 429) {
+    console.warn(`segmind ${model} submit: 429 rate-limited — skipping (Hard Rule 8)`);
+    await res.body?.cancel();
+    return { ok: false, reason: 'rate_limited', status: 429 };
+  }
+  if (!res.ok) {
+    const detail = (await res.text()).slice(0, 500);
+    const reason: GenFailureReason = res.status === 400 || res.status === 422
+      ? (/nsfw|moderat|safety|policy|sensitive|rai/i.test(detail) ? 'provider_moderation' : 'invalid_request')
+      : 'provider_error';
+    return { ok: false, reason, status: res.status, detail };
+  }
+  try {
+    const payload = await res.json();
+    const requestId = payload?.request_id ?? payload?.id;
+    if (typeof requestId !== 'string' || !requestId) {
+      return { ok: false, reason: 'provider_error', detail: 'no request_id in async submit response' };
+    }
+    return { ok: true, requestId, seed, model };
+  } catch {
+    return { ok: false, reason: 'provider_error', detail: 'async submit response unparseable' };
+  }
 }

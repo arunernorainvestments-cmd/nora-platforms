@@ -91,6 +91,42 @@ export function clipRefDirective(videoDesc: string | null | undefined): string {
 // describes the glowing BattleChit card-back plate, the ending the cyber impact
 // flash. Unity's zoom-into-card lead-in and impact-flash particle cover both seams
 // (Hard Rule 39 amended by the live trial).
+// ── V2V core restyle prompt (PLAN 2026-07-14 item 1c) ─────────────────────────────
+// The whole prompt is house-owned (Hard Rule 39: STYLE/CONSTRAINTS never
+// user-influenced or omitted); the only variables are the two sanitized descriptions.
+// Unlike the motion-prompt templates this asks the model to KEEP the source video's
+// motion and re-render its look — the source moment is finally IN the cutscene.
+// Provider phrasing differs only in how the character reference is addressed:
+// Kling resolves `@Image1` against image_urls[0]; Aleph takes prose about
+// "the reference image".
+export function v2vRestylePrompt(args: {
+  subjectDesc: string;
+  videoDesc?: string | null;
+  tierIntensity: string;
+  provider: 'kling-o3' | 'runway-aleph';
+  withCardArtRef: boolean;
+}): string {
+  const subject = sanitizeSubjectDesc(args.subjectDesc);
+  const action = args.videoDesc ? sanitizeSubjectDesc(args.videoDesc) : '';
+  const refPhrase = !args.withCardArtRef
+    ? ''
+    : args.provider === 'kling-o3'
+      ? 'The restyled character stays on-model with the card illustration @Image1.'
+      : 'The restyled character stays on-model with the character in the reference image.';
+  return [
+    '[RESTYLE] Re-render this exact video — same subject, same motion, same framing ' +
+      'and timing — as stylized cel-shaded animation.',
+    `[SUBJECT] ${subject}.` + (action ? ` The action: ${action}.` : ''),
+    refPhrase,
+    '[STYLE] house cel-shaded look: bold black ink outlines, flat cel shadows, ' +
+      'painterly rim-lit accents, vibrant saturated colors, dark cyber-arena mood, ' +
+      `energy effects — ${args.tierIntensity}.`,
+    '[CONSTRAINTS] an original stylized character design; never any existing anime, ' +
+      'manga, video-game, comic, or cartoon character; no photographic realism; ' +
+      'no text, no words, no logos, no watermarks, no UI panels.',
+  ].filter(Boolean).join('\n');
+}
+
 export const CLIP_MODE_OPENING_DIRECTIVE =
   '[OPENING] the shot opens on a glowing trading-card back floating in a dark cyber ' +
   'arena — a violet and teal circuit-etched card radiating light — which erupts in a ' +
