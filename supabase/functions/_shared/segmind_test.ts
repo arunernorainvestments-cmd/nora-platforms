@@ -65,6 +65,11 @@ Deno.test('live mode without a key degrades to not_configured (never throws)', a
 Deno.test('v2v config: unset provider stays null, valid slugs parse, audio default on', () => {
   if (simCfg.v2vProvider !== null) throw new Error('unset CINEMATIC_V2V_PROVIDER must be null');
   if (!simCfg.seedanceAudio) throw new Error('seedance audio must default on');
+  if (simCfg.skipProviderModeration) throw new Error('provider-filter bypass must default OFF');
+  const skipCfg = cinematicConfigFromEnv((k) =>
+    ({ CINEMATIC_SKIP_PROVIDER_MODERATION: 'true' } as Record<string, string>)[k]
+  );
+  if (!skipCfg.skipProviderModeration) throw new Error('explicit true must enable the bypass');
   const klingCfg = cinematicConfigFromEnv((k) =>
     ({ CINEMATIC_V2V_PROVIDER: 'kling-o3', CINEMATIC_SEEDANCE_AUDIO: 'off' } as Record<string, string>)[k]
   );

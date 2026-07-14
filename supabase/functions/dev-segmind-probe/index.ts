@@ -75,7 +75,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
     const trimMs = Number(moment.clip_trim_end_ms ?? 0) - Number(moment.clip_trim_start_ms ?? 0);
     const prompt = body.prompt_override?.trim() || v2vRestylePrompt({
-      subjectDesc: body.subject_desc ?? (moment.title as string | null) ?? 'the subject of the clip',
+      subjectDesc: body.subject_desc ?? (moment.post_title as string | null)?.trim() ?? 'the subject of the clip',
       videoDesc: moment.clip_video_desc as string | null,
       tierIntensity: TIER_INTENSITY.C,
       provider,

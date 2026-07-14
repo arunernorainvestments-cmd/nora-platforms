@@ -30,6 +30,7 @@ export interface CinematicConfig {
   seedanceFastModel: string;             // Seedance 2.0 Fast slug
   seedanceStandardModel: string;         // Seedance 2.0 standard slug
   seedanceAudio: boolean;                // generate_audio on Seedance calls (native SFX)
+  skipProviderModeration: boolean;       // Seedance skip_moderation (provider filter only)
   v2vProvider: V2VProvider | null;       // null = Seedance clip-reference path
   klingV2VModel: string;                 // Kling O3 video2video-edit slug
   alephV2VModel: string;                 // Runway Gen-4 Aleph slug
@@ -51,6 +52,12 @@ export function cinematicConfigFromEnv(env: (k: string) => string | undefined = 
     // native audio co-generation (generate_audio, provider default false) — on unless
     // explicitly switched off.
     seedanceAudio: env('CINEMATIC_SEEDANCE_AUDIO') !== 'off',
+    // Founder call 2026-07-14: the provider's INPUT filter (BytePlus) false-positives
+    // on owned/consented footage (copyright/likeness) and blocks concept-proving.
+    // Seedance documents skip_moderation to bypass it. This bypasses ONLY the
+    // provider's bonus layer — NORA's own pre-gen + post-gen screens (minor-safety
+    // absolute, Hard Rules 37/39) run regardless and are never skippable.
+    skipProviderModeration: env('CINEMATIC_SKIP_PROVIDER_MODERATION') === 'true',
     v2vProvider: v2vRaw === 'kling-o3' || v2vRaw === 'runway-aleph' ? v2vRaw : null,
     klingV2VModel: env('SEGMIND_KLING_V2V_MODEL') ?? 'kling-o3-video2video-edit',
     alephV2VModel: env('SEGMIND_ALEPH_V2V_MODEL') ?? 'runway-gen4-aleph',
@@ -246,6 +253,9 @@ function cutsceneBody(cfg: CinematicConfig, req: CutsceneRequest, seed: number):
     // provider default is false; NORA's default is on (CINEMATIC_SEEDANCE_AUDIO=off
     // to disable).
     generate_audio: cfg.seedanceAudio,
+    // Bypass the provider's input/content filter only (documented Seedance param) —
+    // NORA's own moderation stack still gates before and after (HR37/39).
+    ...(cfg.skipProviderModeration ? { skip_moderation: true } : {}),
     seed,
   };
 }
