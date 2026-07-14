@@ -123,9 +123,28 @@ live classify → illustration → async render → park/auto-resume → live sc
   ("bypasses BytePlus content filter") exists on Seedance 2.0 — a possible answer to the
   heavy-handed input-copyright filter on the SEEDANCE path, but it's a founder policy call
   (interacts with deferred IP-exposure item 7 + our own screens stay absolute). NOT wired.
-- **Still needed to run the trial (user-owned):** deploy mig 165 + `cinematic-mint` +
-  `dev-segmind-probe` (needs `SUPABASE_ACCESS_TOKEN`), then run `trial_v2v.ts` with
-  `DEV_PROBE_SECRET`. Trial spend ≈ 1 render per provider per clip.
+- **DEPLOYED + TRIALED same day (founder token supplied):** mig 165 applied (`db push`,
+  ledger at 165), both fns deployed (`--no-verify-jwt --use-api`), fresh `DEV_PROBE_SECRET`
+  set (old value was lost — rotated), DB password re-reset (management API — the standing
+  runbook). **Micro-trial on the ARNOLD clip (the ByteDance-rejected worst case):**
+  * **runway-gen4-aleph: PASSED E2E** — accepted the real-face celebrity clip, rendered a
+    1.35MB cel-shaded core (req 315eddb9d…, seed 1008167968, output parked at
+    `mint-staging/v2v-trials/`), frames verified on-style (bold ink-outline cel look,
+    original stylized character), live post-gen screen APPROVED it.
+    **→ `CINEMATIC_V2V_PROVIDER=runway-aleph` is LIVE on prod.**
+  * **kling-o3: failed on a TECHNICAL input check, not moderation** — "non-square pixels
+    detected, PAR should be 1:1": our trimmed clips carry a non-1:1 pixel aspect ratio.
+    Fix if Kling is ever wanted: `setsar=1` in both trimmers (nora_trim.js + worker /trim).
+    Parked — Aleph + the stitch audio overlay already covers audio.
+- **Also flipped (founder call 2026-07-14, "IP-exposure is not a block for testing"):**
+  `CINEMATIC_SKIP_PROVIDER_MODERATION=true` — sends Seedance's documented `skip_moderation`
+  (bypasses the BytePlus INPUT filter only; NORA's own pre/post-gen screens are untouched
+  and ran live on the trial output). Revisit with deferred IP item 7 before public launch.
+- **Founder test next:** re-mint Arnold through the wizard (slot swap off the Brady chit is
+  the expected flow). Note: Arnold's `clip_video_desc` is still the sim stub — re-attach
+  the clip during the re-mint to get a live description; the restyle rides on the actual
+  video either way. This session's token + service key appeared in transcript → rotation
+  list (post-launch, pre-live).
 
 ---
 
