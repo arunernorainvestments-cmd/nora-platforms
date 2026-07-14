@@ -207,13 +207,22 @@ function v2Base(cfg: CinematicConfig): string {
 }
 
 function cutsceneBody(cfg: CinematicConfig, req: CutsceneRequest, seed: number): Record<string, unknown> {
+  // Probe 2026-07-13: ByteDance forbids reference media combined with ANY frame
+  // anchor ("first/last frame content cannot be mixed with reference media content")
+  // — the earlier "both frames" error text was misleading. Clip mode therefore sends
+  // NO plates; the card-back opening and impact-flash ending live in the prompt's
+  // constant [OPENING]/[ENDING] directives, and Unity's zoom-in + flash particles
+  // cover both seams. No clip → both plate bookends, exactly as before.
   const withClip = !!req.referenceVideoUrls?.length;
   const tier = req.tierOverride ?? cfg.renderTier;
   return {
     prompt: req.prompt,
-    first_frame_url: req.firstFrameUrl,
-    ...(req.lastFrameUrl && !withClip ? { last_frame_url: req.lastFrameUrl } : {}),
-    ...(withClip ? { reference_videos: req.referenceVideoUrls!.slice(0, 3) } : {}),
+    ...(withClip
+      ? { reference_videos: req.referenceVideoUrls!.slice(0, 3) }
+      : {
+          first_frame_url: req.firstFrameUrl,
+          ...(req.lastFrameUrl ? { last_frame_url: req.lastFrameUrl } : {}),
+        }),
     duration: Math.min(15, Math.max(4, Math.round(req.durationS))),
     resolution: tier === 'standard' ? '1080p' : '720p',
     seed,
@@ -286,11 +295,21 @@ export async function pollCutscene(cfg: CinematicConfig, requestId: string, mode
     await st.body?.cancel();
     return { done: true, result: { ok: false, reason: 'provider_error', status: 404, detail: 'async request expired or unknown' } };
   }
-  if (!st.ok) { await st.body?.cancel(); return { done: false }; }
-
+  // A FAILED request comes back as HTTP 422 with {"status":"FAILED","error":...} —
+  // non-ok is NOT automatically transient; read the body before deciding.
   let statusPayload: Record<string, unknown>;
-  try { statusPayload = await st.json(); } catch { return { done: false }; }
+  try { statusPayload = await st.json(); } catch {
+    return st.ok ? { done: false } : { done: false };
+  }
   const state = String(statusPayload?.status ?? '').toUpperCase();
+  if (!st.ok && (state === 'FAILED' || statusPayload?.error)) {
+    const detail = JSON.stringify(statusPayload).slice(0, 500);
+    const reason: GenFailureReason =
+      /nsfw|moderat|safety|policy|sensitive|copyright/i.test(detail) ? 'provider_moderation'
+      : /not valid|invalid/i.test(detail) ? 'invalid_request' : 'provider_error';
+    return { done: true, result: { ok: false, reason, status: st.status, detail } };
+  }
+  if (!st.ok) return { done: false };
   if (state === 'QUEUED' || state === 'PROCESSING' || state === 'IN_PROGRESS' || state === 'PENDING') {
     return { done: false };
   }

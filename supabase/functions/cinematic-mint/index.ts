@@ -23,8 +23,9 @@ import {
   pollCutscene, submitCutscene, type CinematicConfig, type GenResult,
 } from '../_shared/segmind.ts';
 import {
-  assembleMotionPrompt, CLIP_MODE_ENDING_DIRECTIVE, familyAction, illustrationPrompt,
-  sanitizeSubjectDesc, selectTemplate, TIER_INTENSITY, type Family, type Tier,
+  assembleMotionPrompt, CLIP_MODE_ENDING_DIRECTIVE, CLIP_MODE_OPENING_DIRECTIVE,
+  familyAction, illustrationPrompt, sanitizeSubjectDesc, selectTemplate,
+  TIER_INTENSITY, type Family, type Tier,
 } from '../_shared/cinematic_directives.ts';
 
 // Seedance reference_videos accepts 2–15s clips; the browser trimmer allows 1–15s.
@@ -413,7 +414,7 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       assembleMotionPrompt(promptTpl.prompt_body as string, {
         subjectDesc, familyAction: fAction, tierIntensity: intensity,
         videoDesc, clipAttached: withClip,
-      }) + (withClip ? `\n${CLIP_MODE_ENDING_DIRECTIVE}` : '');
+      }) + (withClip ? `\n${CLIP_MODE_OPENING_DIRECTIVE}\n${CLIP_MODE_ENDING_DIRECTIVE}` : '');
     durationS = renderResume?.duration_s ??
       Math.round(((tpl?.duration_min_s ?? 4) + (tpl?.duration_max_s ?? 6)) / 2);
 

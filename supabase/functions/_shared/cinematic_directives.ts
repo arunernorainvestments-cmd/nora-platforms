@@ -85,11 +85,16 @@ export function clipRefDirective(videoDesc: string | null | undefined): string {
   );
 }
 
-// Appended (house-owned constant) when a reference clip rides along: ByteDance forbids
-// reference content + BOTH frame anchors, so clip mode keeps only the start plate and
-// this directive steers the ending into the impact-flash whiteout the end plate depicts
-// (Unity's local impact-flash particle then covers the seam — Hard Rule 39 amended by
-// the 2026-07-13 live trial).
+// Appended (house-owned constants) when a reference clip rides along: ByteDance
+// forbids reference media combined with ANY frame anchor (2026-07-13 probe), so clip
+// mode carries the two agnostic plates as PROMPT directives instead — the opening
+// describes the glowing BattleChit card-back plate, the ending the cyber impact
+// flash. Unity's zoom-into-card lead-in and impact-flash particle cover both seams
+// (Hard Rule 39 amended by the live trial).
+export const CLIP_MODE_OPENING_DIRECTIVE =
+  '[OPENING] the shot opens on a glowing trading-card back floating in a dark cyber ' +
+  'arena — a violet and teal circuit-etched card radiating light — which erupts in a ' +
+  'burst of energy as the action begins.';
 export const CLIP_MODE_ENDING_DIRECTIVE =
   '[ENDING] at the final moment the action culminates and the entire frame is consumed ' +
   'by a blinding violet-and-cyan cyber energy flash, whiting out the whole frame.';
