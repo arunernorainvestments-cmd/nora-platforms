@@ -77,15 +77,22 @@ function ffmpeg(args, timeoutMs = 240000) {
 function ffprobe(file) {
   return new Promise((resolve, reject) => {
     const p = spawn('ffprobe', ['-v', 'error', '-show_entries',
-      'format=duration:stream=codec_type', '-of', 'json', file]);
+      'format=duration:stream=codec_type,duration', '-of', 'json', file]);
     let out = '';
     p.stdout.on('data', (d) => (out += d));
     p.on('close', (code) => {
       if (code !== 0) return reject(new Error(`ffprobe exit ${code}`));
       const info = JSON.parse(out);
+      const streams = info.streams ?? [];
+      const duration = Number(info.format?.duration ?? 0);
+      // With co-generated audio (Seedance generate_audio) the audio stream runs a
+      // hair longer than the video, so format.duration overshoots the last video
+      // frame — seeking there extracts nothing. Track the video stream's own end.
+      const vDur = Number(streams.find((s) => s.codec_type === 'video')?.duration);
       resolve({
-        duration: Number(info.format?.duration ?? 0),
-        hasAudio: (info.streams ?? []).some((s) => s.codec_type === 'audio'),
+        duration,
+        videoDuration: Number.isFinite(vDur) && vDur > 0 ? Math.min(vDur, duration || vDur) : duration,
+        hasAudio: streams.some((s) => s.codec_type === 'audio'),
       });
     });
   });
@@ -130,16 +137,24 @@ async function handleFrames(body) {
   return await withWorkdir(async (dir) => {
     const src = path.join(dir, 'in.mp4');
     await download(video_url, src);
-    const { duration } = await ffprobe(src);
+    const { videoDuration } = await ffprobe(src);
     const resolved = (Array.isArray(times) ? times : [times]).map((t) =>
-      t === 'last' ? Math.max(0, duration - 0.05) : Number(t));
+      t === 'last' ? Math.max(0, videoDuration - 0.15) : Math.min(Number(t), Math.max(0, videoDuration - 0.15)));
     const frames = [];
     for (let i = 0; i < resolved.length; i++) {
       const out = path.join(dir, `frame_${i}.jpg`);
-      await ffmpeg(['-ss', String(resolved[i]), '-i', src, '-frames:v', '1', '-q:v', '2', out]);
+      // Boundary seeks can still decode nothing at the tail — verify the frame
+      // materialized and step back once before giving up.
+      let t = resolved[i];
+      await ffmpeg(['-ss', String(t), '-i', src, '-frames:v', '1', '-q:v', '2', out]);
+      const made = await fs.stat(out).then(() => true, () => false);
+      if (!made) {
+        t = Math.max(0, t - 0.5);
+        await ffmpeg(['-ss', String(t), '-i', src, '-frames:v', '1', '-q:v', '2', out]);
+      }
       const objectPath = `${upload.prefix}/frame_${i}.jpg`;
       await uploadToStorage(upload.bucket, objectPath, out, 'image/jpeg');
-      frames.push({ time: resolved[i], path: `${upload.bucket}/${objectPath}` });
+      frames.push({ time: t, path: `${upload.bucket}/${objectPath}` });
     }
     return { ok: true, frames };
   });

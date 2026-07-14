@@ -433,13 +433,13 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     // same queue, same park/resume machinery.
     const submitAndAwait = async (
       prompt: string, clipUrl: string | null,
-      v2v?: { provider: V2VProvider; keepAudio: boolean; overlayAudio: boolean; audioSource: RenderStash['audio_source'] },
+      v2v?: { provider: V2VProvider; keepAudio: boolean; overlayAudio: boolean; audioSource: RenderStash['audio_source']; withRef?: boolean },
     ): Promise<GenResult | 'pending'> => {
       const submit = v2v
         ? await submitV2VRestyle(cfg, v2v.provider, {
             prompt,
             videoUrl: clipUrl!,
-            referenceImageUrl: artUrl,
+            referenceImageUrl: v2v.withRef === false ? undefined : artUrl,
             durationS,
             keepAudio: v2v.keepAudio,
             seed,
@@ -526,6 +526,20 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
           : await submitAndAwait(motionPrompt, clipRefUrl, {
               provider: v2vUsed, keepAudio, overlayAudio, audioSource,
             });
+        // Runway's RAI flag is output-nondeterministic — the trial passed this exact
+        // clip minutes before a mint run was flagged E005 (2026-07-14). One re-roll:
+        // a fresh random seed (each submit picks its own) and no card-art reference
+        // (the only other input that differed), then the Seedance fallback below.
+        if (cut !== 'pending' && !cut.ok && cut.reason === 'provider_moderation' && cfg.mode === 'live') {
+          console.warn(`cinematic-mint: v2v flagged (${cut.detail?.slice(0, 120)}) — one re-roll without the card-art reference`);
+          motionPrompt = v2vRestylePrompt({
+            subjectDesc, videoDesc, tierIntensity: intensity,
+            provider: v2vUsed, withCardArtRef: false,
+          });
+          cut = await submitAndAwait(motionPrompt, clipRefUrl, {
+            provider: v2vUsed, keepAudio, overlayAudio, audioSource, withRef: false,
+          });
+        }
       } else {
         motionPrompt = buildPrompt(clipUsed);
         if (cfg.mode === 'sim') {
