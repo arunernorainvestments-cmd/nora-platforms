@@ -42,7 +42,52 @@
 
 ---
 
-## 2026-07-13 — Generation quality: the "DBZ card" audit (RESUME HERE for mint output tuning)
+## 2026-07-14 — Founder feedback after the first fully-working E2E mint (RESUME HERE)
+
+The Tom Brady mint completed end-to-end on prod (chit 7af184fb): ingest → cloud-trim fallback →
+live classify → illustration → async render → park/auto-resume → live screening → card.
+
+**What now WORKS (founder-verified):**
+- The card face: "looks good… captures the spirit of exactly what we are going for."
+- Live Claude vision reading the clip + producing the description "works well for the card."
+- Delete card → re-mint loop; cloud-trim fallback (browser wasm OOM → stitch-worker ffmpeg);
+  async render survival + auto-resume (PR #24); live moderation auto-approving clean output.
+
+**What still needs work (founder feedback, next iteration):**
+1. **The cutscene doesn't use the source media.** ByteDance rejected the (third-party NFL) clip
+   as a reference for copyright, so the video fell back to prompt-only — nothing of the actual
+   moment is in it. Founder view: heavy-handed, given consented/linked accounts and the amount
+   of such content recirculating publicly; there is also no channel to tell the provider "we
+   have consent from the person via their linked social account."
+   Next-iteration tracks (in order):
+   a. **Verify the core case first**: a SELF-SHOT, first-party clip through the clip-reference
+      path — still unverified whether ByteDance's filter passes ordinary owned footage or
+      blocks any real face. This decides everything below.
+   b. **Stylize-first (Track A / V2V, Minting_Workflow §2)** — this is exactly the case the
+      spec's "stylize-first order is load-bearing" note anticipated: restyle the clip into
+      cel-shaded animation with a V2V-capable model FIRST (runway-gen4-aleph was the audited
+      candidate; also evaluate Grok Imagine per founder, Wan/Kling on Segmind), then feed the
+      STYLIZED (no-real-likeness) footage to Seedance as the reference / core. May fix both
+      the likeness-filter and copyright-filter false positives without policy games.
+   c. **Provider evaluation**: which video models accept reference video with permissive
+      input policy (Grok Imagine, Runway, Kling direct, self-hosted Wan). Understand what
+      triggers ByteDance's InputVideoSensitiveContentDetected (fingerprint match vs face
+      detection) to know which inputs are viable where.
+   d. For genuinely third-party celebrity moments (like this NFL clip): that content is what
+      the **licensed lane (lkn_*) exists for** — the consent story only covers the LINKED
+      account's own posts. Product answer may be "self/owned moments = clip-referenced;
+      celebrity moments = licensed packs with cleared media."
+2. **No audio on the cutscene.** Two cheap fixes to trial: flip Seedance's `generate_audio`
+   (we currently omit it → false) for generated SFX, and/or lay the ORIGINAL clip audio under
+   the cutscene via the stitch worker's existing audio-overlay path (`/stitch` already
+   supports it; `keep_audio` is already collected at trim) — the Minting_Workflow §2 plan.
+3. General output tuning once (1) lands: judge bookend quality of clip-mode's prompt-described
+   card-back/impact-flash vs the plate-anchored no-clip mode; `CINEMATIC_RENDER_TIER=standard`
+   (1080p) when ready to pay for final quality.
+
+---
+
+## 2026-07-13 — Generation quality: the "DBZ card" audit (fix checklist 1–6 SHIPPED; see section above for what's next)
 
 First fully-live user mint succeeded (async `mint_jobs` pipeline, migs 158–161, PRs #16–#19) but the
 OUTPUT was wrong end to end: card art was a Dragon Ball–style character (nothing to do with the moment)
