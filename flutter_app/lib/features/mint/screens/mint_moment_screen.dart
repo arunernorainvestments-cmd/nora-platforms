@@ -373,7 +373,21 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       // The server now answers 202 { job_id } and generates in the background —
       // poll the job to drive the progress bar and collect the terminal payload.
       if (res['status'] == 'accepted' && res['job_id'] != null) {
-        res = await _awaitMintJob(res['job_id'].toString());
+        res = await _awaitMintJob(
+          res['job_id'].toString(),
+          // A parked render (edge worker exits before the provider finishes —
+          // stage cutscene_rendering) resumes on any new generate call for the
+          // moment, free. Auto-kick it instead of sitting at a frozen percent.
+          kickResume: () => MintService.generate(
+            momentId: momentId,
+            family: c['family'].toString(),
+            chitType: _chitType,
+            subjectDesc: c['subject_desc'].toString(),
+            name: _nameController.text,
+            swapOfChitId: swapOfChitId,
+            swapConfirm: swapConfirm,
+          ),
+        );
         if (!mounted) return;
       }
       // Held for post-generation safety review (Hard Rule 39): the cutscene was
@@ -416,6 +430,7 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
     'illustration': (25, 'Painting your card art…'),
     'card_art_stored': (32, 'Card art locked in'),
     'cutscene': (75, 'Directing your match-cut cutscene…'),
+    'cutscene_rendering': (76, 'Still rendering — picking it back up…'),
     'cutscene_stored': (80, 'Cutscene saved'),
     'screening': (90, 'Running the safety check…'),
     'completing': (97, 'Forging your BattleChit…'),
@@ -425,7 +440,13 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
   /// Polls the mint job until it leaves `running`, updating the progress state
   /// each tick. Returns the terminal mint payload (the old synchronous response);
   /// a rejected/failed job surfaces as [MintException] like any other error.
-  Future<Map<String, dynamic>> _awaitMintJob(String jobId) async {
+  /// [kickResume] re-calls cinematic-mint when the job parks at
+  /// cutscene_rendering (the render outlived the edge worker) — the server
+  /// resumes the same provider request with zero new spend.
+  Future<Map<String, dynamic>> _awaitMintJob(
+    String jobId, {
+    Future<void> Function()? kickResume,
+  }) async {
     const poll = Duration(seconds: 2);
     final deadline = DateTime.now().add(const Duration(minutes: 9));
     String? stage;
@@ -444,6 +465,11 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         if (s != stage) {
           stage = s;
           stageStart = DateTime.now();
+          if (s == 'cutscene_rendering' && kickResume != null) {
+            // Fire-and-forget: the 202 comes back fast and flips the stage to
+            // 'cutscene'; if this park repeats, the transition fires again.
+            unawaited(kickResume().catchError((_) {}));
+          }
         }
         final (base, label) = _stageTargets[s] ?? (6.0, 'Working…');
         var target = base;
