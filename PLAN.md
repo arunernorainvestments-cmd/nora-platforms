@@ -84,11 +84,21 @@ moment-classify / moment-clip-attach redeployed):**
       `cinematic-mint` signs the moderated `mint-staging` clip (≥2s trim) and sends it as
       `reference_videos[0]`; **prompt template v2** (mig 163, all 6 templates) carries a `{CLIP_REF}`
       slot ("recreate the subject and action of reference video 1…") that collapses when no clip
-      rides. **Live-trial findings (2026-07-13, tools/cinematic/smoke_clip_mint.ts):**
-      (a) ByteDance rejects ANY reference content combined with BOTH frame anchors (Segmind's doc
-      claims only `reference_images` conflicts — wrong), so clip mode anchors the START plate only
-      and a constant `[ENDING]` directive steers into the end plate's impact-flash whiteout —
-      Unity's local impact-flash particle covers that seam. No-clip mode keeps both bookends.
+      rides. **Live-trial findings (2026-07-13/14, 5 paid runs, tools/cinematic/smoke_clip_mint.ts):**
+      (a) ByteDance forbids reference media with ANY frame anchor (Segmind's doc claims only
+      `reference_images` conflicts — wrong; and a FAILED async request reports as HTTP 422), so
+      clip mode sends NO plates: constant `[OPENING]`/`[ENDING]` directives describe the card-back
+      glow and the impact-flash whiteout, and Unity's zoom-in + flash particles cover both seams.
+      No-clip mode keeps both plate bookends. **Trial 5 proved the clip path E2E on prod**
+      (`clip_reference_used=true`, gen 95ea59da, proof media under moments/91226187…).
+      (c) Edge background workers get reaped ~90s in → **async render survival** (mig 164): live
+      cutscenes submit to Segmind's v2 queue, stash the request id on `mint_jobs.provider_state`,
+      park at `cutscene_rendering` after 60s; any later Generate click resumes the SAME render
+      free (results retained 1h provider-side).
+      (d) **BLOCKER: the prod ANTHROPIC_API_KEY is INVALID (401)** — live classify silently falls
+      back to the keyword heuristic and every live mint holds at post-gen screening (fail-closed).
+      Needs a fresh key; until then unblock a held mint with
+      `SELECT cinematic_moderation_verdict('<gen-id>', true, NULL)` + re-click Generate (free).
       (b) ByteDance also MODERATES input clips: third-party celebrity footage → 
       `InputVideoSensitiveContentDetected` (copyright). cinematic-mint degrades gracefully — one
       retry without the clip (prompt-only, both plates, `clip_reference_used=false`) so a flagged
