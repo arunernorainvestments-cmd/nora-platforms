@@ -48,6 +48,44 @@ class MintService {
     }
   }
 
+  /// Cloud-trim fallback, step 1: stages the RAW picked file so the stitch
+  /// worker can cut it (used when the in-browser wasm trimmer runs out of
+  /// memory). 200MB bucket cap; declared as mp4 (the worker sniffs the real
+  /// container, and mint-staging's mime allowlist is mp4/jpeg only).
+  static Future<void> uploadRawSource({
+    required String momentId,
+    required Uint8List bytes,
+  }) async {
+    final uid = _client.auth.currentUser?.id;
+    if (uid == null) throw const MintException('Not signed in');
+    await _client.storage.from('mint-staging').uploadBinary(
+          '$uid/$momentId/raw_source.mp4',
+          bytes,
+          fileOptions: const FileOptions(contentType: 'video/mp4', upsert: true),
+        );
+  }
+
+  /// Cloud-trim fallback, step 2: the stitch worker cuts + normalizes the raw
+  /// upload into the exact artifacts the browser path produces (clip.mp4 +
+  /// f0..f3.jpg at the staging prefix), so [attachClip] runs unchanged after.
+  static Future<void> trimRemote({
+    required String momentId,
+    required int trimStartMs,
+    required int trimEndMs,
+    required bool keepAudio,
+  }) async {
+    try {
+      await _client.functions.invoke('mint-trim-remote', body: {
+        'moment_id': momentId,
+        'trim_start_ms': trimStartMs,
+        'trim_end_ms': trimEndMs,
+        'keep_audio': keepAudio,
+      });
+    } on FunctionException catch (e) {
+      throw MintException(_messageFrom(e));
+    }
+  }
+
   /// Registers the staged upload against the moment. Returns the attach payload
   /// (clip_status: attached | similarity_flagged | rejected, ...).
   static Future<Map<String, dynamic>> attachClip({

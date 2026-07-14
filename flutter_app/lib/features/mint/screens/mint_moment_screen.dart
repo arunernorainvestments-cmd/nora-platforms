@@ -174,28 +174,39 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       _progress = null;
     });
     try {
-      await TrimEngine.warmUp();
+      TrimmedClip? clip;
+      try {
+        await TrimEngine.warmUp();
+        if (!mounted) return;
+        setState(() => _phase = 'Trimming your clip…');
+        clip = await TrimEngine.process(
+          objectUrl: objectUrl,
+          startMs: _startMs,
+          endMs: _endMs,
+          keepAudio: _keepAudio,
+          onProgress: (p) {
+            if (mounted) setState(() => _progress = p);
+          },
+        );
+      } catch (e) {
+        // The wasm engine can exhaust browser memory on some device/file combos
+        // — fall back to trimming in the cloud (stitch worker, real ffmpeg).
+        // trim_busy is the only error where retrying the browser path is right.
+        if ('$e'.contains('trim_busy')) rethrow;
+        await _cloudTrim(momentId, objectUrl);
+      }
       if (!mounted) return;
-      setState(() => _phase = 'Trimming your clip…');
-      final clip = await TrimEngine.process(
-        objectUrl: objectUrl,
-        startMs: _startMs,
-        endMs: _endMs,
-        keepAudio: _keepAudio,
-        onProgress: (p) {
-          if (mounted) setState(() => _progress = p);
-        },
-      );
-      if (!mounted) return;
-      setState(() {
-        _phase = 'Uploading…';
-        _progress = null;
-      });
-      await MintService.uploadStaged(
-        momentId: momentId,
-        video: clip.video,
-        frames: clip.frames,
-      );
+      if (clip != null) {
+        setState(() {
+          _phase = 'Uploading…';
+          _progress = null;
+        });
+        await MintService.uploadStaged(
+          momentId: momentId,
+          video: clip.video,
+          frames: clip.frames,
+        );
+      }
       if (!mounted) return;
       setState(() => _phase = 'Running safety checks…');
       final res = await MintService.attachClip(
@@ -219,6 +230,33 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         _step = _Step.clip;
       });
     }
+  }
+
+  /// Cloud-trim fallback: upload the RAW picked file, let the stitch worker cut
+  /// it into the same staged artifacts, then continue into attach as normal.
+  Future<void> _cloudTrim(String momentId, String objectUrl) async {
+    if (!mounted) return;
+    setState(() {
+      _phase = 'This one needs more muscle — processing in the cloud instead…';
+      _progress = null;
+    });
+    final raw = await TrimEngine.readBytes(objectUrl);
+    if (raw.length > 200 * 1024 * 1024) {
+      throw const MintException(
+          'That video is over 200MB — export a smaller version of the clip '
+          '(the card only needs the 1–15 second moment) and pick it again.');
+    }
+    if (!mounted) return;
+    setState(() => _phase = 'Uploading the original…');
+    await MintService.uploadRawSource(momentId: momentId, bytes: raw);
+    if (!mounted) return;
+    setState(() => _phase = 'Trimming in the cloud…');
+    await MintService.trimRemote(
+      momentId: momentId,
+      trimStartMs: _startMs,
+      trimEndMs: _endMs,
+      keepAudio: _keepAudio,
+    );
   }
 
   /// The wasm trimmer surfaces raw engine errors ("memory access out of
