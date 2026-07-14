@@ -19,13 +19,14 @@
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
-  cinematicConfigFromEnv, generateCutscene, generateIllustration,
-  pollCutscene, submitCutscene, type CinematicConfig, type GenResult,
+  cinematicConfigFromEnv, generateCutscene, generateIllustration, generateV2VRestyle,
+  pollCutscene, submitCutscene, submitV2VRestyle, type CinematicConfig, type GenResult,
+  type V2VProvider,
 } from '../_shared/segmind.ts';
 import {
   assembleMotionPrompt, CLIP_MODE_ENDING_DIRECTIVE, CLIP_MODE_OPENING_DIRECTIVE,
-  familyAction, illustrationPrompt, sanitizeSubjectDesc, selectTemplate,
-  TIER_INTENSITY, type Family, type Tier,
+  describeClipFrames, familyAction, illustrationPrompt, sanitizeSubjectDesc,
+  selectTemplate, TIER_INTENSITY, v2vRestylePrompt, type Family, type Tier,
 } from '../_shared/cinematic_directives.ts';
 
 // Seedance reference_videos accepts 2–15s clips; the browser trimmer allows 1–15s.
@@ -286,6 +287,13 @@ interface RenderStash {
   motion_prompt: string;
   clip_reference_used: boolean;
   duration_s: number;
+  // V2V core (PLAN 2026-07-14 item 1c) — absent on pre-V2V stashes and on the
+  // Seedance path. clip_path is kept (not a signed URL) so a resumed worker can
+  // re-sign the audio-overlay source after the original URL expired.
+  v2v_provider?: V2VProvider | null;
+  overlay_audio?: boolean;
+  clip_path?: string | null;
+  audio_source?: 'original' | 'generated' | 'none';
 }
 
 // ── the background pipeline: generation → post-gen moderation → completion ─────────
@@ -347,8 +355,17 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
   let mp4Url: string;
   let durationS: number;
   let seedUsed: number;
+  // Provenance surfaced to the client (founder feedback 2026-07-14 eve: a silent
+  // fallback read as "the pipeline ignores my media" — the card completed with no
+  // hint the clip wasn't used). Set from the ledger on resume, live values otherwise.
+  let provClipUsed: boolean | null = null;
+  let provV2V: string | null = null;
+  let provAudio: string | null = null;
 
   if (resumeGen) {
+    provClipUsed = (resumeGen.clip_reference_used as boolean | null) ?? null;
+    provV2V = (resumeGen.v2v_provider as string | null) ?? null;
+    provAudio = (resumeGen.audio_source as string | null) ?? null;
     genId = resumeGen.id as string;
     artUrl = db.storage.from('battle-media')
       .getPublicUrl(resumeGen.illustration_path as string).data.publicUrl;
@@ -359,6 +376,18 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     console.log(`cinematic-mint: resuming pending generation ${genId} (no provider calls)`);
     await jobUpdate(db, jobId, { stage: 'screening', generation_id: genId });
   } else {
+    // Trim frames of the ACTUAL uploaded clip (moment-clip-attach stores f0..f3 in
+    // mint-staging) — used as the card-art visual reference and to backfill a real
+    // clip description. Founder feedback 2026-07-14 eve: art/desc must be tied to
+    // the real media, not just the post thumbnail.
+    const clipFrames = moment.clip_status === 'attached'
+      ? ((moment.clip_frame_paths as string[] | null) ?? [])
+      : [];
+    const signFrame = async (p: string): Promise<string | null> => {
+      const { data: s } = await db.storage.from('mint-staging').createSignedUrl(p, 3600);
+      return s?.signedUrl ?? null;
+    };
+
     // ── illustration (card art) — skipped on a render resume (already stored) ──────
     let artPath: string;
     let illoPrompt: string | null;
@@ -371,9 +400,16 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     } else {
       await jobUpdate(db, jobId, { stage: 'illustration' });
       illoPrompt = illustrationPrompt(subjectDesc, chitFamily);
+      // Visual reference: a mid-clip frame of the user's actual upload beats the
+      // post thumbnail (which can be arbitrary framing, e.g. a YouTube hqdefault).
+      let illoRefUrl = (moment.thumbnail_url as string | null) ?? undefined;
+      if (clipFrames.length > 0) {
+        const framed = await signFrame(clipFrames[Math.min(1, clipFrames.length - 1)]);
+        if (framed) illoRefUrl = framed;
+      }
       const illo = await generateIllustration(cfg, {
         prompt: illoPrompt,
-        referenceImageUrl: (moment.thumbnail_url as string | null) ?? undefined,
+        referenceImageUrl: illoRefUrl,
         seed,
         width: 1024,   // portrait 4:5 card-art window — the app frames it, not 16:9
         height: 1280,
@@ -405,7 +441,21 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     // {VIDEO_DESC} is the attached clip's description (moment-clip-attach) — a VARIABLE
     // slot for the V2V core only; the agnostic bridge templates carry no placeholder for
     // it (Hard Rule 39). Absent (e.g. link-only ingest, no clip) → the slot collapses.
-    const videoDesc = (moment.clip_video_desc as string | null) ?? null;
+    let videoDesc = (moment.clip_video_desc as string | null) ?? null;
+    // Clips attached while MODERATION_MODE was sim carry the deterministic stub —
+    // regenerate a real description from the stored trim frames at mint time so the
+    // user never has to know to re-attach. Best-effort; skipped on a render resume
+    // (its prompt is already stashed).
+    const STUB_CLIP_DESC = 'the subject moves through their signature moment';
+    if (!renderResume && (!videoDesc || videoDesc === STUB_CLIP_DESC) && clipFrames.length > 0) {
+      const frameUrls = (await Promise.all(clipFrames.slice(0, 4).map(signFrame)))
+        .filter((u): u is string => !!u);
+      const fresh = await describeClipFrames(moderationConfigFromEnv(), frameUrls);
+      if (fresh && fresh !== STUB_CLIP_DESC) {
+        videoDesc = fresh;
+        await db.from('moments').update({ clip_video_desc: fresh }).eq('id', momentId);
+      }
+    }
     // Clip mode (2026-07-13 live trial): reference content cannot combine with BOTH
     // frame anchors, so the clip rides with the start plate only and the constant
     // ENDING directive steers into the end plate's impact-flash whiteout (Unity's
@@ -421,21 +471,39 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     // Live renders outlive the edge wall clock, so live mode submits to the async
     // provider queue, persists the request id on the job (mig 164), and polls within
     // budget. Budget out → park at cutscene_rendering; the next call resumes free.
-    const submitAndAwait = async (prompt: string, clipUrl: string | null): Promise<GenResult | 'pending'> => {
-      const submit = await submitCutscene(cfg, {
-        prompt,
-        firstFrameUrl: plate.start_plate_url as string,
-        lastFrameUrl: clipUrl ? undefined : (plate.end_plate_url as string),
-        referenceVideoUrls: clipUrl ? [clipUrl] : undefined,
-        durationS,
-        seed,
-      });
+    // With v2v set the submit goes to the V2V restyle model instead of Seedance —
+    // same queue, same park/resume machinery.
+    const submitAndAwait = async (
+      prompt: string, clipUrl: string | null,
+      v2v?: { provider: V2VProvider; keepAudio: boolean; overlayAudio: boolean; audioSource: RenderStash['audio_source']; withRef?: boolean },
+    ): Promise<GenResult | 'pending'> => {
+      const submit = v2v
+        ? await submitV2VRestyle(cfg, v2v.provider, {
+            prompt,
+            videoUrl: clipUrl!,
+            referenceImageUrl: v2v.withRef === false ? undefined : artUrl,
+            durationS,
+            keepAudio: v2v.keepAudio,
+            seed,
+          })
+        : await submitCutscene(cfg, {
+            prompt,
+            firstFrameUrl: plate.start_plate_url as string,
+            lastFrameUrl: clipUrl ? undefined : (plate.end_plate_url as string),
+            referenceVideoUrls: clipUrl ? [clipUrl] : undefined,
+            durationS,
+            seed,
+          });
       if (!submit.ok) return submit;
       const stash: RenderStash = {
         request_id: submit.requestId, model: submit.model, seed: submit.seed,
         art_path: artPath, art_url: artUrl,
         illustration_prompt: illoPrompt, illustration_request_id: illoRequestId,
         motion_prompt: prompt, clip_reference_used: !!clipUrl, duration_s: durationS,
+        v2v_provider: v2v?.provider ?? null,
+        overlay_audio: v2v?.overlayAudio ?? false,
+        clip_path: v2v ? ((moment.raw_clip_path as string | null) ?? null) : null,
+        audio_source: v2v?.audioSource ?? (cfg.seedanceAudio ? 'generated' : 'none'),
       };
       await jobUpdate(db, jobId, { provider_state: stash });
       return await awaitCutscene(db, cfg, jobId, submit.requestId, submit.model, submit.seed);
@@ -444,11 +512,22 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     let motionPrompt: string;
     let clipUsed: boolean;
     let cut: GenResult | 'pending';
+    // V2V core state (PLAN 2026-07-14 item 1c): which restyle provider produced the
+    // core (null = Seedance), whether the original clip audio still needs laying in
+    // post-render (silent Aleph output), and what the final audio actually is.
+    let v2vUsed: V2VProvider | null = null;
+    let overlayAudio = false;
+    let clipPathForAudio: string | null = null;
+    let audioSource: RenderStash['audio_source'] = cfg.seedanceAudio ? 'generated' : 'none';
 
     if (renderResume) {
       // Pick the in-flight render back up — zero new provider calls.
       motionPrompt = renderResume.motion_prompt;
       clipUsed = renderResume.clip_reference_used;
+      v2vUsed = renderResume.v2v_provider ?? null;
+      overlayAudio = !!renderResume.overlay_audio;
+      clipPathForAudio = renderResume.clip_path ?? null;
+      audioSource = renderResume.audio_source ?? audioSource;
       console.log(`cinematic-mint: resuming async render ${renderResume.request_id} (no new spend)`);
       await jobUpdate(db, jobId, { stage: 'cutscene' });
       cut = await awaitCutscene(db, cfg, jobId, renderResume.request_id, renderResume.model, renderResume.seed);
@@ -465,25 +544,96 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
         clipRefUrl = signedClip?.signedUrl ?? null;
       }
       clipUsed = !!clipRefUrl;
-      motionPrompt = buildPrompt(clipUsed);
       await jobUpdate(db, jobId, { stage: 'cutscene' });
-      if (cfg.mode === 'sim') {
-        // sim: instant deterministic stub — the sync path stays exercisable E2E.
-        cut = await generateCutscene(cfg, {
-          prompt: motionPrompt,
-          firstFrameUrl: plate.start_plate_url as string,
-          lastFrameUrl: clipRefUrl ? undefined : (plate.end_plate_url as string),
-          referenceVideoUrls: clipRefUrl ? [clipRefUrl] : undefined,
-          durationS,
-          seed,
+
+      if (clipRefUrl && cfg.v2vProvider) {
+        // ── V2V core: the clip is RESTYLED into the cutscene, not just referenced.
+        // Kling keeps the original soundtrack in-call (keep_audio); Aleph is silent
+        // and gets the original audio laid back in by the stitch worker post-render.
+        v2vUsed = cfg.v2vProvider;
+        const keepAudio = (moment.clip_keep_audio as boolean | null) ?? true;
+        overlayAudio = cfg.mode === 'live' && v2vUsed === 'runway-aleph' && keepAudio;
+        clipPathForAudio = (moment.raw_clip_path as string | null) ?? null;
+        audioSource = v2vUsed === 'kling-o3' && keepAudio ? 'original' : 'none';
+        motionPrompt = v2vRestylePrompt({
+          subjectDesc, videoDesc, tierIntensity: intensity,
+          provider: v2vUsed, withCardArtRef: true,
         });
+        durationS = Math.min(15, Math.max(3, Math.round(trimMs / 1000)));
+        cut = cfg.mode === 'sim'
+          ? await generateV2VRestyle(cfg, v2vUsed, {
+              prompt: motionPrompt, videoUrl: clipRefUrl,
+              referenceImageUrl: artUrl, durationS, keepAudio, seed,
+            })
+          : await submitAndAwait(motionPrompt, clipRefUrl, {
+              provider: v2vUsed, keepAudio, overlayAudio, audioSource,
+            });
+        // Runway's RAI flag is output-nondeterministic — the trial passed this exact
+        // clip minutes before a mint run was flagged E005 (2026-07-14). One re-roll:
+        // a fresh random seed (each submit picks its own) and no card-art reference
+        // (the only other input that differed), then the Seedance fallback below.
+        if (cut !== 'pending' && !cut.ok && cut.reason === 'provider_moderation' && cfg.mode === 'live') {
+          console.warn(`cinematic-mint: v2v flagged (${cut.detail?.slice(0, 120)}) — one re-roll without the card-art reference`);
+          motionPrompt = v2vRestylePrompt({
+            subjectDesc, videoDesc, tierIntensity: intensity,
+            provider: v2vUsed, withCardArtRef: false,
+          });
+          cut = await submitAndAwait(motionPrompt, clipRefUrl, {
+            provider: v2vUsed, keepAudio, overlayAudio, audioSource, withRef: false,
+          });
+        }
       } else {
-        cut = await submitAndAwait(motionPrompt, clipRefUrl);
+        motionPrompt = buildPrompt(clipUsed);
+        if (cfg.mode === 'sim') {
+          // sim: instant deterministic stub — the sync path stays exercisable E2E.
+          cut = await generateCutscene(cfg, {
+            prompt: motionPrompt,
+            firstFrameUrl: plate.start_plate_url as string,
+            lastFrameUrl: clipRefUrl ? undefined : (plate.end_plate_url as string),
+            referenceVideoUrls: clipRefUrl ? [clipRefUrl] : undefined,
+            durationS,
+            seed,
+          });
+        } else {
+          cut = await submitAndAwait(motionPrompt, clipRefUrl);
+        }
       }
     }
     if (cut === 'pending') {
       await jobUpdate(db, jobId, { stage: 'cutscene_rendering' });
       return;   // worker exits cleanly; a later call resumes from the stash, free
+    }
+
+    // ── V2V core failed terminally → fall back to the Seedance clip-reference path
+    // (which itself degrades to prompt-only below) — a provider experiment must
+    // never brick a mint. Re-sign the clip here: the resume path never had a URL.
+    if (!cut.ok && v2vUsed) {
+      console.warn(`cinematic-mint: v2v core (${v2vUsed}) failed ${cut.reason} (${cut.detail?.slice(0, 200)}) — falling back to the Seedance clip path`);
+      v2vUsed = null;
+      overlayAudio = false;
+      audioSource = cfg.seedanceAudio ? 'generated' : 'none';
+      let fallbackClipUrl: string | null = null;
+      if (moment.clip_status === 'attached' && moment.raw_clip_path) {
+        const { data: signedClip } = await db.storage.from('mint-staging')
+          .createSignedUrl(moment.raw_clip_path as string, 3600);
+        fallbackClipUrl = signedClip?.signedUrl ?? null;
+      }
+      clipUsed = !!fallbackClipUrl;
+      motionPrompt = buildPrompt(clipUsed);
+      durationS = Math.round(((tpl?.duration_min_s ?? 4) + (tpl?.duration_max_s ?? 6)) / 2);
+      cut = cfg.mode === 'sim'
+        ? await generateCutscene(cfg, {
+            prompt: motionPrompt,
+            firstFrameUrl: plate.start_plate_url as string,
+            lastFrameUrl: fallbackClipUrl ? undefined : (plate.end_plate_url as string),
+            referenceVideoUrls: fallbackClipUrl ? [fallbackClipUrl] : undefined,
+            durationS, seed,
+          })
+        : await submitAndAwait(motionPrompt, fallbackClipUrl);
+      if (cut === 'pending') {
+        await jobUpdate(db, jobId, { stage: 'cutscene_rendering' });
+        return;
+      }
     }
 
     // ByteDance moderates the INPUT assets too (trial 2026-07-13: a third-party
@@ -516,12 +666,24 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       return;
     }
     const mp4Path = `moments/${momentId}/attempt${attempt}/cutscene.mp4`;
-    const mp4Up = await db.storage.from('battle-media').upload(mp4Path, cut.bytes, {
-      contentType: 'video/mp4', upsert: true,
-    });
-    if (mp4Up.error) {
-      await jobUpdate(db, jobId, { status: 'failed', error: 'storage', detail: `cutscene store failed: ${mp4Up.error.message}` });
-      return;
+    // A silent V2V core (Runway Aleph) gets the ORIGINAL clip audio laid back in by
+    // the stitch worker (Minting_Workflow §4 audio dub, honoring clip_keep_audio) —
+    // the worker writes the final MP4 straight into battle-media. Audio is polish:
+    // any overlay failure stores the silent core instead of failing the mint.
+    let mp4Stored = false;
+    if (overlayAudio && clipPathForAudio) {
+      mp4Stored = await overlayOriginalAudio(db, cfg, cut.bytes, clipPathForAudio, mp4Path);
+      if (mp4Stored) audioSource = 'original';
+      else console.warn('cinematic-mint: audio overlay unavailable — storing the silent core');
+    }
+    if (!mp4Stored) {
+      const mp4Up = await db.storage.from('battle-media').upload(mp4Path, cut.bytes, {
+        contentType: 'video/mp4', upsert: true,
+      });
+      if (mp4Up.error) {
+        await jobUpdate(db, jobId, { status: 'failed', error: 'storage', detail: `cutscene store failed: ${mp4Up.error.message}` });
+        return;
+      }
     }
     mp4Url = db.storage.from('battle-media').getPublicUrl(mp4Path).data.publicUrl;
     await jobUpdate(db, jobId, { stage: 'cutscene_stored' });
@@ -548,7 +710,9 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       motion_prompt: motionPrompt,
       illustration_request_id: illoRequestId,
       cutscene_request_id: cut.requestId ?? null,
-      clip_reference_used: clipUsed,
+      clip_reference_used: clipUsed || v2vUsed !== null,
+      v2v_provider: v2vUsed,
+      audio_source: audioSource,
     }).select('id').single();
     if (gErr || !gen) {
       await jobUpdate(db, jobId, { status: 'failed', error: 'ledger', detail: `ledger write failed: ${gErr?.message}` });
@@ -556,6 +720,9 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     }
     genId = gen.id as string;
     seedUsed = cut.seed;
+    provClipUsed = clipUsed || v2vUsed !== null;
+    provV2V = v2vUsed;
+    provAudio = audioSource ?? null;
     // Ledger row exists → the moderation-resume path owns recovery from here; the
     // render stash must not resurrect a second render/ledger row.
     await jobUpdate(db, jobId, { generation_id: genId, provider_state: null });
@@ -664,10 +831,80 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       media_placeholder: cfg.mode === 'sim',
       card_art_url: artUrl,
       mp4_cutscene_url: mp4Url,
+      // Generation provenance — the client must say so when an attached clip did
+      // NOT make it into the cutscene (provider fallback), instead of completing
+      // silently as if the media were used.
+      clip_attached: moment.clip_status === 'attached',
+      clip_reference_used: provClipUsed,
+      v2v_provider: provV2V,
+      audio_source: provAudio,
       ...(swapOf ? { swapped_out_chit_id: swapOf, swapped_media_deleted: swappedMediaDeleted } : {}),
       next: 'Play the preview battle, then call chit_record_preview + chit_finalize_preview',
     },
   });
+}
+
+// Lay the ORIGINAL trimmed-clip audio under a silent V2V core via the stitch worker
+// (Minting_Workflow §4; founder feedback 2026-07-14 item 2). The core goes through
+// the private mint-staging bucket so the worker fetch is a short-lived signed URL,
+// and the worker writes the final MP4 directly into battle-media at destPath.
+// Best-effort by contract: false = caller stores the silent core (never a hard fail).
+async function overlayOriginalAudio(
+  db: { storage: Db['storage'] }, cfg: CinematicConfig,
+  coreBytes: Uint8Array, clipPath: string, destPath: string,
+): Promise<boolean> {
+  const workerUrl = Deno.env.get('STITCH_WORKER_URL');
+  const secret = Deno.env.get('STITCH_SECRET');
+  if (!workerUrl || !secret) return false;
+
+  const tempPath = `v2v-core/${destPath.replace(/^moments\//, '').replace(/\//g, '_')}`;
+  const up = await db.storage.from('mint-staging').upload(tempPath, coreBytes, {
+    contentType: 'video/mp4', upsert: true,
+  });
+  if (up.error) {
+    console.warn(`overlayOriginalAudio: core stage failed: ${up.error.message}`);
+    return false;
+  }
+  try {
+    const { data: coreSigned } = await db.storage.from('mint-staging').createSignedUrl(tempPath, 600);
+    const { data: clipSigned } = await db.storage.from('mint-staging').createSignedUrl(clipPath, 600);
+    if (!coreSigned?.signedUrl || !clipSigned?.signedUrl) return false;
+
+    let res: Response;
+    try {
+      res = await fetch(`${workerUrl.replace(/\/$/, '')}/stitch`, {
+        method: 'POST',
+        headers: { 'X-Stitch-Secret': secret, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          segments: [{ url: coreSigned.signedUrl }],
+          audio: { url: clipSigned.signedUrl, at: 0 },
+          // match the render tier's canvas — the worker defaults to 1280x720 and
+          // would silently downscale a standard-tier (1080p) core
+          width: cfg.renderTier === 'standard' ? 1920 : 1280,
+          height: cfg.renderTier === 'standard' ? 1080 : 720,
+          upload: { bucket: 'battle-media', path: destPath },
+        }),
+      });
+    } catch (e) {
+      console.warn(`overlayOriginalAudio: stitch call failed: ${(e as Error).message}`);
+      return false;
+    }
+    if (!res.ok) {
+      let detail = '';
+      try { detail = (await res.text()).slice(0, 300); } catch { /* status only */ }
+      console.warn(`overlayOriginalAudio: stitch HTTP ${res.status}: ${detail}`);
+      return false;
+    }
+    try {
+      const payload = await res.json();
+      return payload?.ok === true;
+    } catch {
+      return false;
+    }
+  } finally {
+    // best-effort temp cleanup — supabase-js returns errors in-band, never throws
+    await db.storage.from('mint-staging').remove([tempPath]);
+  }
 }
 
 // Post-gen screening (Hard Rule 39): sample frames of the FINISHED cutscene via the

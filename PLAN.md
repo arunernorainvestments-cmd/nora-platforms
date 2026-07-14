@@ -97,6 +97,55 @@ live classify → illustration → async render → park/auto-resume → live sc
    card-back/impact-flash vs the plate-anchored no-clip mode; `CINEMATIC_RENDER_TIER=standard`
    (1080p) when ready to pay for final quality.
 
+**BUILD 2026-07-14 (items 1c + 2 — code complete, sim-verified; deploy + paid trial pending):**
+- **V2V client** in `_shared/segmind.ts`: `generateV2VRestyle` (sim) + `submitV2VRestyle`
+  (Segmind v2 async queue) for **`kling-o3-video2video-edit`** and **`runway-gen4-aleph`**
+  (schemas re-verified against Segmind docs — NOTE Kling `keep_audio` actually defaults
+  FALSE, we set it explicitly; `duration` is a string 3–15; no seed param; input width
+  must be 720–2160px. Aleph: `video` ≤16MB + `reference_image` + int seed; silent output).
+  House restyle prompt `v2vRestylePrompt` in `cinematic_directives.ts` (style-lock +
+  constraints constant, slots sanitized — tests added).
+- **cinematic-mint wired** behind **`CINEMATIC_V2V_PROVIDER`** (unset = today's Seedance
+  behavior): clip mode restyles the trimmed clip into the core (card art as character ref),
+  same park/resume stash (v2v fields added), fallback chain V2V → Seedance-with-clip →
+  prompt-only (never bricks). Ledger: mig **165** adds `v2v_provider` + `audio_source`.
+- **Audio (item 2) built both ways**: Seedance calls now send `generate_audio: true`
+  (`CINEMATIC_SEEDANCE_AUDIO=off` to disable); Kling keeps the original soundtrack
+  (`keep_audio`, honoring `clip_keep_audio`); a silent Aleph core gets the original clip
+  audio laid back in via the stitch worker `/stitch` overlay (tier-matched canvas,
+  best-effort — failure stores the silent core).
+- **Micro-trial surface**: `dev-segmind-probe` gained POST `{v2v, moment_id, …}` (signs the
+  moderated clip, assembles the prompt, submits) and `?id=…&store=1` (bytes → private
+  `mint-staging/v2v-trials/`, signed review URL); runner `tools/cinematic/trial_v2v.ts`
+  needs only `DEV_PROBE_SECRET`. Run it on the Arnold + Brady moments — that decides the
+  provider, then flip `CINEMATIC_V2V_PROVIDER`.
+- **Discovered in the Seedance schema while verifying:** a `skip_moderation` boolean
+  ("bypasses BytePlus content filter") exists on Seedance 2.0 — a possible answer to the
+  heavy-handed input-copyright filter on the SEEDANCE path, but it's a founder policy call
+  (interacts with deferred IP-exposure item 7 + our own screens stay absolute). NOT wired.
+- **DEPLOYED + TRIALED same day (founder token supplied):** mig 165 applied (`db push`,
+  ledger at 165), both fns deployed (`--no-verify-jwt --use-api`), fresh `DEV_PROBE_SECRET`
+  set (old value was lost — rotated), DB password re-reset (management API — the standing
+  runbook). **Micro-trial on the ARNOLD clip (the ByteDance-rejected worst case):**
+  * **runway-gen4-aleph: PASSED E2E** — accepted the real-face celebrity clip, rendered a
+    1.35MB cel-shaded core (req 315eddb9d…, seed 1008167968, output parked at
+    `mint-staging/v2v-trials/`), frames verified on-style (bold ink-outline cel look,
+    original stylized character), live post-gen screen APPROVED it.
+    **→ `CINEMATIC_V2V_PROVIDER=runway-aleph` is LIVE on prod.**
+  * **kling-o3: failed on a TECHNICAL input check, not moderation** — "non-square pixels
+    detected, PAR should be 1:1": our trimmed clips carry a non-1:1 pixel aspect ratio.
+    Fix if Kling is ever wanted: `setsar=1` in both trimmers (nora_trim.js + worker /trim).
+    Parked — Aleph + the stitch audio overlay already covers audio.
+- **Also flipped (founder call 2026-07-14, "IP-exposure is not a block for testing"):**
+  `CINEMATIC_SKIP_PROVIDER_MODERATION=true` — sends Seedance's documented `skip_moderation`
+  (bypasses the BytePlus INPUT filter only; NORA's own pre/post-gen screens are untouched
+  and ran live on the trial output). Revisit with deferred IP item 7 before public launch.
+- **Founder test next:** re-mint Arnold through the wizard (slot swap off the Brady chit is
+  the expected flow). Note: Arnold's `clip_video_desc` is still the sim stub — re-attach
+  the clip during the re-mint to get a live description; the restyle rides on the actual
+  video either way. This session's token + service key appeared in transcript → rotation
+  list (post-launch, pre-live).
+
 ---
 
 ## 2026-07-13 — Generation quality: the "DBZ card" audit (fix checklist 1–6 SHIPPED; see section above for what's next)
