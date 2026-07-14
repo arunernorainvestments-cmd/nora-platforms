@@ -215,10 +215,29 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = e is MintException ? e.message : 'Processing failed — $e';
+        _error = _friendlyProcessError(e);
         _step = _Step.clip;
       });
     }
+  }
+
+  /// The wasm trimmer surfaces raw engine errors ("memory access out of
+  /// bounds", trim_* codes) — translate the known ones into guidance.
+  String _friendlyProcessError(Object e) {
+    if (e is MintException) return e.message;
+    final s = '$e';
+    if (s.contains('video_too_large') || s.contains('memory access out of bounds')) {
+      return 'That video is too big to process in the browser. Try a shorter '
+          'or lower-resolution export of the clip (the card only needs the '
+          '1–15 second moment) and pick it again.';
+    }
+    if (s.contains('trim_busy')) {
+      return 'Still processing the previous clip — give it a moment and try again.';
+    }
+    if (s.contains('unsupported_video')) {
+      return "This browser can't read that video format — try an MP4/MOV export.";
+    }
+    return 'Processing failed — $e';
   }
 
   // ── Step 4: classify (recommend) then let the user confirm ────────────────
