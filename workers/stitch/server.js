@@ -145,8 +145,18 @@ async function handleFrames(body) {
     const src = path.join(dir, 'in.mp4');
     await download(video_url, src);
     const { videoDuration } = await ffprobe(src);
-    const resolved = (Array.isArray(times) ? times : [times]).map((t) =>
-      t === 'last' ? Math.max(0, videoDuration - 0.15) : Math.min(Number(t), Math.max(0, videoDuration - 0.15)));
+    // times entries: seconds, 'last', or 'NN%' of the video duration — percentages
+    // let callers sample interior content without knowing the final length (a
+    // plate-bookended composite is longer than the core the caller rendered).
+    const cap = Math.max(0, videoDuration - 0.15);
+    const resolved = (Array.isArray(times) ? times : [times]).map((t) => {
+      if (t === 'last') return cap;
+      if (typeof t === 'string' && t.endsWith('%')) {
+        const f = Math.min(100, Math.max(0, Number(t.slice(0, -1)))) / 100;
+        return Math.min(f * videoDuration, cap);
+      }
+      return Math.min(Number(t), cap);
+    });
     const frames = [];
     for (let i = 0; i < resolved.length; i++) {
       const out = path.join(dir, `frame_${i}.jpg`);
