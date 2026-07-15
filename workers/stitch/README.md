@@ -43,14 +43,21 @@ run.app domains and answers 404 itself)
   "upload": { "bucket": "mint-staging", "prefix": "system/<gen-id>" } }
 ```
 
-`POST /stitch` — normalize (scale/pad/fps), trim, concat, audio overlay
+`POST /stitch` — normalize (scale/pad/fps/SAR), trim, concat or crossfade, audio
 ```json
 { "segments": [
-    { "url": "<intro url>",  "duration": 1.5 },
+    { "image_url": "<start plate png>", "duration": 1.0, "motion": "push_in" },
     { "url": "<core url>" },
-    { "url": "<outro url>", "duration": 1.5 } ],
-  "audio": { "url": "<original trimmed clip url>", "at": 1.5 },
+    { "image_url": "<end plate png>", "duration": 0.8, "motion": "pull_back" } ],
+  "transition": { "type": "fadewhite", "duration": 0.35 },
+  "audio": { "url": "<original trimmed clip url>", "at": 0.65 },
   "upload": { "bucket": "battle-media", "path": "chits/<chit-id>/cutscene.mp4" } }
 ```
-`audio.at` = seconds into the output where the original audio starts (the intro
-bridge length). Bridges stay silent; audio is padded/cut to video length.
+- Segments are videos (`url`) or stills (`image_url` + `duration`); stills become
+  live footage via zoompan (`motion`: `push_in` default | `pull_back` | `none`).
+- `transition` applies an xfade at every boundary (validated ffmpeg type names);
+  omit it for the legacy hard concat.
+- `audio.at` = seconds into the output where the overlay audio starts. Instead of
+  `audio`, `audio_from_segment: <idx>` keeps that video segment's own soundtrack,
+  delayed to where the segment lands in the output. Plates stay silent; audio is
+  padded/cut to the final video length.

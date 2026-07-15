@@ -1,10 +1,10 @@
 import 'dart:async';
-import 'dart:ui_web' as ui_web;
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:web/web.dart' as web;
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/card_face.dart';
+import '../../../core/widgets/cutscene_video.dart';
 import '../../market/providers/market_providers.dart';
 import '../services/mint_service.dart';
 import '../services/trim_interop.dart';
@@ -1232,7 +1232,7 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
             'switched on. The card art + animation are generated from your clip at '
             'that point.')
       else if (mp4 != null)
-        AspectRatio(aspectRatio: 16 / 9, child: _CutsceneVideo(url: mp4)),
+        AspectRatio(aspectRatio: 16 / 9, child: CutsceneVideo(url: mp4)),
       if (_clipFellBack) ...[
         const SizedBox(height: 10),
         Container(
@@ -1445,28 +1445,3 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
 
 /// Embeds the generated cutscene MP4 as an autoplaying, muted, looping HTML5
 /// video (Flutter web has no native video widget without extra plugins).
-class _CutsceneVideo extends StatelessWidget {
-  const _CutsceneVideo({required this.url});
-  final String url;
-
-  @override
-  Widget build(BuildContext context) {
-    final viewType = 'cutscene-${url.hashCode}';
-    // Registering the same viewType twice is a harmless no-op across rebuilds.
-    ui_web.platformViewRegistry.registerViewFactory(viewType, (int _) {
-      final video = web.HTMLVideoElement()
-        ..src = url
-        ..autoplay = true
-        ..muted = true
-        ..loop = true
-        ..controls = true
-        ..setAttribute('playsinline', 'true')
-        ..style.width = '100%'
-        ..style.height = '100%'
-        ..style.borderRadius = '12px'
-        ..style.objectFit = 'cover';
-      return video;
-    });
-    return HtmlElementView(viewType: viewType);
-  }
-}

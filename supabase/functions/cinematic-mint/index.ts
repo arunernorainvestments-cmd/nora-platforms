@@ -666,12 +666,32 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       return;
     }
     const mp4Path = `moments/${momentId}/attempt${attempt}/cutscene.mp4`;
+    // Plate bookends (founder 2026-07-15, Phase 1): compose the final MP4 as
+    // animated start plate → core → animated end plate (fadewhite seams) in ONE
+    // stitch-worker pass that also lays the audio — original clip audio under a
+    // silent Aleph core, or the core's own track (Kling/Seedance) delayed to its
+    // slot. The plates must be IN the video: web preview/collection/share surfaces
+    // play the MP4 raw (Unity's local bracket only covers in-battle). Best-effort:
+    // any compose failure falls through to the plain overlay/store path below.
+    const bookendsOn = Deno.env.get('CINEMATIC_PLATE_BOOKENDS') === 'stitch' && cfg.mode === 'live';
+    let mp4Stored = false;
+    if (bookendsOn) {
+      const wantOriginal = overlayAudio && !!clipPathForAudio;
+      mp4Stored = await composeWithPlates(db, cfg, cut.bytes, {
+        startPlateUrl: plate.start_plate_url as string,
+        endPlateUrl: plate.end_plate_url as string,
+        clipPath: wantOriginal ? clipPathForAudio : null,
+        coreHasAudio: !wantOriginal && audioSource !== 'none',
+        destPath: mp4Path,
+      });
+      if (mp4Stored && wantOriginal) audioSource = 'original';
+      if (!mp4Stored) console.warn('cinematic-mint: plate-bookend compose unavailable — falling back to plain store');
+    }
     // A silent V2V core (Runway Aleph) gets the ORIGINAL clip audio laid back in by
     // the stitch worker (Minting_Workflow §4 audio dub, honoring clip_keep_audio) —
     // the worker writes the final MP4 straight into battle-media. Audio is polish:
     // any overlay failure stores the silent core instead of failing the mint.
-    let mp4Stored = false;
-    if (overlayAudio && clipPathForAudio) {
+    if (!mp4Stored && overlayAudio && clipPathForAudio) {
       mp4Stored = await overlayOriginalAudio(db, cfg, cut.bytes, clipPathForAudio, mp4Path);
       if (mp4Stored) audioSource = 'original';
       else console.warn('cinematic-mint: audio overlay unavailable — storing the silent core');
@@ -857,6 +877,95 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       next: 'Play the preview battle, then call chit_record_preview + chit_finalize_preview',
     },
   });
+}
+
+// Plate-bookend timeline (CINEMATIC_PLATE_BOOKENDS=stitch): intro/outro lengths and
+// the fadewhite seam are house constants — never per card (Hard Rule 39 spirit).
+const BOOKEND_INTRO_S = 1.0;
+const BOOKEND_OUTRO_S = 0.8;
+const BOOKEND_FADE_S = 0.35;
+
+// Compose the final cutscene as animated-start-plate + core + animated-end-plate in
+// one stitch-worker pass (plates get a zoompan push-in/pull-back; fadewhite seams).
+// Audio in the same pass: the original trimmed clip (silent Aleph core) offset to
+// where the core fades in, or the core's own soundtrack kept in place. The worker
+// writes the final MP4 straight into battle-media at destPath. Best-effort by
+// contract: false = caller falls back to plain overlay/store (never a hard fail).
+async function composeWithPlates(
+  db: { storage: Db['storage'] }, cfg: CinematicConfig,
+  coreBytes: Uint8Array,
+  opts: {
+    startPlateUrl: string; endPlateUrl: string;
+    clipPath: string | null;   // original-audio source; null = keep/none
+    coreHasAudio: boolean;     // preserve the core's own track (Kling/Seedance)
+    destPath: string;
+  },
+): Promise<boolean> {
+  const workerUrl = Deno.env.get('STITCH_WORKER_URL');
+  const secret = Deno.env.get('STITCH_SECRET');
+  if (!workerUrl || !secret) return false;
+
+  const tempPath = `v2v-core/${opts.destPath.replace(/^moments\//, '').replace(/\//g, '_')}`;
+  const up = await db.storage.from('mint-staging').upload(tempPath, coreBytes, {
+    contentType: 'video/mp4', upsert: true,
+  });
+  if (up.error) {
+    console.warn(`composeWithPlates: core stage failed: ${up.error.message}`);
+    return false;
+  }
+  try {
+    const { data: coreSigned } = await db.storage.from('mint-staging').createSignedUrl(tempPath, 600);
+    if (!coreSigned?.signedUrl) return false;
+    let clipUrl: string | null = null;
+    if (opts.clipPath) {
+      const { data: clipSigned } = await db.storage.from('mint-staging').createSignedUrl(opts.clipPath, 600);
+      if (!clipSigned?.signedUrl) return false;
+      clipUrl = clipSigned.signedUrl;
+    }
+
+    let res: Response;
+    try {
+      res = await fetch(`${workerUrl.replace(/\/$/, '')}/stitch`, {
+        method: 'POST',
+        headers: { 'X-Stitch-Secret': secret, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          segments: [
+            { image_url: opts.startPlateUrl, duration: BOOKEND_INTRO_S, motion: 'push_in' },
+            { url: coreSigned.signedUrl },
+            { image_url: opts.endPlateUrl, duration: BOOKEND_OUTRO_S, motion: 'pull_back' },
+          ],
+          transition: { type: 'fadewhite', duration: BOOKEND_FADE_S },
+          // Original audio starts as the core fades in; a core soundtrack is
+          // delayed by the worker to the same spot via audio_from_segment.
+          ...(clipUrl ? { audio: { url: clipUrl, at: BOOKEND_INTRO_S - BOOKEND_FADE_S } } : {}),
+          ...(!clipUrl && opts.coreHasAudio ? { audio_from_segment: 1 } : {}),
+          // match the render tier's canvas — the worker defaults to 1280x720 and
+          // would silently downscale a standard-tier (1080p) core
+          width: cfg.renderTier === 'standard' ? 1920 : 1280,
+          height: cfg.renderTier === 'standard' ? 1080 : 720,
+          upload: { bucket: 'battle-media', path: opts.destPath },
+        }),
+      });
+    } catch (e) {
+      console.warn(`composeWithPlates: stitch call failed: ${(e as Error).message}`);
+      return false;
+    }
+    if (!res.ok) {
+      let detail = '';
+      try { detail = (await res.text()).slice(0, 300); } catch { /* status only */ }
+      console.warn(`composeWithPlates: stitch HTTP ${res.status}: ${detail}`);
+      return false;
+    }
+    try {
+      const payload = await res.json();
+      return payload?.ok === true;
+    } catch {
+      return false;
+    }
+  } finally {
+    // best-effort temp cleanup — supabase-js returns errors in-band, never throws
+    await db.storage.from('mint-staging').remove([tempPath]);
+  }
 }
 
 // Lay the ORIGINAL trimmed-clip audio under a silent V2V core via the stitch worker

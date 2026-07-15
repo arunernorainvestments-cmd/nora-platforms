@@ -61,14 +61,22 @@ the state to revert to:
   stitch-worker **original-audio overlay** → post-gen screening (violence → HOLD, others hard)
   → complete → preview battle → finalize. Stitch worker rev `nora-stitch-00004`.
 - **Known gaps at this checkpoint** (next refinements, in founder priority order):
-  1. **Plate bookends are NOT in the V2V video** — no card-intro / VFX-outro plates around
-     the stylized core (they were deliberately dropped in clip mode when Seedance forbade
-     reference media + frame anchors together; the Aleph path never re-added them). Fix =
-     the stitch worker IS the universal editor: compose animated plate segments (zoompan on
-     the house 16:9 agnostic plates) + xfade into/out of the core, audio offset via the
-     existing `audio.at`. Deterministic, free, no new moderation surface. Phase 2 option:
-     Seedance first/last-frame micro-bridges (plate→core-frame morphs) if the crossfade
-     seam feels cheap. Build behind `CINEMATIC_PLATE_BOOKENDS`, trial via probe first.
+  1. ✅ **SHIPPED 2026-07-15 (same day): plate bookends composed INTO the final MP4** —
+     `CINEMATIC_PLATE_BOOKENDS=stitch` is LIVE. The stitch worker (rev `nora-stitch-00007`)
+     gained still-image segments (zoompan push-in/pull-back on the house 16:9 agnostic
+     plates), `xfade` transitions (fadewhite seams; `setsar=1` normalization — xfade
+     refuses mismatched SAR), and `audio_from_segment`; `cinematic-mint` composes
+     start-plate → core → end-plate + audio in ONE worker pass (best-effort: any compose
+     failure falls back to the plain overlay/store — bookends never fail a mint).
+     Deterministic + free + house-owned imagery; post-gen screening runs on the COMPOSED
+     final. Verified on the Arnold cutscene (4.6s, audio offset correct). REVERT = delete
+     the `CINEMATIC_PLATE_BOOKENDS` edge secret (media pipeline returns to the checkpoint
+     behavior). NOTE: GCP Secret Manager entries were recreated this session (they had
+     vanished) — new STITCH_SECRET synced to edge secrets. **Phase 2 (fallback/upgrade,
+     only if the crossfade seam feels cheap): Seedance first/last-frame micro-bridges**
+     (plate→core-frame morphs), stitched with the same worker.
+     Also shipped same-day: **summon-cutscene playback in /collection** (card detail →
+     "Watch summon cutscene", shared `CutsceneVideo` widget with the mint preview).
   2. Wizard Review step doesn't persist the chosen name across a resume.
   3. Attempt-path overwrite: a post-delete re-mint reuses `attempt1` so the new render
      overwrites the prior file (ledger rows share a path). Derive attempt from history.
