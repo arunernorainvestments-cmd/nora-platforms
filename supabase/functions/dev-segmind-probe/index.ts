@@ -15,7 +15,8 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { moderationConfigFromEnv, preGenModerate } from '../_shared/moderation.ts';
 import {
-  cinematicConfigFromEnv, pollCutscene, submitV2VRestyle, v2vModelFor, type V2VProvider,
+  cinematicConfigFromEnv, pollCutscene, submitCutscene, submitV2VRestyle, v2vModelFor,
+  type V2VProvider,
 } from '../_shared/segmind.ts';
 import { TIER_INTENSITY, v2vRestylePrompt } from '../_shared/cinematic_directives.ts';
 
@@ -39,8 +40,34 @@ Deno.serve(async (req: Request): Promise<Response> => {
       v2v?: string; moment_id?: string; prompt_override?: string; subject_desc?: string;
       duration_s?: number; keep_audio?: boolean; aspect_ratio?: string;
       card_art_url?: string; tier?: 'fast' | 'standard';
+      plate_motion?: string; first_frame_url?: string; last_frame_url?: string; seed?: number;
     };
     try { body = await req.json(); } catch { return json({ error: 'invalid JSON body' }, 400); }
+
+    // ── Mode 4: ONE-TIME universal plate-motion generation (founder 2026-07-15) ──
+    // Animates the house anchor plates into reusable intro/outro transition clips
+    // (first/last-frame conditioned; only house-owned imagery reaches the provider,
+    // so no clip-moderation gate applies). Result via Mode-1 ?id=&store=1. PAID.
+    if (body.plate_motion) {
+      if (!body.prompt_override?.trim() || !body.first_frame_url || !body.last_frame_url) {
+        return json({ error: 'plate_motion needs prompt_override, first_frame_url, last_frame_url' }, 400);
+      }
+      const cfg = cinematicConfigFromEnv();
+      const sub = await submitCutscene(cfg, {
+        prompt: body.prompt_override.trim(),
+        firstFrameUrl: body.first_frame_url,
+        lastFrameUrl: body.last_frame_url,
+        durationS: body.duration_s ?? 4,
+        seed: body.seed ?? Math.floor(Math.random() * 2 ** 31),
+        tierOverride: body.tier,
+      });
+      if (!sub.ok) return json({ error: sub.reason, detail: sub.detail }, 502);
+      return json({
+        ok: true, request_id: sub.requestId, model: sub.model,
+        next: `GET ?id=${sub.requestId}&store=1 until done`,
+      });
+    }
+
     const provider = body.v2v as V2VProvider | undefined;
     if (provider !== 'kling-o3' && provider !== 'runway-aleph') {
       return json({ error: 'v2v must be kling-o3 or runway-aleph' }, 400);
