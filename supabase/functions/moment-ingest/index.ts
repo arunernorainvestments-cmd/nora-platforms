@@ -136,6 +136,19 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
 
   const { data: tier } = await db.rpc('tier_for_engagement', { p_engagement: meta.engagement });
+
+  // Re-linking a moment that is already mid-mint (clip staged; cutscene generated
+  // and held for / cleared by a moderation verdict) must let the wizard RESUME
+  // rather than force a re-upload — the wizard has no other window into this
+  // state (cinematic_generations has no client RLS, deliberately), and a
+  // resumed generate call completes free instead of paying for a new render.
+  const { data: momentRow } = await db.from('moments')
+    .select('clip_status').eq('id', momentId).single();
+  const { data: resumableRows } = await db.from('cinematic_generations')
+    .select('id, status').eq('moment_id', momentId)
+    .in('status', ['generated', 'moderation_approved'])
+    .order('created_at', { ascending: false }).limit(1);
+
   return json({
     moment_id: momentId,
     status: 'approved',
@@ -145,6 +158,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
     projected_tier: tier ?? null,   // informational; mint re-derives at mint time
     thumbnail_url: meta.thumbnailUrl,
     third_party_likeness_review: verdict.thirdPartyLikeness,
+    clip_status: momentRow?.clip_status ?? null,
+    // { id, status } of the newest resumable generation, or null.
+    // 'moderation_approved' → Generate completes the card free;
+    // 'generated' → still awaiting a human safety verdict.
+    resumable_generation: resumableRows?.[0] ?? null,
     next: 'POST cinematic-mint with this moment_id to generate the chit',
   });
 });

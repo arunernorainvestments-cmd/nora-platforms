@@ -855,9 +855,17 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
     ]);
   }
 
+  /// Status of the newest resumable generation for the linked moment
+  /// ('moderation_approved' | 'generated'), surfaced by moment-ingest — null
+  /// when there is nothing to resume.
+  String? get _resumeGenStatus =>
+      ((_moment?['resumable_generation'] as Map?)?['status'])?.toString();
+
   Widget _buildClipStep() {
     final handle = _moment?['creator_handle'] ?? '';
     final tier = _moment?['projected_tier'];
+    final resume = _resumeGenStatus;
+    final clipAttached = _moment?['clip_status'] == 'attached';
     return _card(children: [
       Row(children: [
         const Icon(Icons.verified, color: AppTheme.success, size: 18),
@@ -870,6 +878,64 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         if (tier != null) _tierChip(tier),
       ]),
       const SizedBox(height: 16),
+      // Mid-mint resume: the clip (and possibly the whole cutscene) already
+      // exists server-side — continuing costs nothing new; only starting over
+      // with a different clip needs the upload flow below.
+      if (clipAttached) ...[
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppTheme.secondary.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.secondary.withValues(alpha: 0.4)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              resume == 'moderation_approved'
+                  ? 'Pick up where you left off'
+                  : resume == 'generated'
+                      ? 'Your cutscene is in safety review'
+                      : 'You already staged a clip for this moment',
+              style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 14),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              resume == 'moderation_approved'
+                  ? 'Your cutscene is already generated and has cleared its '
+                      'safety review. Continue to finish your card — nothing '
+                      're-renders and nothing is charged.'
+                  : resume == 'generated'
+                      ? 'The cutscene is generated but still needs a human '
+                          'safety check. You can continue to check its status — '
+                          'once it clears, the same steps finish your card '
+                          'for free.'
+                      : 'Your trimmed clip is still staged. Continue straight '
+                          'to Review — no need to upload it again.',
+              style:
+                  const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            ),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: _busy
+                  ? null
+                  : () =>
+                      _startReview(_moment?['moment_id']?.toString() ?? ''),
+              icon: const Icon(Icons.fast_forward),
+              label: Text(resume == 'moderation_approved'
+                  ? 'Finish my card'
+                  : 'Continue to Review'),
+            ),
+          ]),
+        ),
+        const SizedBox(height: 12),
+        const Text('…or start over by uploading a different clip below.',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+        const SizedBox(height: 12),
+      ],
       const Text('2 · Upload that clip from your device',
           style: TextStyle(
               color: AppTheme.textPrimary,
@@ -1287,7 +1353,9 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
                 'Held for safety review',
                 'Your cutscene was generated and is getting a quick safety check '
                     'before the card is created. Check back soon — no need to '
-                    'generate again.',
+                    'generate again. When it clears, re-enter your post link on '
+                    'the mint page and you can finish the card without '
+                    're-uploading.',
               )
             : switch (status) {
             'similarity_flagged' => (
