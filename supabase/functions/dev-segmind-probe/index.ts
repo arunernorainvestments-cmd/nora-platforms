@@ -143,7 +143,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
         headers: { 'X-Stitch-Secret': secret, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           video_url: screen,
-          times: [0.4, 2.5, 'last'],
+          // mirror cinematic-mint's screening sample positions (interior coverage)
+          times: [0.4, '30%', '50%', '70%', 'last'],
           upload: { bucket: 'mint-staging', prefix: `postgen/${gen}` },
         }),
       });

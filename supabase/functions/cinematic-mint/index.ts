@@ -673,7 +673,12 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     // slot. The plates must be IN the video: web preview/collection/share surfaces
     // play the MP4 raw (Unity's local bracket only covers in-battle). Best-effort:
     // any compose failure falls through to the plain overlay/store path below.
-    const bookendsOn = Deno.env.get('CINEMATIC_PLATE_BOOKENDS') === 'stitch' && cfg.mode === 'live';
+    // Composed bookends apply ONLY to the V2V core path: the Seedance paths already
+    // self-bookend (no-clip = plate first/last-frame conditioning; clip mode = the
+    // constant [OPENING]/[ENDING] card-glow/impact directives) — composing real
+    // plates over those would show the card twice.
+    const bookendsOn = Deno.env.get('CINEMATIC_PLATE_BOOKENDS') === 'stitch' &&
+      cfg.mode === 'live' && v2vUsed !== null;
     let mp4Stored = false;
     if (bookendsOn) {
       const wantOriginal = overlayAudio && !!clipPathForAudio;
@@ -1074,7 +1079,11 @@ async function screenCutsceneFrames(
       headers: { 'X-Stitch-Secret': secret, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         video_url: mp4Url,
-        times: [0.4, Math.max(0.8, durationS / 2), 'last'],
+        // Percentage positions (resolved by the worker against the ACTUAL file)
+        // so the interior of the video is always sampled: on a plate-bookended
+        // composite, fixed head/tail times would mostly screen the house plates
+        // and let the user-derived core slide by with one frame (Hard Rule 39).
+        times: [0.4, '30%', '50%', '70%', 'last'],
         upload: { bucket: 'mint-staging', prefix: `postgen/${genId}` },
       }),
     });
