@@ -42,6 +42,39 @@
 
 ---
 
+## 2026-07-15 — ✅ PROOF OF CONCEPT: the mint pipeline works E2E (revert anchor `poc-v2v-mint-2026-07-15`)
+
+Founder-verified on prod: chit **87f599ae "You're Fired"** (moment 66c370f4, gen 5e5c6326) —
+the source clip **stylized into the game's cel-shaded animation with the ORIGINAL audio kept**,
+past live moderation, resumable at every failure point. Founder: "This is proof of concept…
+literally exactly what we want going forward." If a later change breaks the pipeline, this is
+the state to revert to:
+
+- **Git**: main @ `8b40d99` (tag `poc-v2v-mint-2026-07-15`). Includes: V2V core (PR #27),
+  violence hold-for-review + sports carve-out (PR #28), wizard resume surface (PR #29).
+- **Config (edge secrets)**: `CINEMATIC_V2V_PROVIDER=runway-aleph` ·
+  `CINEMATIC_SKIP_PROVIDER_MODERATION=true` · `CINEMATIC_MODE=live` · `MODERATION_MODE=live` ·
+  `MOMENT_CLASSIFY_MODE=live` · `MINT_INGEST_MODE=live` · render tier default (720p).
+- **Pipeline shape**: ingest → clip trim (browser wasm, cloud `/trim` fallback) → attach +
+  re-moderation + live clip desc → classify → card art (clip mid-frame reference) →
+  **Runway Aleph V2V restyle of the actual clip** (one RAI re-roll, then Seedance fallback) →
+  stitch-worker **original-audio overlay** → post-gen screening (violence → HOLD, others hard)
+  → complete → preview battle → finalize. Stitch worker rev `nora-stitch-00004`.
+- **Known gaps at this checkpoint** (next refinements, in founder priority order):
+  1. **Plate bookends are NOT in the V2V video** — no card-intro / VFX-outro plates around
+     the stylized core (they were deliberately dropped in clip mode when Seedance forbade
+     reference media + frame anchors together; the Aleph path never re-added them). Fix =
+     the stitch worker IS the universal editor: compose animated plate segments (zoompan on
+     the house 16:9 agnostic plates) + xfade into/out of the core, audio offset via the
+     existing `audio.at`. Deterministic, free, no new moderation surface. Phase 2 option:
+     Seedance first/last-frame micro-bridges (plate→core-frame morphs) if the crossfade
+     seam feels cheap. Build behind `CINEMATIC_PLATE_BOOKENDS`, trial via probe first.
+  2. Wizard Review step doesn't persist the chosen name across a resume.
+  3. Attempt-path overwrite: a post-delete re-mint reuses `attempt1` so the new render
+     overwrites the prior file (ledger rows share a path). Derive attempt from history.
+
+---
+
 ## 2026-07-15 — CALLOUT: Admin app / operations console (needed pre-scale; not yet scoped)
 
 Founder call-out, not a plan yet: the platform needs an **admin surface** with built-in
