@@ -4,7 +4,9 @@
 // Classifies the fetched source (thumbnail/frames + text context) BEFORE any
 // generation runs. Verdict semantics (Hard Rule 37):
 //   - minor_safety   → 'escalated' — ABSOLUTE: block + human escalation, never generate.
-//   - nsfw / graphic_violence / hate → 'rejected'.
+//   - nsfw / graphic_violence / hate → 'rejected'. (Post-gen, cinematic-mint converts
+//     a graphic_violence-only reject into a hold-for-human-review — sports/stylized
+//     action over-triggers the label; the other categories stay hard everywhere.)
 //   - third_party_likeness → approved WITH a review flag (not a block).
 //
 // Sim-first per governance: MODERATION_MODE=sim (default) is deterministic via
@@ -113,7 +115,9 @@ const CLASSIFIER_SYSTEM =
   '{"minor_safety": <true if ANY sexual content involving a minor, content that ' +
   'sexualizes a minor, or any ambiguity about whether a sexualized subject is a minor>,\n' +
   ' "nsfw": <true if sexual/explicit adult content>,\n' +
-  ' "graphic_violence": <true if gore or graphic real-world violence>,\n' +
+  ' "graphic_violence": <true if gore or graphic real-world violence. Regulated combat ' +
+  'sports (boxing, MMA/UFC, wrestling) and ordinary contact-sport play are NOT graphic ' +
+  'violence unless gore is shown>,\n' +
   ' "hate": <true if hate symbols/speech or targeted harassment>,\n' +
   ' "third_party_likeness": <true if the content prominently features identifiable ' +
   'people other than the poster>}\n' +

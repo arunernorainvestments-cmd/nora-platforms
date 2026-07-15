@@ -42,6 +42,29 @@
 
 ---
 
+## 2026-07-15 — CALLOUT: Admin app / operations console (needed pre-scale; not yet scoped)
+
+Founder call-out, not a plan yet: the platform needs an **admin surface** with built-in
+functionality that streamlines the issues we can already predict once many users are on the
+app. Today every operational intervention is raw SQL / management-API calls by hand. Known
+needs observed so far (seed list for whenever this gets scoped — deliberately not designed now):
+- **Moderation review queue** — the new held-for-review flow (2026-07-15: `graphic_violence`
+  HOLDS post-gen instead of hard-rejecting; nsfw/hate/minor_safety stay hard) needs a human
+  surface: view sampled frames, approve/reject (`cinematic_moderation_verdict`), see escalations
+  (`moderation_escalations`), clip similarity-mismatch flags, and third-party-likeness flags.
+  Extending hold-for-review to the two PRE-gen screens (ingest thumbnail, clip-attach) is
+  blocked on this existing — a pre-gen hold today would be a dead end with no clear path.
+- Mint pipeline ops: stuck/parked `mint_jobs`, re-run/refund decisions, provider-state inspection
+  (today: `dev-segmind-probe`, which must be DELETED before launch — the admin app replaces it).
+- User/account ops: KYC state, identity_hash collisions, test-account flags, token adjustments
+  (audited via `token_transactions`), marketplace disputes/delistings.
+- Config/kill-switches behind auth instead of raw secrets edits (mode flags, provider selection,
+  spend caps, `marketplace_usd_lane`, `battle_payments_mode`).
+- Emergency Fund + licensing ops respect their privacy Hard Rules (23–25, 29–32) — admin sees
+  status/queues, never private votes or ubi documents.
+
+---
+
 ## 2026-07-14 — Founder feedback after the first fully-working E2E mint (RESUME HERE)
 
 The Tom Brady mint completed end-to-end on prod (chit 7af184fb): ingest → cloud-trim fallback →
