@@ -762,6 +762,21 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
         return;
       }
       if (screen.verdict !== 'approved') {
+        // Founder policy (2026-07-15): a graphic_violence-only flag HOLDS for a human
+        // verdict instead of hard-rejecting — combat sports and stylized comic blood
+        // over-trigger this label, and a hard reject burns the paid render. nsfw /
+        // hate / minor_safety stay hard rejects. The generation stays 'generated',
+        // so once a human applies cinematic_moderation_verdict the next Generate
+        // click resumes to completion free.
+        if (screen.reason === 'graphic_violence') {
+          await jobUpdate(db, jobId, {
+            status: 'held_moderation',
+            detail: 'Your cutscene needs a quick human safety review before the card ' +
+              'is created' + (swapOf ? '; the swap is NOT executed yet' : ''),
+            result: { status: 'pending_moderation', generation_id: genId },
+          });
+          return;
+        }
         const { error: rejErr } = await db.rpc('cinematic_moderation_verdict', {
           p_generation_id: genId, p_approved: false, p_reason: screen.reason ?? screen.verdict,
         });
