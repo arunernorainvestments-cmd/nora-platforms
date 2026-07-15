@@ -77,6 +77,15 @@ the state to revert to:
      (plate→core-frame morphs), stitched with the same worker.
      Also shipped same-day: **summon-cutscene playback in /collection** (card detail →
      "Watch summon cutscene", shared `CutsceneVideo` widget with the mint preview).
+     **Phase 1b same-day (PR #31, mig 166): ANIMATED universal bookends LIVE** — two
+     one-time Seedance generations (house plates + white-frame conditioning; only house
+     imagery reached the provider) now bracket every mint: intro 2.0s (card energy vortex →
+     camera into the igniting core → full-frame white flash) and outro 2.5s (white flash →
+     lightning/glass-shard shockwave → settled energy core), stored at
+     `battle-media/plates/agnostic/v1/{intro,outro}.mp4` with 4s raw masters in
+     `mint-staging/v2v-trials/`. White-into-white fadewhite seams splice invisibly onto ANY
+     core. `match_cut_anchor_plates.start/end_motion_url` (mig 166) — set NULL to revert to
+     the zoompan stills; probe gained the `plate_motion` one-time submit mode.
   2. Wizard Review step doesn't persist the chosen name across a resume.
   3. Attempt-path overwrite: a post-delete re-mint reuses `attempt1` so the new render
      overwrites the prior file (ledger rows share a path). Derive attempt from history.
