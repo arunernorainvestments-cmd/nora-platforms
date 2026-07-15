@@ -680,6 +680,8 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       mp4Stored = await composeWithPlates(db, cfg, cut.bytes, {
         startPlateUrl: plate.start_plate_url as string,
         endPlateUrl: plate.end_plate_url as string,
+        startMotionUrl: (plate.start_motion_url as string | null) ?? null,
+        endMotionUrl: (plate.end_motion_url as string | null) ?? null,
         clipPath: wantOriginal ? clipPathForAudio : null,
         coreHasAudio: !wantOriginal && audioSource !== 'none',
         destPath: mp4Path,
@@ -881,9 +883,12 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
 
 // Plate-bookend timeline (CINEMATIC_PLATE_BOOKENDS=stitch): intro/outro lengths and
 // the fadewhite seam are house constants — never per card (Hard Rule 39 spirit).
+// The MOTION constants are the exact lengths the one-time-generated animated plate
+// clips were trimmed to (mig 166) — the audio offset math depends on them.
 const BOOKEND_INTRO_S = 1.0;
 const BOOKEND_OUTRO_S = 0.8;
 const BOOKEND_FADE_S = 0.35;
+const BOOKEND_INTRO_MOTION_S = 1.97;
 
 // Compose the final cutscene as animated-start-plate + core + animated-end-plate in
 // one stitch-worker pass (plates get a zoompan push-in/pull-back; fadewhite seams).
@@ -896,6 +901,7 @@ async function composeWithPlates(
   coreBytes: Uint8Array,
   opts: {
     startPlateUrl: string; endPlateUrl: string;
+    startMotionUrl?: string | null; endMotionUrl?: string | null; // animated plates (mig 166)
     clipPath: string | null;   // original-audio source; null = keep/none
     coreHasAudio: boolean;     // preserve the core's own track (Kling/Seedance)
     destPath: string;
@@ -929,15 +935,29 @@ async function composeWithPlates(
         method: 'POST',
         headers: { 'X-Stitch-Secret': secret, 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          // Animated plate clips (mig 166) when authored; else the stills get a
+          // zoompan. The intro ends / outro opens on a full-frame white flash, so
+          // the fadewhite seam is white-into-white — invisible on ANY core.
           segments: [
-            { image_url: opts.startPlateUrl, duration: BOOKEND_INTRO_S, motion: 'push_in' },
+            opts.startMotionUrl
+              ? { url: opts.startMotionUrl }
+              : { image_url: opts.startPlateUrl, duration: BOOKEND_INTRO_S, motion: 'push_in' },
             { url: coreSigned.signedUrl },
-            { image_url: opts.endPlateUrl, duration: BOOKEND_OUTRO_S, motion: 'pull_back' },
+            opts.endMotionUrl
+              ? { url: opts.endMotionUrl }
+              : { image_url: opts.endPlateUrl, duration: BOOKEND_OUTRO_S, motion: 'pull_back' },
           ],
           transition: { type: 'fadewhite', duration: BOOKEND_FADE_S },
           // Original audio starts as the core fades in; a core soundtrack is
           // delayed by the worker to the same spot via audio_from_segment.
-          ...(clipUrl ? { audio: { url: clipUrl, at: BOOKEND_INTRO_S - BOOKEND_FADE_S } } : {}),
+          ...(clipUrl
+            ? {
+              audio: {
+                url: clipUrl,
+                at: (opts.startMotionUrl ? BOOKEND_INTRO_MOTION_S : BOOKEND_INTRO_S) - BOOKEND_FADE_S,
+              },
+            }
+            : {}),
           ...(!clipUrl && opts.coreHasAudio ? { audio_from_segment: 1 } : {}),
           // match the render tier's canvas — the worker defaults to 1280x720 and
           // would silently downscale a standard-tier (1080p) core
