@@ -19,8 +19,15 @@
 //        trimmer: same output contract as web/js/nora_trim.js — clip.mp4 capped
 //        at 1280 long edge + f0..f3.jpg moderation frames at the prefix)
 //   POST /stitch  {
-//     segments: [ { url, start?, duration? } ],   // in order; trims re-encode
+//     segments: [ { url, start?, duration? }                       // video segment
+//               | { image_url, duration, motion? } ],              // animated still
+//                    // motion: 'push_in' (default) | 'pull_back' | 'none' — plates
+//                    // become live segments via zoompan (bookends, 2026-07-15)
+//     transition?: { type?, duration? },          // xfade at every boundary (e.g.
+//                    // 'fadewhite' 0.35s); omitted = hard concat (legacy behavior)
 //     audio?:   { url, start?, duration?, at },   // overlay source; `at` = secs into output
+//     audio_from_segment?: <idx>,                 // use that VIDEO segment's own audio,
+//                    // delayed to where the segment starts in the output
 //     width?, height?, fps?,                      // default 1280x720@30
 //     upload: { bucket, path }                    // destination for final MP4
 //   } -> { ok, path, duration_s }
@@ -213,52 +220,111 @@ async function handleTrim(body) {
 }
 
 // ── /stitch ─────────────────────────────────────────────────────────────────
+// xfade transition names are a fixed ffmpeg vocabulary — validate rather than
+// interpolating caller text into the filtergraph.
+const XFADE_TYPES = new Set(['fade', 'fadeblack', 'fadewhite', 'dissolve', 'wipeleft',
+  'wiperight', 'smoothleft', 'smoothright', 'circleopen', 'circleclose', 'radial']);
+
 async function handleStitch(body) {
   const { segments, audio, upload } = body;
   const width = body.width ?? 1280, height = body.height ?? 720, fps = body.fps ?? 30;
   if (!Array.isArray(segments) || segments.length < 1) throw new Error('segments[] required');
   if (segments.length > 6) throw new Error('too many segments');
   if (!upload?.bucket || !upload?.path) throw new Error('upload.bucket and upload.path required');
+  let fade = null;
+  if (body.transition) {
+    const type = String(body.transition.type ?? 'fade');
+    if (!XFADE_TYPES.has(type)) throw new Error(`unknown transition type ${type}`);
+    fade = { type, dur: Math.min(1.5, Math.max(0.1, Number(body.transition.duration ?? 0.35))) };
+  }
 
   return await withWorkdir(async (dir) => {
     const inputs = [];
     for (let i = 0; i < segments.length; i++) {
-      const f = path.join(dir, `seg_${i}.mp4`);
-      await download(segments[i].url, f);
-      inputs.push(f);
+      const seg = segments[i];
+      if (seg.image_url) {
+        if (!(Number(seg.duration) > 0)) throw new Error(`segments[${i}].duration required with image_url`);
+        const f = path.join(dir, `seg_${i}.png`);
+        await download(seg.image_url, f);
+        inputs.push(f);
+      } else {
+        const f = path.join(dir, `seg_${i}.mp4`);
+        await download(seg.url, f);
+        inputs.push(f);
+      }
     }
     const audioFile = audio?.url ? path.join(dir, 'audio_src.mp4') : null;
     if (audioFile) await download(audio.url, audioFile);
 
-    // Probe each segment for its effective length — the audio pad must be
-    // bounded to the final duration (an unbounded apad overflows the filter
+    // Effective length per segment — needed for xfade offsets AND to bound the
+    // audio pad to the final duration (an unbounded apad overflows the filter
     // queue; -shortest alone does not stop the graph).
-    let totalDuration = 0;
+    const durs = [];
     for (let i = 0; i < segments.length; i++) {
+      if (segments[i].image_url) {
+        durs.push(Number(segments[i].duration));
+        continue;
+      }
       const probed = await ffprobe(inputs[i]);
       const start = Number(segments[i].start ?? 0);
+      // Bound by the VIDEO stream, not the container: co-generated audio can run
+      // past the last frame, and an xfade offset past the video tail stalls the
+      // graph the same way the /frames 'last' seek used to.
       const eff = segments[i].duration != null
         ? Number(segments[i].duration)
-        : Math.max(0, probed.duration - start);
-      totalDuration += eff;
+        : Math.max(0, probed.videoDuration - start);
+      durs.push(eff);
     }
+    const totalDuration = fade
+      ? durs.reduce((a, b) => a + b, 0) - fade.dur * (segments.length - 1)
+      : durs.reduce((a, b) => a + b, 0);
 
-    // Normalize every segment (trim -> scale/pad -> fps -> pixfmt), then concat.
+    // Normalize every segment (trim -> scale/pad -> fps -> SAR -> pixfmt); still
+    // images become live footage via zoompan (2x pre-upscale kills the jitter).
+    // setsar=1 is load-bearing: xfade refuses inputs with mismatched SAR, and
+    // trimmed phone clips routinely carry a non-square PAR.
     const args = inputs.flatMap((f) => ['-i', f]);
     if (audioFile) args.push('-i', audioFile);
 
     const norm = (i, seg) => {
+      if (seg.image_url) {
+        const dur = Number(seg.duration);
+        const frames = Math.max(1, Math.round(fps * dur));
+        const travel = 0.12;
+        const z = seg.motion === 'none' ? '1'
+          : seg.motion === 'pull_back'
+            ? `${(1 + travel).toFixed(3)}-${travel}*on/${frames}`
+            : `1+${travel}*on/${frames}`;
+        return `[${i}:v]scale=${width * 2}:${height * 2}:force_original_aspect_ratio=increase,` +
+          `crop=${width * 2}:${height * 2},` +
+          `zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=${frames}:s=${width}x${height}:fps=${fps},` +
+          `setsar=1,format=yuv420p[v${i}]`;
+      }
       const trim = [
         seg.start != null ? `start=${Number(seg.start)}` : null,
         seg.duration != null ? `duration=${Number(seg.duration)}` : null,
       ].filter(Boolean).join(':');
       return `[${i}:v]${trim ? `trim=${trim},` : ''}setpts=PTS-STARTPTS,` +
         `scale=${width}:${height}:force_original_aspect_ratio=decrease,` +
-        `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,fps=${fps},format=yuv420p[v${i}]`;
+        `pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2,fps=${fps},setsar=1,format=yuv420p[v${i}]`;
     };
     const chains = segments.map((seg, i) => norm(i, seg));
-    const concatIn = segments.map((_, i) => `[v${i}]`).join('');
-    chains.push(`${concatIn}concat=n=${segments.length}:v=1:a=0[v]`);
+    if (fade && segments.length > 1) {
+      let cur = '[v0]';
+      let off = 0;
+      for (let i = 1; i < segments.length; i++) {
+        off += durs[i - 1] - fade.dur;
+        const out = i === segments.length - 1 ? '[v]' : `[x${i}]`;
+        chains.push(`${cur}[v${i}]xfade=transition=${fade.type}:duration=${fade.dur}:offset=${off.toFixed(3)}${out}`);
+        cur = out;
+      }
+    } else {
+      const concatIn = segments.map((_, i) => `[v${i}]`).join('');
+      chains.push(`${concatIn}concat=n=${segments.length}:v=1:a=0[v]`);
+    }
+
+    // Output start time of segment i (xfade overlaps eat into the timeline).
+    const segStart = (i) => durs.slice(0, i).reduce((a, b) => a + b, 0) - (fade ? fade.dur * i : 0);
 
     let mapAudio = [];
     if (audioFile) {
@@ -274,6 +340,23 @@ async function handleStitch(body) {
           `adelay=${delayMs}|${delayMs},apad=whole_dur=${totalDuration.toFixed(3)},` +
           `atrim=duration=${totalDuration.toFixed(3)}[a]`);
         mapAudio = ['-map', '[a]', '-c:a', 'aac', '-b:a', '128k'];
+      }
+    } else if (Number.isInteger(body.audio_from_segment)) {
+      // Keep a segment's own soundtrack (Kling keep_audio / Seedance co-generated
+      // audio / an already-final MP4 being re-composed), delayed to where that
+      // segment lands in the output timeline. Silently skipped when the segment
+      // has no audio stream — audio remains polish, never a failure.
+      const aIdx = Number(body.audio_from_segment);
+      if (aIdx >= 0 && aIdx < segments.length && !segments[aIdx].image_url) {
+        const { hasAudio } = await ffprobe(inputs[aIdx]);
+        if (hasAudio) {
+          const delayMs = Math.round(Math.max(0, segStart(aIdx)) * 1000);
+          const atrim = segments[aIdx].start != null ? `atrim=start=${Number(segments[aIdx].start)},` : '';
+          chains.push(`[${aIdx}:a]${atrim}asetpts=PTS-STARTPTS,` +
+            `adelay=${delayMs}|${delayMs},apad=whole_dur=${totalDuration.toFixed(3)},` +
+            `atrim=duration=${totalDuration.toFixed(3)}[a]`);
+          mapAudio = ['-map', '[a]', '-c:a', 'aac', '-b:a', '128k'];
+        }
       }
     }
 

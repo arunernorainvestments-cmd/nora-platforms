@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/card_face.dart';
+import '../../../core/widgets/cutscene_video.dart';
 import '../../market/providers/market_providers.dart';
 import '../../mint/services/mint_service.dart';
 import '../../wallet/providers/wallet_providers.dart';
@@ -102,6 +103,10 @@ class CollectionScreen extends ConsumerWidget {
                   serial: chit.serial,
                 ),
               ),
+              if (chit.cutsceneUrl != null) ...[
+                const SizedBox(height: 12),
+                _CutscenePreview(url: chit.cutsceneUrl!),
+              ],
               const SizedBox(height: 12),
               if (chit.isPending)
                 _PendingActions(chit: chit, dialogContext: ctx)
@@ -116,6 +121,47 @@ class CollectionScreen extends ConsumerWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Collapsed-by-default player for the chit's summon cutscene — the animation
+/// that plays when the card is summoned in battle. Collapsed so opening a card
+/// never auto-downloads video; tapping loads the MP4 (autoplays muted, controls
+/// allow unmuting to hear the moment's audio).
+class _CutscenePreview extends StatefulWidget {
+  const _CutscenePreview({required this.url});
+  final String url;
+
+  @override
+  State<_CutscenePreview> createState() => _CutscenePreviewState();
+}
+
+class _CutscenePreviewState extends State<_CutscenePreview> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 360),
+      child: _open
+          ? Column(mainAxisSize: MainAxisSize.min, children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: CutsceneVideo(url: widget.url)),
+              ),
+              const SizedBox(height: 4),
+              const Text('How this card looks when summoned in battle',
+                  style:
+                      TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+            ])
+          : OutlinedButton.icon(
+              onPressed: () => setState(() => _open = true),
+              icon: const Icon(Icons.play_circle_outline, size: 18),
+              label: const Text('Watch summon cutscene'),
+            ),
     );
   }
 }
