@@ -1,11 +1,11 @@
 {
-    "name": "nora_platforms",
-    "short_name": "nora_platforms",
+    "name": "N.O.R.A. Platforms",
+    "short_name": "NORA",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0A0A0F",
+    "theme_color": "#6C63FF",
+    "description": "Moments — mint your viral moments into playable BattleChit cards, battle in the shared arena, and back your favorite creators in live markets.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
