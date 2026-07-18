@@ -220,9 +220,17 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const { data: tpl } = await db.from('match_cut_templates')
     .select('duration_min_s,duration_max_s').eq('id', templateId).single();
 
+  // ── attempt: always 1 + the highest attempt ever recorded for this moment ────────
+  // Derived from history, never reset (POC gap 3): a post-delete re-mint used to
+  // start back at attempt 1, so the new render overwrote the prior attempt's stored
+  // MP4 while the old ledger row still pointed at the same path.
+  const { data: lastAttempt } = await db.from('cinematic_generations')
+    .select('attempt').eq('moment_id', moment_id)
+    .order('attempt', { ascending: false }).limit(1);
+  const attempt = Number(lastAttempt?.[0]?.attempt ?? 0) + 1;
+
   // ── seed: re-runs keep the seed and adjust {SUBJECT_DESC} only (Hard Rule 39) ────
   let seed: number | undefined;
-  let attempt = 1;
   if (body.rerun_of_generation_id) {
     const { data: prev } = await db.from('cinematic_generations').select('*')
       .eq('id', body.rerun_of_generation_id).eq('moment_id', moment_id).single();
@@ -231,7 +239,6 @@ Deno.serve(async (req: Request): Promise<Response> => {
       return json({ error: 'Only a rejected generation can be re-run' }, 409);
     }
     seed = Number(prev.generation_seed);
-    attempt = prev.attempt + 1;
   }
 
   // ── everything paid/slow happens in a background job; respond with its id now ────
@@ -294,6 +301,9 @@ interface RenderStash {
   overlay_audio?: boolean;
   clip_path?: string | null;
   audio_source?: 'original' | 'generated' | 'none';
+  // The user's chosen card name (POC gap 2): a parked render has no ledger row yet,
+  // so the stash is the only place the name survives a closed tab until then.
+  requested_name?: string | null;
 }
 
 // ── the background pipeline: generation → post-gen moderation → completion ─────────
@@ -504,6 +514,7 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
         overlay_audio: v2v?.overlayAudio ?? false,
         clip_path: v2v ? ((moment.raw_clip_path as string | null) ?? null) : null,
         audio_source: v2v?.audioSource ?? (cfg.seedanceAudio ? 'generated' : 'none'),
+        requested_name: body.name?.trim() || null,
       };
       await jobUpdate(db, jobId, { provider_state: stash });
       return await awaitCutscene(db, cfg, jobId, submit.requestId, submit.model, submit.seed);
@@ -740,6 +751,7 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       clip_reference_used: clipUsed || v2vUsed !== null,
       v2v_provider: v2vUsed,
       audio_source: audioSource,
+      requested_name: (body.name?.trim() || renderResume?.requested_name) ?? null,
     }).select('id').single();
     if (gErr || !gen) {
       await jobUpdate(db, jobId, { status: 'failed', error: 'ledger', detail: `ledger write failed: ${gErr?.message}` });
@@ -834,7 +846,10 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     p_chit_type: chitType,
     p_timing: effectTiming,
     p_effect_template_id: effectTemplateId,
-    p_name: body.name ?? null,
+    // The chosen name survives a resume via the ledger/stash (POC gap 2); a fresh
+    // body.name wins so a deliberate rename at the resumed Review step still lands.
+    p_name: body.name?.trim() || renderResume?.requested_name ||
+      ((resumeGen?.requested_name as string | null) ?? null),
     p_keywords: grantKeywords,
     p_vibe_gate: body.vibe_gate ?? null,
     p_card_art_url: artUrl,
