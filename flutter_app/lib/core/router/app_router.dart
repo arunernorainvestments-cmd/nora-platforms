@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:web/web.dart' as web;
+import '../widgets/not_found_screen.dart';
 import '../../features/auth/screens/forgot_password_screen.dart';
 import '../../features/auth/screens/update_password_screen.dart';
 import '../../features/auth/screens/login_screen.dart';
@@ -76,9 +78,12 @@ final routerProvider = Provider<GoRouter>((ref) {
   ref.listen(approvalStatusProvider, (_, __) => notifier.notify());
   ref.onDispose(notifier.dispose);
 
-  return GoRouter(
+  final router = GoRouter(
     initialLocation: '/',
     refreshListenable: notifier,
+    // Unknown URLs get the branded dead-end instead of GoRouter's stock error.
+    errorBuilder: (context, state) =>
+        NotFoundScreen(location: state.uri.path),
     redirect: (context, state) {
       final authState = ref.read(authStateProvider);
       final approvalStatus = ref.read(approvalStatusProvider);
@@ -497,4 +502,61 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
     ],
   );
+
+  // Per-route browser-tab/history titles: index.html ships one static <title>,
+  // so every screen read the same. Track navigation and retitle the document.
+  void syncTitle() {
+    web.document.title =
+        _documentTitleFor(router.routerDelegate.currentConfiguration.uri.path);
+  }
+
+  router.routerDelegate.addListener(syncTitle);
+  ref.onDispose(() => router.routerDelegate.removeListener(syncTitle));
+
+  return router;
 });
+
+/// Browser-tab title per top-level route (keyed on the first path segment so
+/// detail routes inherit their section's title).
+String _documentTitleFor(String path) {
+  const brand = 'N.O.R.A. Platforms';
+  final segment =
+      path.split('/').firstWhere((s) => s.isNotEmpty, orElse: () => '');
+  final section = switch (segment) {
+    '' || 'w' => null, // launch/waitlist cover — keep the brand headline
+    'home' => 'Home',
+    'login' => 'Sign in',
+    'signup' => 'Create account',
+    'forgot-password' || 'update-password' => 'Reset password',
+    'pending-approval' => 'Pending approval',
+    'join' => 'Join',
+    'mint' => 'Create Your BattleChit',
+    'collection' => 'My Collection',
+    'market' => 'Chit Market',
+    'battle' => 'Battle Arena',
+    'arena' => 'Arena',
+    'markets' => 'Creator Markets',
+    'mybets' => 'My Bets',
+    'news' || 'explore' => 'Celebrity News',
+    'hot-topic' => 'Hot Topic',
+    'search' => 'Search',
+    'profile' => 'Profile',
+    'u' => 'Profile',
+    'wallet' => 'Wallet',
+    'verify-identity' => 'Verify identity',
+    'challenges' => 'Challenges',
+    'dashboard' => 'Score Dashboard',
+    'marketplace' => 'Card Marketplace',
+    'licenses' || 'license' => 'Licensing',
+    'my-licenses' => 'My Licenses',
+    'create-listing' => 'Create Listing',
+    'partners' => 'Partners',
+    'poll' => 'Weekly Poll',
+    'emergency-fund' => 'Emergency Fund',
+    'plan' => 'Roadmap',
+    'support' => 'Support',
+    'faq' => 'FAQ',
+    _ => null,
+  };
+  return section == null ? '$brand — Moments Card Battler' : '$section · $brand';
+}
