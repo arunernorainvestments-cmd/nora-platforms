@@ -1,5 +1,5 @@
 # NORA Platforms — PLAN.md
-# Where we're going. Last updated: 2026-07-13.
+# Where we're going. Last updated: 2026-07-18.
 # Rules for HOW to build any of this live in CLAUDE.md ("Building future work safely").
 # Full specs / schemas / build history for anything referenced here live in ARCHIVE.md.
 # Cross-repo (nora-arena) contract: RECONCILIATION.md. Doc map: README.md.
@@ -39,6 +39,44 @@
   `battle_payments_mode=sim` · `marketplace_usd_lane=FALSE`. Flipping any is a spend/creds/founder decision.
 
 **Active build tracks — see "Where we're going next."**
+
+---
+
+## 2026-07-18 — ✅ SHIPPED: POC leftovers + launch-hygiene UX phase + admin MVP (PRs #33–#38)
+
+One sweep through the standing queue (everything below deployed to prod same day):
+1. **POC gaps 2+3** (PR #33, mig 167): chosen card name survives any resume
+   (`cinematic_generations.requested_name` + parked-render stash + `moment-ingest
+   draft_name` + wizard prefill); attempt now derives from `max(attempt)+1` so a
+   post-delete re-mint never overwrites the prior attempt's stored MP4.
+2. **Web shell launch hygiene** (PR #34): branded splash, viewport meta, v3
+   title/description, OG/Twitter cards + `og-image.jpg` (from the NORA Rocket key
+   art), branded manifest, themed 404 (GoRouter errorBuilder), per-route document
+   titles. **`tools/site_diagnostic.sh` exits 0 against prod.** (Icons were already
+   NORA art — no replacement needed. Item C icon tree-shaking still open, budget passes.)
+3. **Mint wait UX** (PR #35): elapsed clock + "usually 1–3 minutes" on Generating,
+   retry-is-safe copy on failure, and the Review step now shows the server-selected
+   effect's description (`moment-classify` returns `effect_desc`) — item 8's
+   held-for-review state had already shipped with the violence-hold flow.
+4. **Spectate feed** (PR #36): the engine's `'effect'` events (migs 128/151/152) now
+   render as readable lines across the full Wave-1 kind/target vocabulary; all other
+   emitted event types verified covered; vibe meter confirmed on spectate + play.
+5. **Marketplace loop VERIFIED on prod** (PR #37): new repeatable
+   `tools/marketplace/smoke_market_loop.ts` drives the exact UI RPCs — list (escrow
+   asserted) → delist (copy returned) → re-list → cross-account buy (tokens moved
+   price-for-price, `chit_sale`/`chit_purchase` rows, listing `sold`, provenance
+   stamped `tokens`). A founder browser click-through remains a nice-to-have.
+6. **Admin console MVP** (PR #38, `/admin` + `admin-review` edge fn): moderation
+   review queue (held cutscenes w/ signed frames, approve/reject/reopen), open
+   escalations (resolve; minor-safety never auto-approves), similarity-flagged clip
+   verdicts, stuck mint-job detection + mark-failed. Gated on `profiles.is_admin`
+   (founder flagged; 401/403 verified live). The held-for-review flow no longer
+   needs raw SQL — and 8 real open escalations surfaced on first load.
+   NOT yet in the MVP (next iterations): user/account ops, config/kill-switches,
+   token adjustments, marketplace disputes — see the 2026-07-15 callout below.
+
+Deliberately NOT touched per founder: dead-code deletions (campaigns/discover/
+notifications) and Phase 2 morph bridges.
 
 ---
 
@@ -86,9 +124,8 @@ the state to revert to:
      `mint-staging/v2v-trials/`. White-into-white fadewhite seams splice invisibly onto ANY
      core. `match_cut_anchor_plates.start/end_motion_url` (mig 166) — set NULL to revert to
      the zoompan stills; probe gained the `plate_motion` one-time submit mode.
-  2. Wizard Review step doesn't persist the chosen name across a resume.
-  3. Attempt-path overwrite: a post-delete re-mint reuses `attempt1` so the new render
-     overwrites the prior file (ledger rows share a path). Derive attempt from history.
+  2. ✅ SHIPPED 2026-07-18 (PR #33) — the chosen name survives resume (mig 167).
+  3. ✅ SHIPPED 2026-07-18 (PR #33) — attempt derived from history, no overwrite.
 
 ---
 
@@ -299,7 +336,7 @@ now the intended test loop.
 
 ---
 
-## 2026-07-11 — NEXT PHASE: UI/UX shell + mint-flow polish (diagnostic-driven)
+## 2026-07-11 — ✅ SHIPPED 2026-07-18 (PRs #34/#35, except C10 icon tree-shaking + D11 dead-code): UI/UX shell + mint-flow polish (diagnostic-driven)
 
 Founder asked for a UX audit ahead of today's live user mint test. Diagnostic run 2026-07-11:
 `flutter analyze` 0 issues · `flutter test` 5/5 pass · **new repeatable check
