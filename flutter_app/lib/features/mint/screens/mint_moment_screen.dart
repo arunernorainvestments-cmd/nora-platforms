@@ -72,6 +72,11 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
   // the long cutscene stage creeps with elapsed time so the number keeps moving.
   double _genTarget = 0;
   String _genLabel = 'Starting…';
+  DateTime? _genStart;
+  Timer? _genClock;
+  // Set when a generate attempt failed, so Review can say retrying is safe
+  // (dedup + resume guards mean a re-click never re-charges finished work).
+  bool _genFailed = false;
 
   // Step-5 state.
   Map<String, dynamic>? _mint;
@@ -81,6 +86,7 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
   void dispose() {
     _urlController.dispose();
     _nameController.dispose();
+    _genClock?.cancel();
     _revokeObjectUrl();
     super.dispose();
   }
@@ -337,6 +343,7 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         c['effect_template_id'] = res['effect_template_id'];
         c['effect_timing'] = res['effect_timing'];
         c['effect_name'] = res['effect_name'];
+        c['effect_desc'] = res['effect_desc'];
         if (selection == 'auto') _autoFamily = res['family']?.toString();
       });
     } catch (e) {
@@ -356,8 +363,16 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
     setState(() {
       _step = _Step.generating;
       _error = null;
+      _genFailed = false;
       _genTarget = 2;
       _genLabel = 'Starting…';
+      _genStart = DateTime.now();
+    });
+    // Elapsed-time readout: live renders take minutes — a visibly ticking clock
+    // says "still working" better than any spinner.
+    _genClock?.cancel();
+    _genClock = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted && _step == _Step.generating) setState(() {});
     });
     try {
       var res = await MintService.generate(
@@ -423,8 +438,12 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       if (!mounted) return;
       setState(() {
         _error = e is MintException ? e.message : 'Generation failed — $e';
+        _genFailed = true;
         _step = _Step.review;
       });
+    } finally {
+      _genClock?.cancel();
+      _genClock = null;
     }
   }
 
@@ -1083,6 +1102,16 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         Row(children: [
           _lockedChip(Icons.bolt_outlined, 'Effect: ${c['effect_name']}'),
         ]),
+        // Rules preview (server-selected, Hard Rule 34): what the effect DOES,
+        // so the card isn't confirmed sight-unseen. Power still scales with tier.
+        if ((c['effect_desc'] ?? '').toString().isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            c['effect_desc'].toString(),
+            style: const TextStyle(
+                color: AppTheme.textSecondary, fontSize: 12, height: 1.35),
+          ),
+        ],
       ],
       const SizedBox(height: 16),
       const Text('Card name',
@@ -1134,6 +1163,15 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         label: const Text('Generate my BattleChit'),
       ),
       _errorBanner(),
+      if (_genFailed && _error != null)
+        const Padding(
+          padding: EdgeInsets.only(top: 6),
+          child: Text(
+            'Trying again is safe — anything that already finished rendering is '
+            'reused, not re-charged.',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+          ),
+        ),
     ]);
   }
 
@@ -1183,16 +1221,33 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         child: Text(_genLabel,
             style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
       ),
+      if (_genStart != null) ...[
+        const SizedBox(height: 6),
+        Center(
+          child: Text(
+              '${_fmtElapsed(DateTime.now().difference(_genStart!))} elapsed · '
+              'usually 1–3 minutes',
+              style:
+                  const TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+        ),
+      ],
       const SizedBox(height: 8),
       const Center(
         child: Text(
-            'Rendering the card art and match-cut — this takes a minute or two. '
-            'Keep this tab open.',
+            'Rendering the card art and match-cut. Keep this tab open — if '
+            'anything hiccups, clicking Generate again picks up right where '
+            'this left off.',
             textAlign: TextAlign.center,
             style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
       ),
       const SizedBox(height: 8),
     ]);
+  }
+
+  static String _fmtElapsed(Duration d) {
+    final m = d.inMinutes;
+    final s = d.inSeconds % 60;
+    return m > 0 ? '${m}m ${s}s' : '${s}s';
   }
 
   /// sim mode returns placeholder media (a 1x1 png + a non-playable mp4 stub), so we
