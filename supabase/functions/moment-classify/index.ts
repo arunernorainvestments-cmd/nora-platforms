@@ -206,6 +206,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
     effect_template_id: effect?.effect_template_id ?? null,
     effect_timing: effect?.timing_type ?? null,
     effect_name: effect?.name ?? null,
+    // Authored template description — the Review step's rules preview (the user
+    // used to confirm a card without ever seeing what its effect does).
+    effect_desc: effect?.description ?? null,
   });
 });
 
@@ -214,7 +217,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
 // templates, timing-filtered for spell-moments (one-shot: on_summon/activated only). sim →
 // deterministic hash of the subject description (stable, no spend, gives variety once the
 // library has >1 per family); live → an LLM allowlist pick with the deterministic fallback.
-interface EffectPick { effect_template_id: string; timing_type: string; name: string }
+interface EffectPick {
+  effect_template_id: string; timing_type: string; name: string; description: string | null;
+}
 
 async function selectEffectTemplate(
   db: SupabaseClient,
@@ -243,7 +248,10 @@ async function selectEffectTemplate(
     const live = await liveSelectEffect(apiKey, model, subjectDesc, list);
     if (live) chosen = live;
   }
-  return { effect_template_id: chosen.id, timing_type: chosen.timing_type, name: chosen.name };
+  return {
+    effect_template_id: chosen.id, timing_type: chosen.timing_type, name: chosen.name,
+    description: list.find((c) => c.id === chosen.id)?.description ?? null,
+  };
 }
 
 function fnv1a(s: string): number {
