@@ -145,9 +145,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const { data: momentRow } = await db.from('moments')
     .select('clip_status').eq('id', momentId).single();
   const { data: resumableRows } = await db.from('cinematic_generations')
-    .select('id, status').eq('moment_id', momentId)
+    .select('id, status, requested_name').eq('moment_id', momentId)
     .in('status', ['generated', 'moderation_approved'])
     .order('created_at', { ascending: false }).limit(1);
+
+  // The chosen card name for the resumed Review step (POC gap 2): from the
+  // resumable ledger row, else from a parked render's stash (mint_jobs.provider_state
+  // — that render has no ledger row yet). Null → the wizard uses suggested_name.
+  let draftName = (resumableRows?.[0]?.requested_name as string | null) ?? null;
+  if (!draftName) {
+    const { data: parkedJobs } = await db.from('mint_jobs')
+      .select('provider_state').eq('moment_id', momentId).eq('status', 'running')
+      .order('created_at', { ascending: false }).limit(1);
+    draftName = (parkedJobs?.[0]?.provider_state as { requested_name?: string | null } | null)
+      ?.requested_name ?? null;
+  }
 
   return json({
     moment_id: momentId,
@@ -163,6 +175,8 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // 'moderation_approved' → Generate completes the card free;
     // 'generated' → still awaiting a human safety verdict.
     resumable_generation: resumableRows?.[0] ?? null,
+    // The card name the user chose before leaving, or null — prefill over suggested_name.
+    draft_name: draftName,
     next: 'POST cinematic-mint with this moment_id to generate the chit',
   });
 });

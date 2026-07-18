@@ -288,7 +288,12 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
     try {
       final c = await MintService.classify(momentId);
       if (!mounted) return;
-      _nameController.text = (c['suggested_name'] ?? '').toString();
+      // A resumed mint keeps the name the user already chose (surfaced by
+      // moment-ingest from the generation ledger / parked-render stash) — only a
+      // fresh mint seeds the field from the classifier's suggestion.
+      final draftName = (_moment?['draft_name'] ?? '').toString().trim();
+      _nameController.text =
+          draftName.isNotEmpty ? draftName : (c['suggested_name'] ?? '').toString();
       setState(() {
         _classify = c;
         _chitType = (c['chit_type'] ?? 'creature').toString();
