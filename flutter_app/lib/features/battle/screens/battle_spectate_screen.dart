@@ -316,6 +316,9 @@ class _EventRow extends StatelessWidget {
             const Color(0xFFFFD700),
             '$_actor performs a FUSION!'
           ),
+        // Wave-1 effect resolution (migs 151/152): payload carries
+        // {kind, target, magnitude} from ccg_apply_effect.
+        'effect' => (Icons.auto_fix_high, AppTheme.secondary, _effectText()),
         'ko' => (Icons.close, AppTheme.danger, 'A creature is destroyed'),
         'life_change' => (
             Icons.favorite,
@@ -344,6 +347,42 @@ class _EventRow extends StatelessWidget {
           ),
         _ => (Icons.circle, AppTheme.textSecondary, event.eventType),
       };
+
+  /// Friendly line for an effect event, from the authored library's
+  /// {kind, target, magnitude} vocabulary (unknown kinds still say something).
+  String _effectText() {
+    final kind = (event.payload['kind'] ?? '').toString();
+    final target = (event.payload['target'] ?? '').toString();
+    final mag = (event.payload['magnitude'] as num?)?.toInt();
+    final n = mag == null ? '' : '$mag ';
+    final who = switch (target) {
+      'self' => 'itself',
+      'ally_target' => 'an ally',
+      'all_allies' => 'all allies',
+      'enemy_target' => 'an enemy',
+      'all_enemies' => 'all enemies',
+      'enemy_face' => 'the opponent',
+      _ => 'its target',
+    };
+    return switch (kind) {
+      'direct_damage' => '$_actor\'s effect deals ${n}damage to $who',
+      'aoe_damage' => '$_actor\'s effect blasts $who for ${n}damage',
+      'heal' => '$_actor\'s effect heals $who for $n',
+      'buff_atk' => '$_actor\'s effect gives $who +${n}ATK',
+      'buff_hp' => '$_actor\'s effect gives $who +${n}HP',
+      'buff_atk_hp' => '$_actor\'s effect gives $who +$n/+$n',
+      'debuff_atk' => '$_actor\'s effect drains ${n}ATK from $who',
+      'debuff_hp' => '$_actor\'s effect saps ${n}HP from $who',
+      'shield_grant' => '$_actor\'s effect shields $who',
+      'taunt_grant' => '$_actor\'s effect makes $who taunt',
+      'removal' => '$_actor\'s effect destroys $who',
+      'draw_card' => '$_actor\'s effect draws a card',
+      'aura_refund' => '$_actor\'s effect refunds ${n}Aura',
+      'disrupt_discard' => '$_actor\'s effect forces a discard',
+      _ => '$_actor\'s ${kind.isEmpty ? 'effect' : kind.replaceAll('_', ' ')} '
+          'resolves',
+    };
+  }
 
   String _lifeText() {
     final amount = (event.payload['amount'] as num?)?.toInt();
