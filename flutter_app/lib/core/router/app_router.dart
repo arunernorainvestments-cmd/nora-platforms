@@ -53,6 +53,7 @@ import '../../features/emergency_fund/screens/contribute_screen.dart';
 import '../../features/emergency_fund/screens/request_funds_screen.dart';
 import '../../features/emergency_fund/screens/my_requests_screen.dart';
 import '../../features/emergency_fund/screens/vote_screen.dart';
+import '../../features/admin/screens/admin_screen.dart';
 import '../shell/main_shell.dart';
 
 // Notifier that triggers GoRouter to re-evaluate its redirect without
@@ -137,6 +138,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         '/markets', '/profile', '/wallet', '/mybets', '/arena', '/battle',
         '/marketplace', '/verify-identity',
         '/my-licenses', '/create-listing', '/mint', '/collection', '/market',
+        '/admin',
       ];
       // sub-paths are also protected
       final isProtected = protectedRoutes.contains(loc) ||
@@ -400,6 +402,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         ),
       ),
 
+      // ── Admin operations console (auth here; is_admin enforced by the
+      // admin-review edge function — a non-admin sees the locked state) ─────
+      GoRoute(
+        path: '/admin',
+        builder: (context, state) => const AdminScreen(),
+      ),
+
       // ── Authenticated shell routes ─────────────────────────────────────────
       ShellRoute(
         builder: (context, state, child) => MainShell(child: child),
@@ -556,6 +565,7 @@ String _documentTitleFor(String path) {
     'plan' => 'Roadmap',
     'support' => 'Support',
     'faq' => 'FAQ',
+    'admin' => 'Admin',
     _ => null,
   };
   return section == null ? '$brand — Moments Card Battler' : '$section · $brand';
