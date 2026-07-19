@@ -1,5 +1,5 @@
 # NORA Platforms — PLAN.md
-# Where we're going. Last updated: 2026-07-18.
+# Where we're going. Last updated: 2026-07-19.
 # Rules for HOW to build any of this live in CLAUDE.md ("Building future work safely").
 # Full specs / schemas / build history for anything referenced here live in ARCHIVE.md.
 # Cross-repo (nora-arena) contract: RECONCILIATION.md. Doc map: README.md.
@@ -39,6 +39,37 @@
   `battle_payments_mode=sim` · `marketplace_usd_lane=FALSE`. Flipping any is a spend/creds/founder decision.
 
 **Active build tracks — see "Where we're going next."**
+
+---
+
+## 2026-07-19 — BUILT (PRs #39–#41 open): deck-builder, /arena v3, admin iteration 2, P7 money smoke, hygiene
+
+One pass through the post-sweep queue (parked items untouched per founder: dead-code
+deletions, Phase 2 morph bridges, P7 7.2 archival, 7.4 reset):
+1. **Web deck-builder** (PR #39): `/decks` list (create/rename/delete, legality chips)
+   + `/decks/:id` editor (copy steppers capped at min(owned,2), live 20-count, Aura-curve
+   histogram, CardFace preview, friendly `deck_set_chits` validation errors). Unblocks a
+   real user fielding a 20-card deck from the web — the P7 deck-entry prerequisite.
+2. **/arena rebuilt as the v3 Moments Arena hub** (PR #39): the page still sold the
+   retired Phase-D creator arena. Now: mint→deck→battle loop, crossplay queue CTA, live
+   CCG spectate tiles, resume banner; legacy creator arena demoted to a collapsed
+   section (screens NOT deleted — gated retirement stands).
+3. **Admin console iteration 2** (PR #40, **mig 168**): Users tab (search; flags; KYC
+   *status*; balance; audited token adjustments — new `admin_adjustment` ledger type,
+   balance-guarded, note required), Config tab (kill-switches over
+   platform_integrity_settings; `enforce_one_role_per_match` rendered locked-ON and NOT
+   toggleable; USD lane + payments-mode as danger founder gates), Market tab (admin
+   delist → escrow returns to seller, same money semantics as seller delist). Hamburger
+   menu now shows "Admin console" to is_admin users. **Login: noraplatforms.com/admin.**
+   ⚠️ Deploy after merge: `supabase db push` (mig 168) + redeploy `admin-review`.
+4. **P7 7.5 money round-trip smoke** (PR #41): `tools/battle/smoke_money_roundtrip.ts`
+   — queue-pair on real decks → G-MON market → combatant/non-KYC bet guards → USD bets
+   → summon → forfeit → settlement asserted to the cent incl. moment-owner royalty +
+   passive-holder slices. ⚠️ NOT yet run (needs founder SERVICE_KEY); running it +
+   `smoke_crossplay.ts` closes P7 7.5.
+5. **Hygiene** (PR #41): `deno check` clean on ALL edge fns (the 9 pre-existing
+   failures — untyped-client generics, pkcs8 buffer type, builder `.catch`); **icon
+   tree-shaking re-enabled in CI** (MaterialIcons 1.6MB→32KB; C10 closed).
 
 ---
 
