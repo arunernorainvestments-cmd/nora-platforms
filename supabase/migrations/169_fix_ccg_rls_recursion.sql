@@ -81,7 +81,7 @@ CREATE POLICY "ccg_events_select" ON public.ccg_events
 -- and proves: no recursion error, own hand visible, opponent hand invisible.
 DO $$
 DECLARE
-  v_user UUID; v_match UUID; v_n INTEGER;
+  v_user UUID; v_match UUID; v_chit UUID; v_n INTEGER;
 BEGIN
   SELECT id INTO v_user FROM auth.users LIMIT 1;
   IF v_user IS NULL THEN
@@ -89,17 +89,19 @@ BEGIN
     RETURN;
   END IF;
 
+  v_chit := public.create_moment_chit('__mig169_smoke__', 'athlete', 'creature', 'F');
+
   INSERT INTO public.ccg_matches (is_test, active_seat, turn_number)
   VALUES (FALSE, 1, 1) RETURNING id INTO v_match;
   INSERT INTO public.ccg_match_players (match_id, seat, user_id, life)
   VALUES (v_match, 1, v_user, 30), (v_match, 2, NULL, 30);
   INSERT INTO public.ccg_match_cards
-    (match_id, owner_seat, zone, deck_order, snap_chit_type, snap_aura_cost,
-     snap_atk, snap_hp, cur_atk, cur_hp)
+    (match_id, owner_seat, chit_id, zone, deck_order, snap_chit_type,
+     snap_aura_cost, snap_atk, snap_hp, cur_atk, cur_hp)
   VALUES
-    (v_match, 1, 'hand', 1, 'creature', 1, 1, 1, 1, 1),   -- own hand: visible
-    (v_match, 2, 'hand', 1, 'creature', 1, 1, 1, 1, 1),   -- opp hand: hidden
-    (v_match, 2, 'field', 2, 'creature', 1, 1, 1, 1, 1);  -- board: visible
+    (v_match, 1, v_chit, 'hand', 1, 'creature', 1, 1, 1, 1, 1),   -- own hand: visible
+    (v_match, 2, v_chit, 'hand', 1, 'creature', 1, 1, 1, 1, 1),   -- opp hand: hidden
+    (v_match, 2, v_chit, 'field', 2, 'creature', 1, 1, 1, 1, 1);  -- board: visible
 
   PERFORM set_config('request.jwt.claims',
     json_build_object('sub', v_user, 'role', 'authenticated')::text, true);
@@ -122,5 +124,6 @@ BEGIN
 
   RESET ROLE;
   DELETE FROM public.ccg_matches WHERE id = v_match;  -- cascades players/cards
+  DELETE FROM public.moment_chits WHERE id = v_chit;
   RAISE NOTICE 'ccg-rls-recursion smoke OK: participant reads work, hand privacy holds';
 END $$;
