@@ -42,10 +42,30 @@
 
 ---
 
-## 2026-07-19 — BUILT (PRs #39–#41 open): deck-builder, /arena v3, admin iteration 2, P7 money smoke, hygiene
+## 2026-07-19 — ✅ SHIPPED + DEPLOYED (PRs #39–#45): deck-builder, /arena v3, admin iter 2, P7 7.5 VERIFIED, RLS-recursion fix
 
 One pass through the post-sweep queue (parked items untouched per founder: dead-code
-deletions, Phase 2 morph bridges, P7 7.2 archival, 7.4 reset):
+deletions, Phase 2 morph bridges, P7 7.2 archival, 7.4 reset). All merged same day;
+migs 168+169 pushed to prod (ledger at **169**); admin-review redeployed; web CI green.
+
+**Same-day follow-through (founder token supplied):**
+- **P7 7.5 CLOSED for its two e2e legs, run against PROD:** `smoke_crossplay.ts`
+  (deck-entry pair → RLS hand privacy → real summon turn → forfeit) and
+  `smoke_money_roundtrip.ts` (G-MON market over a real queue-paired match →
+  combatant-bet + non-KYC-bet guards RAISE → $10/$6 sim-USD bets → summon → forfeit →
+  settlement asserted **to the cent**: predictors 1280¢, winner 96¢, loser 32¢,
+  **moment-owner royalty 32¢**, passive holders 40¢/40¢, platform 80¢ retained).
+- **mig 169 (PRs #43–#45): CCG RLS recursion fix — a REAL prod bug the smoke caught.**
+  The mig-126 participant policies were mutually recursive (matches↔players); every
+  authenticated read of `ccg_match_players`/`ccg_match_cards` raised "infinite
+  recursion" — the web play client's hand/seat/resume reads had been silently erroring
+  into empty states since launch of the play client. Fixed with SECURITY DEFINER
+  helpers (`ccg_is_participant`/`ccg_participant_seat`/`ccg_match_is_test`); privacy
+  line unchanged (own hand only; field/graveyard spectator-visible). The crossplay
+  smoke now FAILS on read errors instead of passing vacuously.
+- Residual smoke identities (`crossplay-smoke-*`, `money-smoke-*`) are FK-anchored
+  (append-only ledgers) — flagged `is_test_account` (HR15) and added to the 7.4 sweep.
+- ⚠️ The session's SUPABASE_ACCESS_TOKEN appeared in transcript → rotation list.
 1. **Web deck-builder** (PR #39): `/decks` list (create/rename/delete, legality chips)
    + `/decks/:id` editor (copy steppers capped at min(owned,2), live 20-count, Aura-curve
    histogram, CardFace preview, friendly `deck_set_chits` validation errors). Unblocks a
@@ -54,19 +74,17 @@ deletions, Phase 2 morph bridges, P7 7.2 archival, 7.4 reset):
    retired Phase-D creator arena. Now: mint→deck→battle loop, crossplay queue CTA, live
    CCG spectate tiles, resume banner; legacy creator arena demoted to a collapsed
    section (screens NOT deleted — gated retirement stands).
-3. **Admin console iteration 2** (PR #40, **mig 168**): Users tab (search; flags; KYC
-   *status*; balance; audited token adjustments — new `admin_adjustment` ledger type,
-   balance-guarded, note required), Config tab (kill-switches over
-   platform_integrity_settings; `enforce_one_role_per_match` rendered locked-ON and NOT
-   toggleable; USD lane + payments-mode as danger founder gates), Market tab (admin
-   delist → escrow returns to seller, same money semantics as seller delist). Hamburger
-   menu now shows "Admin console" to is_admin users. **Login: noraplatforms.com/admin.**
-   ⚠️ Deploy after merge: `supabase db push` (mig 168) + redeploy `admin-review`.
-4. **P7 7.5 money round-trip smoke** (PR #41): `tools/battle/smoke_money_roundtrip.ts`
-   — queue-pair on real decks → G-MON market → combatant/non-KYC bet guards → USD bets
-   → summon → forfeit → settlement asserted to the cent incl. moment-owner royalty +
-   passive-holder slices. ⚠️ NOT yet run (needs founder SERVICE_KEY); running it +
-   `smoke_crossplay.ts` closes P7 7.5.
+3. **Admin console iteration 2** (PR #40, **mig 168** — APPLIED; fn redeployed): Users
+   tab (search; flags; KYC *status*; balance; audited token adjustments — new
+   `admin_adjustment` ledger type, balance-guarded, note required), Config tab
+   (kill-switches over platform_integrity_settings; `enforce_one_role_per_match`
+   rendered locked-ON and NOT toggleable; USD lane + payments-mode as danger founder
+   gates), Market tab (admin delist → escrow returns to seller, same money semantics
+   as seller delist). Hamburger menu shows "Admin console" to is_admin users.
+   **Login: noraplatforms.com/admin.** NOTE (found applying the mig):
+   `token_transactions.reference_id` is **TEXT on prod** (drift vs mig 002's uuid).
+4. **P7 7.5 money round-trip smoke** (PR #41 + fixes): `tools/battle/
+   smoke_money_roundtrip.ts` — ✅ RUN AND PASSED on prod same day (see above).
 5. **Hygiene** (PR #41): `deno check` clean on ALL edge fns (the 9 pre-existing
    failures — untyped-client generics, pkcs8 buffer type, builder `.catch`); **icon
    tree-shaking re-enabled in CI** (MaterialIcons 1.6MB→32KB; C10 closed).
@@ -600,10 +618,13 @@ P0–P6 shipped to prod (migs 116–137; per-phase history in ARCHIVE). What P7 
       truncate test Arena/Battle rows, reset balances/bets/markets, re-grant signup bonuses; remove ALL dev
       tooling (`dev_*` RPCs, `arena-dev-*` fns, bot-backer/test-match-maintainer crons per ARCHIVE §A5);
       sweep dev-seed chits (P2/P3), `is_test` matches, and the smoke identities
-      (`cinematic-smoke*@`, `mkt-smoke-1/2@noraplatforms.com` + their ledger/sales residue).
-- [ ] **7.5 Final verification**: full `flutter analyze` + an e2e **real-money round-trip** (2 KYC'd users,
-      sim USD: market → bets → settle → moment-owner + passive-holder credits) and a **deck-entry** match from
-      two real 20-card decks — neither exercised end-to-end yet (per-phase apply-time smokes are green).
+      (`cinematic-smoke*@`, `mkt-smoke-1/2@`, `crossplay-smoke-*@`, `money-smoke-*@noraplatforms.com`
+      + their ledger/sales residue — the crossplay/money ones are FK-anchored, all is_test-flagged).
+- [x] **7.5 Final verification** — ✅ DONE 2026-07-19: `flutter analyze` clean; **real-money round-trip
+      PASSED on prod** (`tools/battle/smoke_money_roundtrip.ts` — 2 sim-KYC users, sim USD: G-MON market →
+      guarded bets → settle → moment-owner + passive-holder credits, asserted to the cent) and the
+      **deck-entry** match e2e PASSED (`tools/battle/smoke_crossplay.ts` — two real 20-card decks through
+      the live queue; hand-privacy RLS verified non-vacuously after the mig-169 recursion fix).
 - **🚧 Open product call — G-MON:** real-money `battle_outcome` market created iff both players KYC'd; royalty
   routes to moment-owners of played chits; consent at mint, KYC at cash-out. Gate is built; confirm before go-live.
 
