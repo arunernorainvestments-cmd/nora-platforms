@@ -12,7 +12,13 @@
 // POST body (SMBH):        { boost_type: 'super_massive_black_hole', category }
 // Returns: { success: true, tokens_spent, effective_delta, expires_at }
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+// The untyped-schema client shape createClient() actually returns; bare
+// `ReturnType<typeof createClient>` resolves to different generics under
+// supabase-js v2.5x types and rejects the real instance.
+// deno-lint-ignore no-explicit-any
+type ServiceClient = SupabaseClient<any, any, any, any, any>;
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': 'https://noraplatforms.com',
@@ -416,7 +422,7 @@ async function fireChallenge(
 }
 
 async function awardBadgeBySlug(
-  serviceClient: ReturnType<typeof createClient>,
+  serviceClient: ServiceClient,
   userId: string,
   badgeSlug: string,
 ): Promise<void> {
@@ -438,7 +444,7 @@ async function awardBadgeBySlug(
 }
 
 async function checkAndAwardUntouchable(
-  serviceClient: ReturnType<typeof createClient>,
+  serviceClient: ServiceClient,
   targetUserId: string,
 ): Promise<void> {
   // Award Untouchable if target has an active spotlight_entry boost (still pinned)

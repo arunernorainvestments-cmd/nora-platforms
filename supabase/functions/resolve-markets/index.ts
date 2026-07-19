@@ -2,7 +2,13 @@
 // Triggered by pg_cron every 15 minutes.
 // Resolves all markets whose end_at has passed and status is still 'open'.
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+// The untyped-schema client shape createClient() actually returns; bare
+// `ReturnType<typeof createClient>` resolves to different generics under
+// supabase-js v2.5x types and rejects the real instance.
+// deno-lint-ignore no-explicit-any
+type Db = SupabaseClient<any, any, any, any, any>;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 7: fire-and-forget challenge evaluation hook
@@ -129,7 +135,7 @@ serve(async (req: Request) => {
 });
 
 async function resolveMarket(
-  db: ReturnType<typeof createClient>,
+  db: Db,
   market: Market,
 ): Promise<void> {
   console.log(`Resolving market ${market.id} (creator: ${market.creator_id}, type: ${market.resolution_type})`);
@@ -214,7 +220,7 @@ async function resolveMarket(
 }
 
 async function resolveBattleOutcomeMarket(
-  db: ReturnType<typeof createClient>,
+  db: Db,
   market: Market,
 ): Promise<void> {
   if (!market.battle_match_id) {
@@ -269,7 +275,7 @@ async function resolveBattleOutcomeMarket(
 }
 
 async function processRefund(
-  db: ReturnType<typeof createClient>,
+  db: Db,
   market: Market,
   bets: Bet[],
   creatorName: string,
@@ -325,7 +331,7 @@ async function processRefund(
 }
 
 async function processPayout(
-  db: ReturnType<typeof createClient>,
+  db: Db,
   market: Market,
   bets: Bet[],
   result: 'above' | 'below',

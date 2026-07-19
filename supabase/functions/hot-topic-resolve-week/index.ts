@@ -65,15 +65,17 @@ serve(async (req: Request) => {
     return jsonResponse({ error: 'No scores found for current week', detail: scoresError?.message }, 500);
   }
 
+  // The embedded celebs(name) join defeats supabase-js row inference — go
+  // through unknown once, then work with the typed rows.
+  const ranked = scores as unknown as WeeklyScore[];
+
   // Write final ranks
-  for (let i = 0; i < (scores as WeeklyScore[]).length; i++) {
+  for (let i = 0; i < ranked.length; i++) {
     await db
       .from('celeb_weekly_scores')
       .update({ rank: i + 1 })
-      .eq('id', (scores as WeeklyScore[])[i].id);
+      .eq('id', ranked[i].id);
   }
-
-  const ranked = scores as WeeklyScore[];
 
   // Determine winners
   const personOfWeek = ranked[0];

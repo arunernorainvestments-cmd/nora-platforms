@@ -11,7 +11,7 @@
 // Does NOT: touch real user rows, modify display_score or heat_score,
 //           drop schema, or touch waitlist/markets/bets tables.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, SupabaseClient as SupabaseClientBase } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -25,7 +25,11 @@ function json(data: unknown, status = 200): Response {
   });
 }
 
-type SupabaseClient = ReturnType<typeof createClient>;
+// The untyped-schema client shape createClient() actually returns; bare
+// `ReturnType<typeof createClient>` collapses the schema generics to never
+// under supabase-js v2.5x types and rejects every table write.
+// deno-lint-ignore no-explicit-any
+type SupabaseClient = SupabaseClientBase<any, any, any, any, any>;
 
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: CORS_HEADERS });

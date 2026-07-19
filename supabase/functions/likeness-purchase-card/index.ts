@@ -95,7 +95,7 @@ serve(async (req: Request) => {
     title: 'Card minted!',
     body: `You minted Card #${card?.card_number} — ${offering.character_name}!`,
     reference_id: cardId,
-  }).catch(() => null);
+  }).then(() => null, () => null);
 
   // Notify creator
   await supabase.from('notifications').insert({
@@ -104,7 +104,7 @@ serve(async (req: Request) => {
     title: 'A card was purchased!',
     body: `Card #${card?.card_number} of your ${offering.character_name} offering was purchased.`,
     reference_id: cardId,
-  }).catch(() => null);
+  }).then(() => null, () => null);
 
   return new Response(
     JSON.stringify({ card_id: cardId, card_number: card?.card_number, rarity: card?.rarity }),
