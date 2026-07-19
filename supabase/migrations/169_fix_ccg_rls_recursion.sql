@@ -95,13 +95,10 @@ BEGIN
   VALUES (FALSE, 1, 1) RETURNING id INTO v_match;
   INSERT INTO public.ccg_match_players (match_id, seat, user_id, life)
   VALUES (v_match, 1, v_user, 30), (v_match, 2, NULL, 30);
-  INSERT INTO public.ccg_match_cards
-    (match_id, owner_seat, chit_id, zone, deck_order, snap_chit_type,
-     snap_aura_cost, snap_atk, snap_hp, cur_atk, cur_hp)
-  VALUES
-    (v_match, 1, v_chit, 'hand', 1, 'creature', 1, 1, 1, 1, 1),   -- own hand: visible
-    (v_match, 2, v_chit, 'hand', 1, 'creature', 1, 1, 1, 1, 1),   -- opp hand: hidden
-    (v_match, 2, v_chit, 'field', 2, 'creature', 1, 1, 1, 1, 1);  -- board: visible
+  -- Instantiate through the engine helper so every snapshot column is filled.
+  PERFORM public.ccg_instantiate_card(v_match, 1::SMALLINT, v_chit, 'hand', 1);  -- own hand: visible
+  PERFORM public.ccg_instantiate_card(v_match, 2::SMALLINT, v_chit, 'hand', 1);  -- opp hand: hidden
+  PERFORM public.ccg_instantiate_card(v_match, 2::SMALLINT, v_chit, 'field', 2); -- board: visible
 
   PERFORM set_config('request.jwt.claims',
     json_build_object('sub', v_user, 'role', 'authenticated')::text, true);
