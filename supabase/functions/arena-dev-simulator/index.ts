@@ -25,7 +25,7 @@
 //   Only operates on rows where is_test_account = true
 //   All token movements logged in token_transactions
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient, SupabaseClient as SupabaseClientBase } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -45,7 +45,11 @@ function testCreatorId(n: number): string {
   return `10000000-0000-0000-0000-${String(n).padStart(12, '0')}`;
 }
 
-type SupabaseClient = ReturnType<typeof createClient>;
+// The untyped-schema client shape createClient() actually returns; bare
+// `ReturnType<typeof createClient>` collapses the schema generics to never
+// under supabase-js v2.5x types and rejects every table write.
+// deno-lint-ignore no-explicit-any
+type SupabaseClient = SupabaseClientBase<any, any, any, any, any>;
 
 interface Profile {
   id: string;

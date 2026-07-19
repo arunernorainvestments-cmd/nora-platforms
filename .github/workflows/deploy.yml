@@ -24,8 +24,10 @@ jobs:
       - name: Get dependencies
         run: cd flutter_app && flutter pub get
 
+      # Icon tree-shaking verified working again 2026-07-19 (MaterialIcons
+      # 1.6MB → 32KB); the dynamic-icon usage that once forced it off is gone.
       - name: Build web
-        run: cd flutter_app && flutter build web --release --no-tree-shake-icons
+        run: cd flutter_app && flutter build web --release
 
       - name: Prepare Vercel output structure
         run: |

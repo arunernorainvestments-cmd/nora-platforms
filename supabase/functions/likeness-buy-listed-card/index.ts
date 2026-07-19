@@ -88,7 +88,7 @@ serve(async (req: Request) => {
     title: 'Card purchased!',
     body: 'You acquired a card from the marketplace.',
     reference_id: listing.card_id,
-  }).catch(() => null);
+  }).then(() => null, () => null);
 
   await supabase.from('notifications').insert({
     user_id: listing.seller_user_id,
@@ -96,7 +96,7 @@ serve(async (req: Request) => {
     title: 'Your card sold!',
     body: 'Your marketplace listing was purchased.',
     reference_id: listing_id,
-  }).catch(() => null);
+  }).then(() => null, () => null);
 
   return new Response(JSON.stringify({ sale_id: saleId, card_id: listing.card_id }), {
     status: 200, headers: { ...CORS, 'Content-Type': 'application/json' },

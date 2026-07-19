@@ -121,14 +121,17 @@ async function assemblePanelForRequest(
     .update({ status: newStatus })
     .eq('id', requestId);
 
-  // Send in-app notifications to each assigned voter
+  // Send in-app notifications to each assigned voter (best-effort)
   for (const v of selected) {
-    await supabase.from('notifications').insert({
+    const { error: notifyError } = await supabase.from('notifications').insert({
       user_id: v.user_id,
       type: 'ubi_vote_assignment',
       title: 'Emergency Fund — Community Vote',
       body: 'You have been selected to vote on an Emergency Fund request.',
       link: `/emergency-fund/vote/${panel.id}`,
-    }).catch((e: Error) => console.error('[ubi-assemble-panel] notification error:', e.message));
+    });
+    if (notifyError) {
+      console.error('[ubi-assemble-panel] notification error:', notifyError.message);
+    }
   }
 }

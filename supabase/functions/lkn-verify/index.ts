@@ -74,12 +74,12 @@ function usePermitted(t: any, status: string, useCategory: string | null): boole
 
 // ── ECDSA P-256 signing (graceful if key absent) ─────────────────────────────
 let cachedKey: CryptoKey | null = null;
-function pemToDer(pem: string): Uint8Array {
+function pemToDer(pem: string): Uint8Array<ArrayBuffer> {
   const b64 = pem.replace(/-----BEGIN [^-]+-----/, '')
     .replace(/-----END [^-]+-----/, '')
     .replace(/\s+/g, '');
   const bin = atob(b64);
-  const der = new Uint8Array(bin.length);
+  const der = new Uint8Array(new ArrayBuffer(bin.length));
   for (let i = 0; i < bin.length; i++) der[i] = bin.charCodeAt(i);
   return der;
 }
