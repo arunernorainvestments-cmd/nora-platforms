@@ -145,9 +145,10 @@ BEGIN
   PERFORM public.admin_adjust_tokens_internal(v_u, v_u, 100, 'mig-168 smoke credit');
   SELECT available_tokens INTO v_cur FROM public.token_balances WHERE user_id = v_u;
   IF v_cur <> v_bal + 100 THEN RAISE EXCEPTION 'SMOKE FAIL: credit must add 100'; END IF;
+  -- reference_id is TEXT on prod (drift from mig 002's uuid) — compare as text.
   IF NOT EXISTS (SELECT 1 FROM public.token_transactions
                  WHERE user_id = v_u AND type = 'admin_adjustment'
-                   AND amount = 100 AND reference_id = v_u) THEN
+                   AND amount = 100 AND reference_id::TEXT = v_u::TEXT) THEN
     RAISE EXCEPTION 'SMOKE FAIL: adjustment must land in token_transactions';
   END IF;
 
