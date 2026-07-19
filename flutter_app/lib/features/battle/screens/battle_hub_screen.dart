@@ -111,6 +111,12 @@ class BattleHubScreen extends ConsumerWidget {
                 const BattleChitBanner(compact: true),
                 const SizedBox(height: 12),
                 OutlinedButton.icon(
+                  onPressed: () => context.push('/decks'),
+                  icon: const Icon(Icons.dashboard_customize_outlined),
+                  label: const Text('My Decks'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
                   onPressed: () => context.push('/collection'),
                   icon: const Icon(Icons.style_outlined),
                   label: const Text('My BattleChits'),
