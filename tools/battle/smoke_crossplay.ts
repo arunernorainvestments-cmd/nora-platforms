@@ -128,17 +128,25 @@ async function main() {
   console.log(`   match ${matchId}`);
 
   console.log('6. RLS probe: B must NOT see seat-1 hand cards…');
-  const { data: bView } = await cB.from('ccg_match_cards')
+  // Read errors FAIL the probe — an RLS error returning null data must never
+  // pass as "saw nothing" (that masked the mig-169 policy recursion).
+  const { data: bView, error: bViewErr } = await cB.from('ccg_match_cards')
     .select('id, owner_seat, zone').eq('match_id', matchId).eq('zone', 'hand');
-  assert((bView ?? []).every((r) => (r as { owner_seat: number }).owner_seat === 2),
+  if (bViewErr) throw new Error(`B card read errored: ${bViewErr.message}`);
+  assert((bView ?? []).length > 0,
+    'B must see their OWN hand (empty read means the policy is broken)');
+  assert(bView.every((r) => (r as { owner_seat: number }).owner_seat === 2),
     `B saw a seat-1 hand card: ${JSON.stringify(bView)}`);
 
   console.log('7. A plays turn 1 (summon cheapest affordable, else pass)…');
-  const { data: handA } = await cA.from('ccg_match_cards')
+  const { data: handA, error: handErr } = await cA.from('ccg_match_cards')
     .select('id, snap_aura_cost, snap_chit_type').eq('match_id', matchId)
     .eq('zone', 'hand').eq('owner_seat', 1).order('snap_aura_cost');
-  const { data: meA } = await cA.from('ccg_match_players')
+  if (handErr) throw new Error(`A hand read errored: ${handErr.message}`);
+  assert((handA ?? []).length > 0, 'A must see their opening hand');
+  const { data: meA, error: meErr } = await cA.from('ccg_match_players')
     .select('aura').eq('match_id', matchId).eq('seat', 1).single();
+  if (meErr) throw new Error(`A seat read errored: ${meErr.message}`);
   const affordable = (handA ?? []).find((h) =>
     (h as { snap_aura_cost: number; snap_chit_type: string }).snap_chit_type === 'creature'
     && (h as { snap_aura_cost: number }).snap_aura_cost <= ((meA as { aura: number })?.aura ?? 0));
