@@ -26,6 +26,26 @@
 //                        minor_safety case NEVER auto-approves the moment
 //                        (mig 141 contract) — it only closes the case.
 //
+// Iteration 2 (mig 168 — user/account ops, config, marketplace ops):
+// GET  ?action=users&q=…  → search profiles (username/display_name fragment or
+//                        exact uuid): flags, KYC status, token balance,
+//                        active-listing count. Status only — never documents.
+// GET  ?action=config  → platform_integrity_settings + marketplace tier pricing
+//                        + live ops counts (the kill-switch panel).
+// GET  ?action=listings → active marketplace listings (dispute review).
+// POST {action:'set_test_flag', user_id, is_test}
+//                      → profiles.is_test_account (Hard Rule 15 filters).
+// POST {action:'adjust_tokens', user_id, delta, note}
+//                      → admin_adjust_tokens_internal (mig 168): audited via
+//                        token_transactions type 'admin_adjustment' (HR 5).
+// POST {action:'toggle_setting', key, value}
+//                      → allowlisted platform_integrity_settings columns only.
+//                        enforce_one_role_per_match is NOT toggleable — it
+//                        stays TRUE always (money-independent integrity).
+// POST {action:'admin_delist', listing_id}
+//                      → marketplace_admin_delist_internal (mig 168): escrow
+//                        returns to the seller, listing → 'delisted' (HR 40).
+//
 // Privacy: this function exposes mint-pipeline state only. It must never read
 // ubi_* documents/votes or lkn private data (Hard Rules 23–25, 29–32).
 
@@ -123,12 +143,107 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
+  if (req.method === 'GET' && action === 'users') {
+    const q = (new URL(req.url).searchParams.get('q') ?? '').trim();
+    if (!q) return json({ users: [] });
+    const uuidRe = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let query = db.from('profiles')
+      .select('id, username, display_name, is_admin, is_test_account, '
+        + 'is_market_maker, created_at, token_balances(available_tokens)')
+      .limit(20);
+    query = uuidRe.test(q)
+      ? query.eq('id', q)
+      : query.or(`username.ilike.%${q}%,display_name.ilike.%${q}%`);
+    const { data, error } = await query;
+    if (error) return json({ error: error.message }, 400);
+    const profiles = (data ?? []) as unknown as Record<string, unknown>[];
+
+    const ids = profiles.map((p) => p.id as string);
+    // KYC STATUS only (never documents/identity data — status is the ops need).
+    const kycByUser: Record<string, string> = {};
+    const listingsByUser: Record<string, number> = {};
+    if (ids.length) {
+      const { data: kyc } = await db.from('kyc_verifications')
+        .select('user_id, status, created_at')
+        .in('user_id', ids).order('created_at', { ascending: false });
+      for (const k of kyc ?? []) {
+        kycByUser[k.user_id as string] ??= k.status as string;
+      }
+      const { data: listings } = await db.from('marketplace_listings')
+        .select('seller_user_id').in('seller_user_id', ids).eq('status', 'active');
+      for (const l of listings ?? []) {
+        const id = l.seller_user_id as string;
+        listingsByUser[id] = (listingsByUser[id] ?? 0) + 1;
+      }
+    }
+    return json({
+      users: profiles.map((p) => ({
+        ...p,
+        kyc_status: kycByUser[p.id as string] ?? null,
+        active_listings: listingsByUser[p.id as string] ?? 0,
+      })),
+    });
+  }
+
+  if (req.method === 'GET' && action === 'config') {
+    const { data: settings } = await db.from('platform_integrity_settings')
+      .select('*').eq('id', true).single();
+    const { data: pricing } = await db.from('marketplace_tier_pricing')
+      .select('tier, token_price, fee_bps, usd_cents').order('token_price');
+    const [escalations, listings, jobs, held] = await Promise.all([
+      db.from('moderation_escalations').select('id', { count: 'exact', head: true })
+        .eq('status', 'open'),
+      db.from('marketplace_listings').select('id', { count: 'exact', head: true })
+        .eq('status', 'active'),
+      db.from('mint_jobs').select('id', { count: 'exact', head: true })
+        .eq('status', 'running'),
+      db.from('cinematic_generations').select('id', { count: 'exact', head: true })
+        .eq('status', 'generated'),
+    ]);
+    return json({
+      settings: settings ?? null,
+      tier_pricing: pricing ?? [],
+      counts: {
+        open_escalations: escalations.count ?? 0,
+        active_listings: listings.count ?? 0,
+        running_jobs: jobs.count ?? 0,
+        held_generations: held.count ?? 0,
+      },
+    });
+  }
+
+  if (req.method === 'GET' && action === 'listings') {
+    const { data: rows } = await db.from('marketplace_listings')
+      .select('id, chit_id, seller_user_id, currency, tier_snapshot, '
+        + 'price_snapshot, fee_bps_snapshot, created_at, '
+        + 'moment_chits(name, card_art_url, original_minter_handle)')
+      .eq('status', 'active').order('created_at', { ascending: false }).limit(50);
+    const listings = (rows ?? []) as unknown as Record<string, unknown>[];
+    const sellerIds = [...new Set(listings.map((l) => l.seller_user_id as string))];
+    const names: Record<string, string> = {};
+    if (sellerIds.length) {
+      const { data: sellers } = await db.from('profiles')
+        .select('id, username, display_name').in('id', sellerIds);
+      for (const s of sellers ?? []) {
+        names[s.id as string] =
+          (s.display_name ?? s.username ?? 'unknown') as string;
+      }
+    }
+    return json({
+      listings: listings.map((l) => ({
+        ...l,
+        seller_name: names[l.seller_user_id as string] ?? 'unknown',
+      })),
+    });
+  }
+
   if (req.method !== 'POST') return json({ error: 'Unknown action' }, 400);
 
   let body: {
     action?: string; generation_id?: string; approved?: boolean; reason?: string;
     job_id?: string; moment_id?: string; escalation_id?: string; cleared?: boolean;
-    note?: string;
+    note?: string; user_id?: string; is_test?: boolean; delta?: number;
+    key?: string; value?: boolean | string; listing_id?: string;
   };
   try { body = await req.json(); } catch { return json({ error: 'Invalid JSON body' }, 400); }
 
@@ -196,6 +311,67 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .eq('id', body.escalation_id).eq('status', 'open').select('id');
       if (error) return json({ error: error.message }, 409);
       if (!data?.length) return json({ error: 'Not found or not open' }, 409);
+      return json({ ok: true });
+    }
+    case 'set_test_flag': {
+      if (!body.user_id || typeof body.is_test !== 'boolean') {
+        return json({ error: 'user_id + is_test required' }, 400);
+      }
+      const { data, error } = await db.from('profiles')
+        .update({ is_test_account: body.is_test })
+        .eq('id', body.user_id).select('id');
+      if (error) return json({ error: error.message }, 409);
+      if (!data?.length) return json({ error: 'User not found' }, 409);
+      console.log(`admin-review: ${user.id} set is_test_account=${body.is_test} on ${body.user_id}`);
+      return json({ ok: true });
+    }
+    case 'adjust_tokens': {
+      if (!body.user_id || typeof body.delta !== 'number'
+        || !Number.isInteger(body.delta) || !body.note?.trim()) {
+        return json({ error: 'user_id + integer delta + note required' }, 400);
+      }
+      const { data, error } = await db.rpc('admin_adjust_tokens_internal', {
+        p_admin: user.id,
+        p_user_id: body.user_id,
+        p_delta: body.delta,
+        p_note: body.note.trim(),
+      });
+      if (error) return json({ error: error.message }, 409);
+      console.log(`admin-review: ${user.id} adjusted tokens ${body.delta} on ${body.user_id}`);
+      return json(data ?? { ok: true });
+    }
+    case 'toggle_setting': {
+      // Allowlist only. enforce_one_role_per_match is deliberately absent —
+      // it stays TRUE always (money-independent integrity, CLAUDE.md).
+      const boolKeys = [
+        'require_kyc_for_staking', 'require_kyc_for_combatant',
+        'marketplace_usd_lane',
+      ];
+      const key = body.key ?? '';
+      let patch: Record<string, unknown>;
+      if (boolKeys.includes(key) && typeof body.value === 'boolean') {
+        patch = { [key]: body.value };
+      } else if (key === 'battle_payments_mode'
+        && (body.value === 'sim' || body.value === 'live')) {
+        patch = { battle_payments_mode: body.value };
+      } else {
+        return json({ error: 'Setting not toggleable from the console' }, 400);
+      }
+      const { error } = await db.from('platform_integrity_settings')
+        .update({ ...patch, updated_at: new Date().toISOString() })
+        .eq('id', true);
+      if (error) return json({ error: error.message }, 409);
+      console.log(`admin-review: ${user.id} set ${key}=${body.value}`);
+      return json({ ok: true });
+    }
+    case 'admin_delist': {
+      if (!body.listing_id) return json({ error: 'listing_id required' }, 400);
+      const { error } = await db.rpc('marketplace_admin_delist_internal', {
+        p_admin: user.id,
+        p_listing_id: body.listing_id,
+      });
+      if (error) return json({ error: error.message }, 409);
+      console.log(`admin-review: ${user.id} delisted ${body.listing_id}`);
       return json({ ok: true });
     }
     default:

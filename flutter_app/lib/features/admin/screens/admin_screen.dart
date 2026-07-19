@@ -3,11 +3,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/n_back_button.dart';
 
-/// Admin operations console (MVP — PLAN 2026-07-15 callout). Two surfaces:
-/// the moderation review queue (held cutscenes + open escalations +
-/// similarity-flagged clips) and stuck mint jobs. Every action is re-gated
-/// server-side by the admin-review edge function (profiles.is_admin) — this
-/// screen is only a window; a non-admin gets a 403 and the locked state.
+/// Admin operations console (PLAN 2026-07-15 callout; iteration 2, mig 168).
+/// Five surfaces: the moderation review queue, mint-job ops, user/account ops
+/// (flags + audited token adjustments), config kill-switches, and marketplace
+/// dispute delisting. Every action is re-gated server-side by the admin-review
+/// edge function (profiles.is_admin) — this screen is only a window; a
+/// non-admin gets a 403 and the locked state.
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
 
@@ -18,6 +19,11 @@ class AdminScreen extends StatefulWidget {
 class _AdminScreenState extends State<AdminScreen> {
   Map<String, dynamic>? _queue;
   List<Map<String, dynamic>> _jobs = const [];
+  Map<String, dynamic>? _config;
+  List<Map<String, dynamic>> _listings = const [];
+  List<Map<String, dynamic>> _users = const [];
+  final _userSearch = TextEditingController();
+  bool _searching = false;
   bool _loading = true;
   bool _forbidden = false;
   String? _error;
@@ -28,11 +34,18 @@ class _AdminScreenState extends State<AdminScreen> {
     _refresh();
   }
 
-  Future<Map<String, dynamic>> _get(String action) async {
+  @override
+  void dispose() {
+    _userSearch.dispose();
+    super.dispose();
+  }
+
+  Future<Map<String, dynamic>> _get(String action,
+      [Map<String, dynamic>? params]) async {
     final res = await Supabase.instance.client.functions.invoke(
       'admin-review',
       method: HttpMethod.get,
-      queryParameters: {'action': action},
+      queryParameters: {'action': action, ...?params},
     );
     return Map<String, dynamic>.from(res.data as Map);
   }
@@ -40,6 +53,10 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> _post(Map<String, dynamic> body) async {
     await Supabase.instance.client.functions.invoke('admin-review', body: body);
   }
+
+  List<Map<String, dynamic>> _asList(dynamic v) => ((v as List?) ?? const [])
+      .map((e) => Map<String, dynamic>.from(e as Map))
+      .toList();
 
   Future<void> _refresh() async {
     setState(() {
@@ -49,12 +66,14 @@ class _AdminScreenState extends State<AdminScreen> {
     try {
       final queue = await _get('queue');
       final jobs = await _get('jobs');
+      final config = await _get('config');
+      final listings = await _get('listings');
       if (!mounted) return;
       setState(() {
         _queue = queue;
-        _jobs = ((jobs['jobs'] as List?) ?? const [])
-            .map((j) => Map<String, dynamic>.from(j as Map))
-            .toList();
+        _jobs = _asList(jobs['jobs']);
+        _config = config;
+        _listings = _asList(listings['listings']);
       });
     } on FunctionException catch (e) {
       if (!mounted) return;
@@ -88,12 +107,35 @@ class _AdminScreenState extends State<AdminScreen> {
       }
     }
     await _refresh();
+    // Keep the user search results current after any user-affecting action.
+    if (_userSearch.text.trim().isNotEmpty) await _search();
+  }
+
+  Future<void> _search() async {
+    final q = _userSearch.text.trim();
+    if (q.isEmpty) {
+      setState(() => _users = const []);
+      return;
+    }
+    setState(() => _searching = true);
+    try {
+      final res = await _get('users', {'q': q});
+      if (mounted) setState(() => _users = _asList(res['users']));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('Search failed — $e'),
+            backgroundColor: AppTheme.danger));
+      }
+    } finally {
+      if (mounted) setState(() => _searching = false);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 2,
+      length: 5,
       child: Scaffold(
         backgroundColor: AppTheme.background,
         appBar: AppBar(
@@ -109,9 +151,13 @@ class _AdminScreenState extends State<AdminScreen> {
             indicatorColor: AppTheme.primary,
             labelColor: AppTheme.textPrimary,
             unselectedLabelColor: AppTheme.textSecondary,
+            isScrollable: true,
             tabs: [
               Tab(text: 'Review queue'),
               Tab(text: 'Mint jobs'),
+              Tab(text: 'Users'),
+              Tab(text: 'Config'),
+              Tab(text: 'Market'),
             ],
           ),
         ),
@@ -127,46 +173,18 @@ class _AdminScreenState extends State<AdminScreen> {
                     ? Center(
                         child: Text(_error!,
                             style: const TextStyle(color: AppTheme.danger)))
-                    : TabBarView(children: [_reviewTab(), _jobsTab()]),
+                    : TabBarView(children: [
+                        _reviewTab(),
+                        _jobsTab(),
+                        _usersTab(),
+                        _configTab(),
+                        _marketTab(),
+                      ]),
       ),
     );
   }
 
-  // ── Review queue tab ──────────────────────────────────────────────────────
-  Widget _reviewTab() {
-    final held = ((_queue?['held'] as List?) ?? const [])
-        .map((g) => Map<String, dynamic>.from(g as Map))
-        .toList();
-    final escalations = ((_queue?['escalations'] as List?) ?? const [])
-        .map((g) => Map<String, dynamic>.from(g as Map))
-        .toList();
-    final flagged = ((_queue?['flagged_clips'] as List?) ?? const [])
-        .map((g) => Map<String, dynamic>.from(g as Map))
-        .toList();
-
-    if (held.isEmpty && escalations.isEmpty && flagged.isEmpty) {
-      return const Center(
-          child: Text('Queue is clear 🎉',
-              style: TextStyle(color: AppTheme.textSecondary)));
-    }
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          if (held.isNotEmpty) _sectionTitle('Held cutscenes (${held.length})'),
-          ...held.map(_heldCard),
-          if (flagged.isNotEmpty)
-            _sectionTitle('Similarity-flagged clips (${flagged.length})'),
-          ...flagged.map(_flaggedClipCard),
-          if (escalations.isNotEmpty)
-            _sectionTitle('Open escalations (${escalations.length})'),
-          ...escalations.map(_escalationCard),
-        ],
-      ),
-    );
-  }
-
+  // ── Shared bits ───────────────────────────────────────────────────────────
   Widget _sectionTitle(String t) => Padding(
         padding: const EdgeInsets.only(bottom: 10, top: 6),
         child: Text(t,
@@ -190,6 +208,48 @@ class _AdminScreenState extends State<AdminScreen> {
 
   Widget _meta(String s) => Text(s,
       style: const TextStyle(color: AppTheme.textSecondary, fontSize: 12));
+
+  Widget _chip(String label, Color color) => Container(
+        margin: const EdgeInsets.only(right: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.13),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: color.withValues(alpha: 0.45)),
+        ),
+        child: Text(label,
+            style: TextStyle(
+                color: color, fontSize: 9, fontWeight: FontWeight.w800)),
+      );
+
+  // ── Review queue tab ──────────────────────────────────────────────────────
+  Widget _reviewTab() {
+    final held = _asList(_queue?['held']);
+    final escalations = _asList(_queue?['escalations']);
+    final flagged = _asList(_queue?['flagged_clips']);
+
+    if (held.isEmpty && escalations.isEmpty && flagged.isEmpty) {
+      return const Center(
+          child: Text('Queue is clear 🎉',
+              style: TextStyle(color: AppTheme.textSecondary)));
+    }
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (held.isNotEmpty) _sectionTitle('Held cutscenes (${held.length})'),
+          ...held.map(_heldCard),
+          if (flagged.isNotEmpty)
+            _sectionTitle('Similarity-flagged clips (${flagged.length})'),
+          ...flagged.map(_flaggedClipCard),
+          if (escalations.isNotEmpty)
+            _sectionTitle('Open escalations (${escalations.length})'),
+          ...escalations.map(_escalationCard),
+        ],
+      ),
+    );
+  }
 
   Widget _heldCard(Map<String, dynamic> g) {
     final m = (g['moments'] as Map?)?.cast<String, dynamic>() ?? const {};
@@ -396,5 +456,417 @@ class _AdminScreenState extends State<AdminScreen> {
         }).toList(),
       ),
     );
+  }
+
+  // ── Users tab (iteration 2) ───────────────────────────────────────────────
+  Widget _usersTab() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        TextField(
+          controller: _userSearch,
+          onSubmitted: (_) => _search(),
+          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
+          decoration: InputDecoration(
+            hintText: 'Search by username, display name, or user id…',
+            hintStyle:
+                const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            prefixIcon: const Icon(Icons.search,
+                size: 18, color: AppTheme.textSecondary),
+            suffixIcon: IconButton(
+              onPressed: _searching ? null : _search,
+              icon: _searching
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.arrow_forward, size: 18),
+            ),
+            isDense: true,
+            filled: true,
+            fillColor: AppTheme.surface,
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(10),
+              borderSide: const BorderSide(color: AppTheme.cardBorder),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        if (_users.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Text(
+                'Look up an account to see flags, KYC status, and balance — '
+                'and to make audited token adjustments.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+          ),
+        ..._users.map(_userCard),
+      ],
+    );
+  }
+
+  Widget _userCard(Map<String, dynamic> u) {
+    final balance =
+        ((u['token_balances'] as Map?)?['available_tokens'] as num?)?.toInt();
+    final kyc = (u['kyc_status'] ?? 'none').toString();
+    final isTest = u['is_test_account'] == true;
+    return _card(children: [
+      Text(
+          (u['display_name'] ?? u['username'] ?? 'unnamed').toString() +
+              ((u['username'] != null && u['display_name'] != null)
+                  ? ' · @${u['username']}'
+                  : ''),
+          style: const TextStyle(
+              color: AppTheme.textPrimary, fontWeight: FontWeight.w700)),
+      const SizedBox(height: 4),
+      SelectableText(u['id'].toString(),
+          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+      const SizedBox(height: 8),
+      Wrap(runSpacing: 4, children: [
+        if (u['is_admin'] == true) _chip('ADMIN', AppTheme.primary),
+        if (isTest) _chip('TEST', AppTheme.danger),
+        if (u['is_market_maker'] == true) _chip('MARKET MAKER', AppTheme.secondary),
+        _chip(
+            'KYC: ${kyc.toUpperCase()}',
+            kyc == 'approved'
+                ? AppTheme.success
+                : kyc == 'none'
+                    ? AppTheme.textSecondary
+                    : const Color(0xFFFFC53D)),
+        _chip('${balance ?? '—'} 🪙', AppTheme.success),
+        if ((u['active_listings'] as num? ?? 0) > 0)
+          _chip('${u['active_listings']} LISTED', AppTheme.secondary),
+      ]),
+      const SizedBox(height: 10),
+      Row(children: [
+        OutlinedButton.icon(
+          onPressed: () => _adjustTokensDialog(u),
+          icon: const Icon(Icons.tune, size: 16),
+          label: const Text('Adjust tokens'),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(
+              foregroundColor:
+                  isTest ? AppTheme.textSecondary : AppTheme.danger),
+          onPressed: () => _act({
+            'action': 'set_test_flag',
+            'user_id': u['id'],
+            'is_test': !isTest,
+          }),
+          child: Text(isTest ? 'Unmark test account' : 'Mark test account'),
+        ),
+      ]),
+    ]);
+  }
+
+  Future<void> _adjustTokensDialog(Map<String, dynamic> u) async {
+    final amount = TextEditingController();
+    final note = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text('Adjust tokens — ${u['display_name'] ?? u['username']}',
+            style:
+                const TextStyle(color: AppTheme.textPrimary, fontSize: 16)),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: amount,
+            autofocus: true,
+            keyboardType: const TextInputType.numberWithOptions(signed: true),
+            style: const TextStyle(color: AppTheme.textPrimary),
+            decoration: const InputDecoration(
+                labelText: 'Delta (e.g. 500 or -500)',
+                helperText: 'Negative claws back; can\'t overdraw.'),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: note,
+            style: const TextStyle(color: AppTheme.textPrimary),
+            decoration: const InputDecoration(
+                labelText: 'Why? (required, lands in the audit ledger)'),
+          ),
+        ]),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Apply')),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final delta = int.tryParse(amount.text.trim());
+    if (delta == null || delta == 0 || note.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('A non-zero integer delta and a note are required.'),
+          backgroundColor: AppTheme.danger));
+      return;
+    }
+    await _act({
+      'action': 'adjust_tokens',
+      'user_id': u['id'],
+      'delta': delta,
+      'note': note.text.trim(),
+    });
+  }
+
+  // ── Config tab (iteration 2) ──────────────────────────────────────────────
+  Widget _configTab() {
+    final settings =
+        (_config?['settings'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final counts =
+        (_config?['counts'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final pricing = _asList(_config?['tier_pricing']);
+
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _sectionTitle('Right now'),
+          _card(children: [
+            _meta('Held cutscenes: ${counts['held_generations'] ?? '—'}'),
+            _meta('Open escalations: ${counts['open_escalations'] ?? '—'}'),
+            _meta('Running mint jobs: ${counts['running_jobs'] ?? '—'}'),
+            _meta('Active listings: ${counts['active_listings'] ?? '—'}'),
+          ]),
+          _sectionTitle('Integrity + money gates'),
+          _card(children: [
+            const Text(
+                'These are the live-launch switches (platform_integrity_'
+                'settings). Every flip takes effect immediately.',
+                style:
+                    TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+            const SizedBox(height: 6),
+            _settingSwitch(settings, 'require_kyc_for_staking',
+                'Require KYC to stake (bets)'),
+            _settingSwitch(settings, 'require_kyc_for_combatant',
+                'Require KYC to be a combatant'),
+            _settingSwitch(settings, 'marketplace_usd_lane',
+                'Marketplace USD lane (founder gate)',
+                danger: true),
+            const Divider(color: AppTheme.cardBorder),
+            SwitchListTile(
+              value: settings['enforce_one_role_per_match'] == true,
+              onChanged: null, // never toggleable — integrity invariant
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+              title: const Text('One role per match (locked ON)',
+                  style:
+                      TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+              subtitle: const Text(
+                  'Money-independent integrity — not toggleable from anywhere.',
+                  style:
+                      TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+            ),
+            const Divider(color: AppTheme.cardBorder),
+            Row(children: [
+              const Expanded(
+                child: Text('Battle payments mode',
+                    style: TextStyle(
+                        color: AppTheme.textPrimary, fontSize: 13)),
+              ),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'sim', label: Text('sim')),
+                  ButtonSegment(value: 'live', label: Text('live')),
+                ],
+                selected: {
+                  (settings['battle_payments_mode'] ?? 'sim').toString()
+                },
+                onSelectionChanged: (sel) => _confirmToggle(
+                  'battle_payments_mode',
+                  sel.first,
+                  'Switch battle payments to ${sel.first.toUpperCase()}?',
+                  sel.first == 'live'
+                      ? 'LIVE moves real USD on the Treasury rail. Only flip '
+                          'when Stripe prereqs are in place.'
+                      : 'SIM settles against simulated balances.',
+                ),
+              ),
+            ]),
+          ]),
+          _sectionTitle('Marketplace tier pricing (config — read-only here)'),
+          _card(children: [
+            for (final p in pricing)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 4),
+                child: Row(children: [
+                  SizedBox(
+                      width: 24,
+                      child: Text(p['tier'].toString(),
+                          style: const TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontWeight: FontWeight.w800))),
+                  Text('${p['token_price']} 🪙',
+                      style: const TextStyle(
+                          color: AppTheme.textSecondary, fontSize: 12)),
+                  const Spacer(),
+                  Text(
+                      (p['fee_bps'] as num? ?? 0) > 0
+                          ? 'fee ${(p['fee_bps'] as num) / 100}% (burned)'
+                          : 'no fee',
+                      style: const TextStyle(
+                          color: AppTheme.textSecondary, fontSize: 12)),
+                ]),
+              ),
+            const SizedBox(height: 4),
+            const Text(
+                'Fixed config prices only (Hard Rule 40) — repricing is a '
+                'migration, not a console action.',
+                style:
+                    TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+          ]),
+        ],
+      ),
+    );
+  }
+
+  Widget _settingSwitch(
+      Map<String, dynamic> settings, String key, String label,
+      {bool danger = false}) {
+    final value = settings[key] == true;
+    return SwitchListTile(
+      value: value,
+      dense: true,
+      contentPadding: EdgeInsets.zero,
+      activeTrackColor: danger ? AppTheme.danger : AppTheme.primary,
+      title: Text(label,
+          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+      onChanged: (next) => _confirmToggle(
+        key,
+        next,
+        '${next ? 'Enable' : 'Disable'} "$label"?',
+        danger && next
+            ? 'This opens a REAL-MONEY lane. KYC gates and the provenance '
+                'lock stay enforced, but make sure this is the founder call.'
+            : 'Takes effect immediately for every user.',
+      ),
+    );
+  }
+
+  Future<void> _confirmToggle(
+      String key, Object value, String title, String message) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text(title,
+            style:
+                const TextStyle(color: AppTheme.textPrimary, fontSize: 16)),
+        content: Text(message,
+            style:
+                const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Confirm')),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _act({'action': 'toggle_setting', 'key': key, 'value': value});
+    }
+  }
+
+  // ── Market tab (iteration 2) ──────────────────────────────────────────────
+  Widget _marketTab() {
+    if (_listings.isEmpty) {
+      return const Center(
+          child: Text('No active listings',
+              style: TextStyle(color: AppTheme.textSecondary)));
+    }
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: _listings.map((l) {
+          final chit =
+              (l['moment_chits'] as Map?)?.cast<String, dynamic>() ?? const {};
+          return _card(children: [
+            Row(children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: chit['card_art_url'] != null
+                    ? Image.network(chit['card_art_url'].toString(),
+                        width: 40,
+                        height: 54,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => const SizedBox(
+                            width: 40,
+                            height: 54,
+                            child: Icon(Icons.image_outlined,
+                                size: 18, color: AppTheme.textSecondary)))
+                    : const SizedBox(
+                        width: 40,
+                        height: 54,
+                        child: Icon(Icons.auto_awesome,
+                            size: 18, color: AppTheme.textSecondary)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text((chit['name'] ?? 'BattleChit').toString(),
+                          style: const TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontWeight: FontWeight.w700)),
+                      const SizedBox(height: 2),
+                      _meta('${l['tier_snapshot']}-tier · '
+                          '${l['price_snapshot']} 🪙 · '
+                          'seller ${l['seller_name']}'),
+                      _meta('listed ${l['created_at']}'),
+                    ]),
+              ),
+            ]),
+            const SizedBox(height: 10),
+            OutlinedButton.icon(
+              style:
+                  OutlinedButton.styleFrom(foregroundColor: AppTheme.danger),
+              onPressed: () => _confirmDelist(l),
+              icon: const Icon(Icons.remove_shopping_cart_outlined, size: 16),
+              label: const Text('Delist (returns the card to the seller)'),
+            ),
+          ]);
+        }).toList(),
+      ),
+    );
+  }
+
+  Future<void> _confirmDelist(Map<String, dynamic> l) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: const Text('Delist this card?',
+            style: TextStyle(color: AppTheme.textPrimary, fontSize: 16)),
+        content: const Text(
+            'The escrowed copy returns to the seller and the listing closes. '
+            'Nothing is confiscated — use the review queue for content '
+            'problems with the card itself.',
+            style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+              style: FilledButton.styleFrom(backgroundColor: AppTheme.danger),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delist')),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _act({'action': 'admin_delist', 'listing_id': l['id']});
+    }
   }
 }
