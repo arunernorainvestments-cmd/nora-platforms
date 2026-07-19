@@ -404,6 +404,12 @@ class _FindMatchScreenState extends ConsumerState<FindMatchScreen>
           icon: const Icon(Icons.auto_fix_high_outlined, size: 18),
           label: const Text('Quick-build a deck from my best cards'),
         ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: () => context.push('/decks'),
+          icon: const Icon(Icons.dashboard_customize_outlined, size: 18),
+          label: const Text('Build or edit decks by hand'),
+        ),
         const SizedBox(height: 16),
         FilledButton.icon(
           onPressed: (_deckId == null || _busy) ? null : () => _join(_deckId!),

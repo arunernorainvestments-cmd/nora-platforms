@@ -8,7 +8,9 @@ class MainShell extends StatelessWidget {
   const MainShell({super.key, required this.child});
 
   int _locationToIndex(String location) {
-    if (location.startsWith('/battle') || location.startsWith('/arena')) {
+    if (location.startsWith('/battle') ||
+        location.startsWith('/arena') ||
+        location.startsWith('/decks')) {
       return 1;
     }
     // The chit market lives under the Battle tab (game economy). Exact match:

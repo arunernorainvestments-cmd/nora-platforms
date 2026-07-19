@@ -54,6 +54,8 @@ import '../../features/emergency_fund/screens/request_funds_screen.dart';
 import '../../features/emergency_fund/screens/my_requests_screen.dart';
 import '../../features/emergency_fund/screens/vote_screen.dart';
 import '../../features/admin/screens/admin_screen.dart';
+import '../../features/decks/screens/decks_screen.dart';
+import '../../features/decks/screens/deck_editor_screen.dart';
 import '../shell/main_shell.dart';
 
 // Notifier that triggers GoRouter to re-evaluate its redirect without
@@ -138,12 +140,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         '/markets', '/profile', '/wallet', '/mybets', '/arena', '/battle',
         '/marketplace', '/verify-identity',
         '/my-licenses', '/create-listing', '/mint', '/collection', '/market',
-        '/admin',
+        '/admin', '/decks',
       ];
       // sub-paths are also protected
       final isProtected = protectedRoutes.contains(loc) ||
           loc.startsWith('/arena/') ||
           loc.startsWith('/battle/') ||
+          loc.startsWith('/decks/') ||
           loc.startsWith('/marketplace/') ||
           loc == '/emergency-fund/request' ||
           loc == '/emergency-fund/my-requests' ||
@@ -495,6 +498,18 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/battle/find',
             builder: (context, state) => const FindMatchScreen(),
           ),
+          // Deck manager + editor (mig 118) — a legal 20-card deck is the
+          // entry ticket to the crossplay queue.
+          GoRoute(
+            path: '/decks',
+            builder: (context, state) => const DecksScreen(),
+          ),
+          GoRoute(
+            path: '/decks/:deckId',
+            builder: (context, state) => DeckEditorScreen(
+              deckId: state.pathParameters['deckId']!,
+            ),
+          ),
           GoRoute(
             path: '/battle/play/:matchId',
             builder: (context, state) => BattlePlayScreen(
@@ -541,6 +556,7 @@ String _documentTitleFor(String path) {
     'join' => 'Join',
     'mint' => 'Create Your BattleChit',
     'collection' => 'My Collection',
+    'decks' => 'Deck Builder',
     'market' => 'Chit Market',
     'battle' => 'Battle Arena',
     'arena' => 'Arena',
