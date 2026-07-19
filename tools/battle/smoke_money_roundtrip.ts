@@ -89,6 +89,12 @@ async function main() {
     const { error } = await admin.rpc('kyc_simulate_approve', { p_user_id: u });
     if (error) throw new Error(`kyc_simulate_approve: ${error.message}`);
   }
+  // Seed every sim balance NOW so before/after deltas are clean — otherwise the
+  // players' rows first appear mid-settlement (seed +1,000,000 inside the credit).
+  for (const u of [uP1, uP2, uB1, uB2]) {
+    const { error } = await admin.rpc('sim_seed_balance', { p_user_id: u });
+    if (error) throw new Error(`sim_seed_balance: ${error.message}`);
+  }
 
   console.log('2. catalog chits ×10, each tethered to a P1-owned moment…');
   const chitIds: string[] = [];
@@ -172,7 +178,10 @@ async function main() {
     { p_market_id: marketId, p_position: 'team_1', p_amount_dollars: 1 });
   assert(combatantBet && /one role per match|Combatants/i.test(combatantBet.message),
     `combatant bet must RAISE the one-role error, got: ${combatantBet?.message}`);
-  const cB2 = await signIn(EMAILS[3]);           // B2 not yet KYC'd
+  // B2 must be non-KYC for this probe — a recovered user may carry an approved
+  // KYC row from a prior aborted run.
+  await admin.from('kyc_verifications').delete().eq('user_id', uB2);
+  const cB2 = await signIn(EMAILS[3]);
   const { error: nokycBet } = await cB2.rpc('ccg_place_bet',
     { p_market_id: marketId, p_position: 'team_2', p_amount_dollars: 1 });
   assert(nokycBet && /eligible/i.test(nokycBet.message),
