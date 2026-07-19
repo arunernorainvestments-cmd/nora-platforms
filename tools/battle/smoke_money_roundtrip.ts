@@ -205,23 +205,42 @@ async function main() {
   assert(before.b2 === 1000000 - 600, `B2 must be debited 600¢ (got ${before.b2})`);
 
   console.log('7. P1 summons (a chit is PLAYED) → P2 forfeits → settle trigger…');
-  const { data: hand } = await cP1.from('ccg_match_cards')
-    .select('id, snap_aura_cost, snap_chit_type').eq('match_id', matchId)
-    .eq('zone', 'hand').eq('owner_seat', 1).order('snap_aura_cost');
-  const { data: me } = await cP1.from('ccg_match_players')
-    .select('aura').eq('match_id', matchId).eq('seat', 1).single();
-  const affordable = (hand ?? []).find((h) =>
-    (h as { snap_chit_type: string }).snap_chit_type === 'creature'
-    && (h as { snap_aura_cost: number }).snap_aura_cost <= ((me as { aura: number })?.aura ?? 0));
-  assert(affordable, 'P1 must be able to summon an F-tier creature on turn 1');
-  const { error: tErr } = await cP1.rpc('ccg_submit_turn', {
-    p_match_id: matchId,
-    p_actions: [
-      { type: 'summon', card_id: (affordable as { id: string }).id, position: 1 },
-      { type: 'end' },
-    ],
-  });
-  if (tErr) throw new Error(`submit_turn: ${tErr.message}`);
+  // Aura ramps +1 per own turn; cycle end-turns (P1 then P2) until P1 can
+  // afford a creature, then summon it. F-tier costs 1, so this exits fast.
+  let summoned = false;
+  for (let cycle = 0; cycle < 5 && !summoned; cycle++) {
+    const { data: hand, error: handErr } = await cP1.from('ccg_match_cards')
+      .select('id, snap_aura_cost, snap_chit_type').eq('match_id', matchId)
+      .eq('zone', 'hand').eq('owner_seat', 1).order('snap_aura_cost');
+    if (handErr) throw new Error(`hand read: ${handErr.message}`);
+    const { data: me } = await cP1.from('ccg_match_players')
+      .select('aura').eq('match_id', matchId).eq('seat', 1).single();
+    const aura = (me as { aura: number })?.aura ?? 0;
+    const affordable = (hand ?? []).find((h) =>
+      (h as { snap_chit_type: string }).snap_chit_type === 'creature'
+      && (h as { snap_aura_cost: number }).snap_aura_cost <= aura);
+    if (affordable) {
+      const { error: tErr } = await cP1.rpc('ccg_submit_turn', {
+        p_match_id: matchId,
+        p_actions: [
+          { type: 'summon', card_id: (affordable as { id: string }).id, position: 1 },
+          { type: 'end' },
+        ],
+      });
+      if (tErr) throw new Error(`submit_turn (summon): ${tErr.message}`);
+      summoned = true;
+      console.log(`   summoned on P1 turn ${cycle + 1} (aura ${aura})`);
+      break;
+    }
+    console.log(`   cycle ${cycle + 1}: hand=${JSON.stringify(hand)} aura=${aura} — passing both turns`);
+    const { error: e1 } = await cP1.rpc('ccg_submit_turn',
+      { p_match_id: matchId, p_actions: [{ type: 'end' }] });
+    if (e1) throw new Error(`P1 pass: ${e1.message}`);
+    const { error: e2 } = await cP2.rpc('ccg_submit_turn',
+      { p_match_id: matchId, p_actions: [{ type: 'end' }] });
+    if (e2) throw new Error(`P2 pass: ${e2.message}`);
+  }
+  assert(summoned, 'P1 could not summon a creature within 5 turn cycles');
 
   const { data: ff, error: fErr } = await cP2.rpc('ccg_forfeit_match', { p_match_id: matchId });
   if (fErr) throw new Error(`forfeit: ${fErr.message}`);
