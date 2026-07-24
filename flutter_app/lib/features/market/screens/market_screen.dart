@@ -9,11 +9,40 @@ import '../../wallet/providers/wallet_providers.dart';
 import '../providers/market_providers.dart';
 import '../../../core/widgets/n_back_button.dart';
 
+/// The 10 canonical archetype families (mirrors CardFace.familyAccent /
+/// FAMILY_ACCENT in cinematic_directives.ts) — the market's category filter
+/// vocabulary. Home category buttons deep-link to `/market?family=<key>`.
+const kMarketFamilies = <String, String>{
+  'athlete': 'Athletes',
+  'musician': 'Musicians',
+  'artist': 'Artists',
+  'scientist': 'Scientists',
+  'comedian': 'Comedians',
+  'influencer': 'Influencers',
+  'politician': 'Politicians',
+  'business': 'Business',
+  'gamer': 'Gamers',
+  'actor': 'Actors',
+};
+
+const _tierRank = {'F': 0, 'E': 1, 'D': 2, 'C': 3, 'B': 4, 'A': 5, 'S': 6};
+
 /// `/market` — the fixed-price chit marketplace (token lane). Browse every
 /// active listing, buy with tokens, delist your own. Prices are config-fixed
 /// per tier (never supply/demand — Hard Rule 40); the A/S fee is burned.
+///
+/// Accepts a family filter + trending sort via the URL (Collections spec N1):
+/// `/market?family=athlete`, `/market?sort=trending`.
 class MarketScreen extends ConsumerWidget {
-  const MarketScreen({super.key});
+  const MarketScreen({super.key, this.family, this.sort});
+
+  /// Archetype-family filter (a kMarketFamilies key), or null for all.
+  final String? family;
+
+  /// 'trending' sorts top tiers first; anything else is newest-first.
+  final String? sort;
+
+  bool get _trending => sort == 'trending';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -37,32 +66,69 @@ class MarketScreen extends ConsumerWidget {
           ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () {
-          ref.invalidate(tokenBalanceProvider);
-          return ref.refresh(activeListingsProvider.future);
-        },
-        child: listings.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => _message(
-            icon: Icons.error_outline,
-            color: AppTheme.danger,
-            title: 'Could not load the market',
-            detail: '$e',
+      body: Column(
+        children: [
+          _FilterChips(family: family, trending: _trending),
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: () {
+                ref.invalidate(tokenBalanceProvider);
+                return ref.refresh(activeListingsProvider.future);
+              },
+              child: listings.when(
+                loading: () =>
+                    const Center(child: CircularProgressIndicator()),
+                error: (e, _) => _message(
+                  icon: Icons.error_outline,
+                  color: AppTheme.danger,
+                  title: 'Could not load the market',
+                  detail: '$e',
+                ),
+                data: (rows) {
+                  final filtered = _applyFilters(rows);
+                  if (filtered.isEmpty) {
+                    return _message(
+                      icon: Icons.storefront_outlined,
+                      color: AppTheme.textSecondary,
+                      title: family != null
+                          ? 'No ${kMarketFamilies[family] ?? family} cards '
+                              'listed right now'
+                          : 'Nothing listed right now',
+                      detail:
+                          'Cards you list from your collection show up here at '
+                          'their fixed tier price.',
+                    );
+                  }
+                  return _grid(context, ref, filtered);
+                },
+              ),
+            ),
           ),
-          data: (rows) => rows.isEmpty
-              ? _message(
-                  icon: Icons.storefront_outlined,
-                  color: AppTheme.textSecondary,
-                  title: 'Nothing listed right now',
-                  detail:
-                      'Cards you list from your collection show up here at their '
-                      'fixed tier price.',
-                )
-              : _grid(context, ref, rows),
-        ),
+        ],
       ),
     );
+  }
+
+  /// Family filter + trending order over whatever listing data exists (N1
+  /// plumbing; richer collection listings arrive in N3). Trending = top tiers
+  /// first, newest inside a tier — resale rows are already newest-first.
+  List<MarketListing> _applyFilters(List<MarketListing> rows) {
+    var out = rows;
+    if (family != null) {
+      out = out.where((l) => l.family.toLowerCase() == family).toList();
+    }
+    if (_trending) {
+      // Decorate with the incoming (newest-first) index so equal tiers keep
+      // their order — List.sort alone is not guaranteed stable.
+      final indexed = out.asMap().entries.toList()
+        ..sort((a, b) {
+          final byTier = (_tierRank[b.value.tier] ?? 0)
+              .compareTo(_tierRank[a.value.tier] ?? 0);
+          return byTier != 0 ? byTier : a.key.compareTo(b.key);
+        });
+      out = indexed.map((e) => e.value).toList();
+    }
+    return out;
   }
 
   Widget _balanceChip(BuildContext context, int tokens) => GestureDetector(
@@ -286,6 +352,57 @@ class _BuyButtonState extends ConsumerState<_BuyButton> {
       ref.invalidate(tokenBalanceProvider);
       ref.invalidate(myCollectionProvider);
     }
+  }
+}
+
+/// Horizontal filter row: All · Trending · the 10 archetype families. Each
+/// chip routes (URL is the single source of filter truth, so deep links,
+/// back/forward, and the home category buttons all behave identically).
+class _FilterChips extends StatelessWidget {
+  const _FilterChips({required this.family, required this.trending});
+  final String? family;
+  final bool trending;
+
+  @override
+  Widget build(BuildContext context) {
+    final none = family == null && !trending;
+    return Container(
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppTheme.cardBorder)),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        child: Row(
+          children: [
+            _chip(context, 'All', none, '/market'),
+            _chip(context, 'Trending', trending, '/market?sort=trending'),
+            ...kMarketFamilies.entries.map((e) => _chip(
+                context, e.value, family == e.key, '/market?family=${e.key}')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _chip(BuildContext context, String label, bool active, String route) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: active,
+        onSelected: (_) => context.go(route),
+        selectedColor: AppTheme.primary,
+        backgroundColor: AppTheme.surface,
+        labelStyle: TextStyle(
+          color: active ? Colors.white : AppTheme.textSecondary,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+        ),
+        side: const BorderSide(color: AppTheme.cardBorder),
+        showCheckmark: false,
+      ),
+    );
   }
 }
 
