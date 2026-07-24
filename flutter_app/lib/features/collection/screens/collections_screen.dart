@@ -7,6 +7,7 @@ import '../../../core/widgets/n_back_button.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../markets/providers/card_market_providers.dart';
 import '../providers/collections_providers.dart';
+import '../providers/mystery_providers.dart';
 
 /// `/collections` — the Market Maker's collection workshop (Collections spec
 /// N2/N4). List your collections, create a new one (KYC + linked social gated),
@@ -404,6 +405,11 @@ class CollectionEditorScreen extends ConsumerWidget {
           child: const Text('This collection is sold out.',
               style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
         ),
+      // N6: the pool offer is a minter-only action on a published collection.
+      if (isOwner && (c.isListed || c.isSoldOut)) ...[
+        const SizedBox(height: 16),
+        _MysteryPoolCard(collection: c),
+      ],
     ]);
   }
 
@@ -610,6 +616,171 @@ class CollectionEditorScreen extends ConsumerWidget {
     } catch (e) {
       messenger.showSnackBar(SnackBar(
           content: Text(CardMarketService.errorMessage(e)),
+          backgroundColor: AppTheme.danger));
+    }
+  }
+}
+
+/// Mystery Box pool offer (Collections spec N6, §1.5 / gate G-MYSTERY).
+///
+/// Beta state: the button renders with the explainer and is NOT functional —
+/// `mystery_pool_settings.mode` is `disabled`, so the RPC would refuse anyway.
+/// The enabled path is written and waiting behind the flag; when the founder
+/// flips the mode the same button starts working with no code change.
+///
+/// G-COLL: the copy describes a fixed platform purchase for a community reward
+/// pool. It never frames a card as an appreciating or income-producing asset.
+class _MysteryPoolCard extends ConsumerWidget {
+  const _MysteryPoolCard({required this.collection});
+  final Collection collection;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(mysteryPoolModeProvider);
+    final open = mode.maybeWhen(data: (m) => m != 'disabled', orElse: () => false);
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.cardBorder),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.card_giftcard_outlined,
+              size: 18, color: AppTheme.secondary),
+          const SizedBox(width: 8),
+          const Text('Mystery Box pool',
+              style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700)),
+          const Spacer(),
+          if (!open)
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: AppTheme.textSecondary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(999),
+              ),
+              child: const Text('After beta',
+                  style: TextStyle(
+                      color: AppTheme.textSecondary,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700)),
+            ),
+        ]),
+        const SizedBox(height: 8),
+        const Text(
+          'Coming after Beta — the platform will purchase submitted cards at a '
+          'fixed rate for the community reward pool. Pooled cards are handed out '
+          'to players through gameplay: tournament wins, Spotlight, challenges '
+          'and drops. Mystery Boxes are never sold.',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 12.5),
+        ),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: open ? () => _submitSheet(context, ref) : null,
+            icon: const Icon(Icons.inventory_2_outlined, size: 18),
+            label: const Text('Submit to Mystery Box Pool'),
+          ),
+        ),
+      ]),
+    );
+  }
+
+  Future<void> _submitSheet(BuildContext context, WidgetRef ref) async {
+    final rates = await ref.read(mysteryPoolRatesProvider.future);
+    if (!context.mounted || collection.members.isEmpty) return;
+
+    var chitId = collection.members.first.chitId;
+    var copies = 1;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) {
+          final member =
+              collection.members.firstWhere((m) => m.chitId == chitId);
+          final rate = rates[member.tier] ?? 0;
+          return AlertDialog(
+            backgroundColor: AppTheme.surface,
+            title: const Text('Submit to the pool',
+                style: TextStyle(color: AppTheme.textPrimary, fontSize: 17)),
+            content: Column(mainAxisSize: MainAxisSize.min, children: [
+              DropdownButton<String>(
+                value: chitId,
+                isExpanded: true,
+                dropdownColor: AppTheme.surface,
+                items: [
+                  for (final m in collection.members)
+                    DropdownMenuItem(
+                      value: m.chitId,
+                      child: Text('${m.name} · ${m.tier}-tier',
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              color: AppTheme.textPrimary, fontSize: 13)),
+                    ),
+                ],
+                onChanged: (v) => setState(() => chitId = v ?? chitId),
+              ),
+              const SizedBox(height: 8),
+              Row(children: [
+                const Text('Copies',
+                    style: TextStyle(
+                        color: AppTheme.textSecondary, fontSize: 13)),
+                const Spacer(),
+                IconButton(
+                  onPressed:
+                      copies > 1 ? () => setState(() => copies--) : null,
+                  icon: const Icon(Icons.remove_circle_outline, size: 20),
+                ),
+                Text('$copies',
+                    style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700)),
+                IconButton(
+                  onPressed: () => setState(() => copies++),
+                  icon: const Icon(Icons.add_circle_outline, size: 20),
+                ),
+              ]),
+              const Divider(color: AppTheme.cardBorder),
+              Text(
+                'The platform pays \$${((rate * copies) / 100).toStringAsFixed(2)} '
+                'on acceptance. Submitted copies leave your holdings.',
+                style: const TextStyle(
+                    color: AppTheme.textSecondary, fontSize: 12.5),
+              ),
+            ]),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Cancel')),
+              FilledButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Submit')),
+            ],
+          );
+        },
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await MysteryPoolService.submit(
+          collectionId: collection.id, chitId: chitId, copies: copies);
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Submitted to the Mystery Box pool.'),
+          backgroundColor: AppTheme.surface));
+      ref.invalidate(collectionProvider(collection.id));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+          content: Text(MysteryPoolService.errorMessage(e)),
           backgroundColor: AppTheme.danger));
     }
   }

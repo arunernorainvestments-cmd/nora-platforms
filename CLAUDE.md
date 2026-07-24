@@ -69,6 +69,17 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 39. Anchor plates + motion prompt templates are **house-owned and versioned, never per card** (`match_cut_anchor_plates`, `match_cut_prompt_templates`). *(Amended 2026-07-04, Minting_Workflow.md:)* launch ships **two character/template-AGNOSTIC plates** — start = the glowing BattleChit card, end = the cyber impact flash (`assets/plates/agnostic_*_plate_v1_16x9.png`); Unity's zoom-into-card lead-in and impact-flash particle bracket every cutscene, so lead-in variety lives in Unity, not in per-template plates (per-template plates are a future expansion, not launch). Plates are authored at **16:9** (generation aspect follows the reference frames). The prompt's **STYLE (style-lock) and CONSTRAINTS blocks are never user-influenced or omitted**. **Post-generation moderation on the finished MP4 is mandatory — clean bookends never vouch for the middle.** The user must preview the card in a practice battle before the chit finalizes.
 40. **Marketplace (migs 153–156):** fixed config prices only (`marketplace_tier_pricing`) — never supply/demand, never value accrual (G-CARDVAL parked). The A/S sale fee is a **BURN**, never platform income. All marketplace writes go through the `marketplace_*` SECURITY DEFINER RPCs — no client table writes; `marketplace_sales` and the acquisition ledger stay append-only. **Provenance lock:** a copy acquired with tokens can never be resold for USD (`acquired_currency` stamp) — free token emission must never reach USD. The USD lane opens only via `marketplace_usd_lane` (founder gate) AND settles per `battle_payments_mode`; USD sales never touch `token_transactions` (Rule 33). A listed chit is HELD: escrowed out of holdings, ascension frozen, swap-retire blocked, self-mint slot still occupied.
 
+41. **Mystery Box (mig 175, Collections N6):** Boxes are **NEVER sold** — not for money, not for
+    tokens. There is deliberately **no purchase RPC**; `mystery_box_grant` is server-only (REVOKEd
+    from `authenticated`) and idempotent per gameplay `context_key` (one win = one box). This is
+    structural, not config — the paid-randomized-pull is the brightest legal line in the spec
+    (G-COLL/G-MYSTERY). `mystery_pool_settings.mode` defaults to **`disabled`** in beta and both
+    money-moving RPCs RAISE while it is; the submit button renders with its explainer, disabled.
+    Platform-authored **generic cards** (`moment_chits.is_generic`) are in-game use only and may
+    **never** reach the marketplace — enforced in `marketplace_list_chit_internal`. Submitted
+    copies rest in copy state `mystery_pool` with attribution intact; submission pays the fixed
+    per-tier config rate on the **USD rail only** (Hard Rule 33).
+
 ## The game (v3 — "Moments" card-battler, canonical)
 > **v3 supersedes the v2.x 1v1 archetype-fighter model entirely.** The build path is `NORA_PLATFORMS_BUILD_SPEC_v3.md`
 > (P0–P6 shipped, migs 116–137; P7 remainder in PLAN.md). Backend owns ALL game logic; Arena is display-only/server-authoritative.
