@@ -34,6 +34,7 @@ import '../../features/battle/screens/find_match_screen.dart';
 import '../../features/home/screens/home_screen.dart';
 import '../../features/mint/screens/mint_moment_screen.dart';
 import '../../features/collection/screens/collection_screen.dart';
+import '../../features/collection/screens/collections_screen.dart';
 import '../../features/market/screens/market_screen.dart';
 import '../../features/home/screens/plan_screen.dart';
 import '../../features/settings/screens/support_screen.dart';
@@ -140,13 +141,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         '/markets', '/profile', '/wallet', '/mybets', '/arena', '/battle',
         '/marketplace', '/verify-identity',
         '/my-licenses', '/create-listing', '/mint', '/collection', '/market',
-        '/admin', '/decks',
+        '/admin', '/decks', '/collections',
       ];
       // sub-paths are also protected
       final isProtected = protectedRoutes.contains(loc) ||
           loc.startsWith('/arena/') ||
           loc.startsWith('/battle/') ||
           loc.startsWith('/decks/') ||
+          loc.startsWith('/collections') ||
           loc.startsWith('/marketplace/') ||
           loc == '/emergency-fund/request' ||
           loc == '/emergency-fund/my-requests' ||
@@ -480,12 +482,27 @@ final routerProvider = Provider<GoRouter>((ref) {
           // Minting v2 §1 — "Create Your BattleChit" (auth-required).
           GoRoute(
             path: '/mint',
-            builder: (context, state) => const MintMomentScreen(),
+            builder: (context, state) => MintMomentScreen(
+              // Collections spec N2 — /mint?collection=<id> mints into a collection.
+              collectionId: state.uri.queryParameters['collection'],
+            ),
           ),
           // The user's minted moment chits — where a finalized card lands.
           GoRoute(
             path: '/collection',
             builder: (context, state) => const CollectionScreen(),
+          ),
+          // Collection minter workshop (Collections spec N2/N4): list/create
+          // collections; the editor adds member cards + publishes.
+          GoRoute(
+            path: '/collections',
+            builder: (context, state) => const CollectionsScreen(),
+          ),
+          GoRoute(
+            path: '/collections/:collectionId',
+            builder: (context, state) => CollectionEditorScreen(
+              collectionId: state.pathParameters['collectionId']!,
+            ),
           ),
           // Chit marketplace (M3) — fixed-price token resale of moment chits.
           // NOTE: '/market' ≠ '/marketplace' (likeness cards) ≠ '/markets'

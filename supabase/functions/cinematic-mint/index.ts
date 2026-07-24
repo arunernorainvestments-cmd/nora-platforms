@@ -76,6 +76,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     subject_desc?: string; timing_type?: string; effect_template_id?: string;
     name?: string; keywords?: string[]; vibe_gate?: number; rerun_of_generation_id?: string;
     swap_of_chit_id?: string; swap_confirm?: boolean;
+    collection_id?: string;   // Collections spec N2 — mint this card into a collection
   };
   try { body = await req.json(); } catch { return json({ error: 'Invalid JSON body' }, 400); }
   const { moment_id, family, chit_type, subject_desc } = body;
@@ -95,6 +96,37 @@ Deno.serve(async (req: Request): Promise<Response> => {
     return json({ error: 'Moment has not passed pre-generation moderation' }, 409);
   }
   if (moment.minted_chit_id) return json({ error: 'Moment already minted' }, 409);
+
+  // ── collection lane (Collections spec N2): validate + stamp the moment ──────────
+  // The stamp lives on the moment so every resume path completes into the same
+  // collection; moment_mint (mig 171) re-validates in SQL at completion. A
+  // collection mint is exempt from the personal self-mint slot below — the
+  // collection + mint fee is its own lane (spec §1.2).
+  if (body.collection_id) {
+    const { data: coll } = await db.from('collections')
+      .select('id, market_maker_user_id, status').eq('id', body.collection_id).single();
+    if (!coll || coll.market_maker_user_id !== user.id) {
+      return json({ error: 'Collection not found or not yours' }, 403);
+    }
+    if (!['draft', 'minting'].includes(coll.status as string)) {
+      return json({
+        error: `Collection is ${coll.status} — cards can only be added before publish`,
+      }, 409);
+    }
+    const { data: eligible } = await db.rpc('is_collection_minter', { p_user_id: user.id });
+    if (!eligible) {
+      return json({
+        error: 'Collection minting requires KYC verification and a linked social profile',
+      }, 403);
+    }
+    if (moment.collection_id !== body.collection_id) {
+      const { error: stampErr } = await db.from('moments')
+        .update({ collection_id: body.collection_id }).eq('id', moment_id);
+      if (stampErr) return json({ error: 'Could not attach the moment to the collection', detail: stampErr.message }, 500);
+      moment.collection_id = body.collection_id;
+    }
+  }
+  const isCollectionMint = !!moment.collection_id;
 
   // The family moment-classify persisted (auto-classified or user-override, both
   // allowlist-validated) wins over the client body — it is what the persisted effect
@@ -165,7 +197,13 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // Occupied slot: the client must re-call with the explicit swap confirmation. The
   // old chit is retired IN THE SAME TX as the new mint (mig 142) — never before the
   // new mint confirms; its media is deleted below only after that tx succeeds.
-  const { data: slotChit } = await db.rpc('self_mint_slot', { p_user: user.id });
+  // Collection mints are EXEMPT (Collections spec §1.2): they never consume nor
+  // swap the personal slot (moment_mint enforces the same in SQL, mig 171).
+  let slotChit: string | null = null;
+  if (!isCollectionMint) {
+    const { data } = await db.rpc('self_mint_slot', { p_user: user.id });
+    slotChit = data as string | null;
+  }
   if (slotChit && (!body.swap_confirm || body.swap_of_chit_id !== slotChit)) {
     return json({
       error: 'self_mint_slot_occupied',
