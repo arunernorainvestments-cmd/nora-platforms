@@ -80,6 +80,21 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
     copies rest in copy state `mystery_pool` with attribution intact; submission pays the fixed
     per-tier config rate on the **USD rail only** (Hard Rule 33).
 
+42. **Clip Campaigns (mig 176, Collections N7):** New namespace `clip_campaign*` — the archived
+    mig-089 `campaigns` tables stay archived, untouched. **No un-moderated clip is ever visible to
+    a Market Maker** — enforced in RLS (`clip_campaign_submissions` returns a row to the campaign
+    owner only in `approved|accepted|paid`), never in application code. `clip_submission_moderate`
+    is **service-only**; minor-safety is absolute and queues to `clip_campaign_moderation` (no
+    client policies, ever — the mig-141 posture). Budget is **escrowed in full at creation** and
+    leaves ONLY via `clip_campaign_accept` (one payment per submission, UNIQUE-anchored) or the
+    cancel/expire refunds. Clippers **submit freely; KYC gates PAYMENT**, not submission.
+    **REPO-CHECK 1.6 consent chain (Hard Rule 37 is NOT weakened):** a campaign may carry
+    `source_moment_id`, a tether to a post the Market Maker already proved they own (OAuth via
+    moment-ingest, moderation-approved). **Tethered** → an accepted clip is the device-clip leg of
+    HR37 for that post and may feed a mint; **untethered (default)** → the campaign is
+    **licensing-only**: payment + profile display, no mint feed. Either way the campaign system
+    **never mints** — it hands the clip to the existing pipeline, which owns consent.
+
 ## The game (v3 — "Moments" card-battler, canonical)
 > **v3 supersedes the v2.x 1v1 archetype-fighter model entirely.** The build path is `NORA_PLATFORMS_BUILD_SPEC_v3.md`
 > (P0–P6 shipped, migs 116–137; P7 remainder in PLAN.md). Backend owns ALL game logic; Arena is display-only/server-authoritative.

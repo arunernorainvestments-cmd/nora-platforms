@@ -35,6 +35,7 @@ import '../../features/home/screens/home_screen.dart';
 import '../../features/mint/screens/mint_moment_screen.dart';
 import '../../features/collection/screens/collection_screen.dart';
 import '../../features/collection/screens/collections_screen.dart';
+import '../../features/campaigns/screens/campaigns_screen.dart';
 import '../../features/markets/screens/card_markets_screen.dart';
 import '../../features/market/screens/market_screen.dart';
 import '../../features/home/screens/plan_screen.dart';
@@ -150,6 +151,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           loc.startsWith('/battle/') ||
           loc.startsWith('/decks/') ||
           loc.startsWith('/collections') ||
+          loc.startsWith('/campaigns') ||
           loc.startsWith('/markets/') ||
           loc.startsWith('/marketplace/') ||
           loc == '/emergency-fund/request' ||
@@ -516,6 +518,25 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/collections/:collectionId',
             builder: (context, state) => CollectionEditorScreen(
               collectionId: state.pathParameters['collectionId']!,
+            ),
+          ),
+          // Clip Campaigns (Collections spec N7) — clip bounty board. The submit
+          // route is declared before ':campaignId' consumers so the trailing
+          // segment is never read as an id.
+          GoRoute(
+            path: '/campaigns',
+            builder: (context, state) => const CampaignsScreen(),
+          ),
+          GoRoute(
+            path: '/campaigns/:campaignId/submit',
+            builder: (context, state) => CampaignSubmitScreen(
+              campaignId: state.pathParameters['campaignId']!,
+            ),
+          ),
+          GoRoute(
+            path: '/campaigns/:campaignId',
+            builder: (context, state) => CampaignDetailScreen(
+              campaignId: state.pathParameters['campaignId']!,
             ),
           ),
           // Chit marketplace (M3) — fixed-price token resale of moment chits.
