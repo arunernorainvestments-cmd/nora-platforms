@@ -490,9 +490,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           // Chit marketplace (M3) — fixed-price token resale of moment chits.
           // NOTE: '/market' ≠ '/marketplace' (likeness cards) ≠ '/markets'
           // (prediction markets).
+          // Accepts ?family=<archetype family> and ?sort=trending — the home
+          // category buttons deep-link here (Collections spec N1).
           GoRoute(
             path: '/market',
-            builder: (context, state) => const MarketScreen(),
+            builder: (context, state) => MarketScreen(
+              family: state.uri.queryParameters['family'],
+              sort: state.uri.queryParameters['sort'],
+            ),
           ),
           GoRoute(
             path: '/battle/find',

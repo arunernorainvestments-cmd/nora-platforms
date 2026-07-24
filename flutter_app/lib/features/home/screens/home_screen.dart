@@ -47,9 +47,22 @@ Color _paletteColor(String label) {
   return _kAccentPalette[code % _kAccentPalette.length];
 }
 
-const _kCategories = [
-  'Trending', 'Athletes', 'Influencers', 'Artists',
-  'Scientists', 'Professionals',
+/// Home category buttons → the card market, filtered (Collections spec N1).
+/// The 10 canonical archetype families + Trending; every button routes — no
+/// animated-but-dead tabs. These filter the CARD market (/market), never the
+/// prediction markets (/markets).
+const _kCategories = <(String, String)>[
+  ('Trending', '/market?sort=trending'),
+  ('Athletes', '/market?family=athlete'),
+  ('Musicians', '/market?family=musician'),
+  ('Artists', '/market?family=artist'),
+  ('Scientists', '/market?family=scientist'),
+  ('Comedians', '/market?family=comedian'),
+  ('Influencers', '/market?family=influencer'),
+  ('Politicians', '/market?family=politician'),
+  ('Business', '/market?family=business'),
+  ('Gamers', '/market?family=gamer'),
+  ('Actors', '/market?family=actor'),
 ];
 
 class HomeScreen extends ConsumerStatefulWidget {
@@ -60,7 +73,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 }
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
-  int _categoryIndex = 0;
   int _championsSlide = 0;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -95,10 +107,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           children: [
             _Header(scaffoldKey: _scaffoldKey),
             const HomeTicker(),
-            _CategoryTabs(
-              selected: _categoryIndex,
-              onSelect: (i) => setState(() => _categoryIndex = i),
-            ),
+            const _CategoryTabs(),
             Expanded(
               child: RefreshIndicator(
                 color: AppTheme.primary,
@@ -363,9 +372,7 @@ class _Header extends ConsumerWidget {
 // ─── Category tabs ────────────────────────────────────────────────────────────
 
 class _CategoryTabs extends StatelessWidget {
-  final int selected;
-  final ValueChanged<int> onSelect;
-  const _CategoryTabs({required this.selected, required this.onSelect});
+  const _CategoryTabs();
 
   @override
   Widget build(BuildContext context) {
@@ -378,14 +385,11 @@ class _CategoryTabs extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Row(
           children: [
-            ..._kCategories.asMap().entries.map((e) {
-              final active = e.key == selected;
-              return _TabButton(
-                label: e.value,
-                active: active,
-                onTap: () => onSelect(e.key),
-              );
-            }),
+            ..._kCategories.map((c) => _TabButton(
+                  label: c.$1,
+                  active: false,
+                  onTap: () => GoRouter.of(context).go(c.$2),
+                )),
             _TabButton(
               label: 'Explore All →',
               active: false,
