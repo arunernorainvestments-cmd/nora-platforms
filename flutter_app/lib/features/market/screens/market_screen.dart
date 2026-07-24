@@ -55,6 +55,11 @@ class MarketScreen extends ConsumerWidget {
         backgroundColor: AppTheme.background,
         title: const Text('Chit Market'),
         actions: [
+          IconButton(
+            tooltip: 'Collections',
+            icon: const Icon(Icons.collections_bookmark_outlined),
+            onPressed: () => context.go('/collections/browse'),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 12),
             child: Center(
