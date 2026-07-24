@@ -14,6 +14,7 @@ import '../../../core/constants/creator_categories.dart';
 import '../../../core/widgets/settings_menu_button.dart';
 import '../providers/platform_connection_providers.dart';
 import '../providers/profile_providers.dart';
+import '../../collection/widgets/collections_profile_section.dart';
 
 class ProfileScreen extends ConsumerStatefulWidget {
   final String? connectedPlatform;
@@ -425,6 +426,12 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
                     if (user != null) ...[
                       BadgesShelf(userId: user.id),
                       const SizedBox(height: 20),
+                    ],
+
+                    // ── Collections created (Collections spec N4) ──────────
+                    if (user != null) ...[
+                      CollectionsProfileSection(userId: user.id),
+                      const SizedBox(height: 8),
                     ],
 
                     // ── Market Maker section ──────────────────────────────

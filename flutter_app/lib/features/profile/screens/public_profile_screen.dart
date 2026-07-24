@@ -13,6 +13,7 @@ import '../models/platform_connection.dart';
 import '../models/platform_metric.dart';
 import '../models/public_profile_data.dart';
 import '../providers/public_profile_providers.dart';
+import '../../collection/widgets/collections_profile_section.dart';
 import '../widgets/score_history_chart.dart';
 import '../../battle/providers/battle_providers.dart';
 
@@ -172,7 +173,12 @@ class _ProfileBody extends StatelessWidget {
             child: _StatSheetCard(userId: profile.id),
           ),
 
-        // ── H) Recent Content ────────────────────────────────────────────────
+        // ── H) Collections (Collections spec N4 — created series) ────────────
+        SliverToBoxAdapter(
+          child: CollectionsProfileSection(userId: profile.id),
+        ),
+
+        // ── I) Recent Content ────────────────────────────────────────────────
         const SliverToBoxAdapter(child: _RecentContentSection()),
 
         const SliverToBoxAdapter(child: SizedBox(height: 48)),

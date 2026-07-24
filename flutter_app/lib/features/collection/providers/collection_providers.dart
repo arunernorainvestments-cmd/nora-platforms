@@ -24,6 +24,10 @@ class CollectionChit {
     required this.flavor,
     required this.serial,
     this.listingId,
+    this.ownedSerials = const [],
+    this.totalSupply = 1,
+    this.collectionId,
+    this.collectionTitle,
   });
 
   final String id;
@@ -48,6 +52,28 @@ class CollectionChit {
   /// Active marketplace listing holding this chit in escrow (mig 154), if any.
   final String? listingId;
 
+  /// Per-copy serial numbers this user holds (Collections spec N2 — chit_copies).
+  /// A single self-mint has [1]; a collector may hold several serials of a chit.
+  final List<int> ownedSerials;
+
+  /// The definition's fixed supply (mig 170) — the N in "# of N".
+  final int totalSupply;
+
+  /// Collection membership (Collections spec N4), when this card belongs to one.
+  final String? collectionId;
+  final String? collectionTitle;
+
+  /// The lowest owned serial, for the "# of N" display line.
+  int? get displaySerial =>
+      ownedSerials.isEmpty ? null : (ownedSerials..sort()).first;
+
+  /// "#3 of 100" for the lowest owned serial, or null for a lone 1-of-1.
+  String? get copyOfLabel {
+    final s = displaySerial;
+    if (s == null) return null;
+    return '#$s of $totalSupply';
+  }
+
   /// Owned but not yet finalized into the deck (Hard Rule 39 preview gate).
   bool get isPending => !isActive;
 
@@ -59,7 +85,11 @@ class CollectionChit {
   bool get isSellable => isActive && !isListed;
 
   factory CollectionChit.fromRow(Map<String, dynamic> r,
-          {String? listingId}) =>
+          {String? listingId,
+          List<int> ownedSerials = const [],
+          int? totalSupply,
+          String? collectionId,
+          String? collectionTitle}) =>
       CollectionChit(
         id: r['id'] as String,
         name: (r['name'] ?? 'BattleChit').toString(),
@@ -80,6 +110,10 @@ class CollectionChit {
         flavor: r['flavor_text'] as String?,
         serial: r['card_serial'] as String?,
         listingId: listingId,
+        ownedSerials: ownedSerials,
+        totalSupply: totalSupply ?? (r['total_supply'] as num?)?.toInt() ?? 1,
+        collectionId: collectionId,
+        collectionTitle: collectionTitle,
       );
 }
 
@@ -120,19 +154,59 @@ final myCollectionProvider =
   final allIds = {...ids, ...listingByChit.keys}.toList();
   if (allIds.isEmpty) return [];
 
+  // Per-copy serials this user holds (Collections spec N2 — chit_copies). Own +
+  // listed_escrow copies are still "theirs" for display.
+  final copies = await client
+      .from('chit_copies')
+      .select('chit_id, serial_number, total_supply')
+      .eq('owner_user_id', user.id)
+      .inFilter('state', ['owned', 'listed_escrow']);
+  final serialsByChit = <String, List<int>>{};
+  final supplyByChit = <String, int>{};
+  for (final e in copies as List) {
+    final m = e as Map;
+    final cid = m['chit_id'] as String;
+    (serialsByChit[cid] ??= []).add((m['serial_number'] as num).toInt());
+    supplyByChit[cid] = (m['total_supply'] as num?)?.toInt() ?? 1;
+  }
+
+  // Collection membership → title (public for listed; own drafts readable).
+  final members = await client
+      .from('collection_chits')
+      .select('chit_id, collections(id, title)')
+      .inFilter('chit_id', allIds);
+  final collByChit = <String, ({String id, String title})>{};
+  for (final e in members as List) {
+    final m = e as Map;
+    final coll = (m['collections'] as Map?)?.cast<String, dynamic>();
+    if (coll != null) {
+      collByChit[m['chit_id'] as String] =
+          (id: coll['id'] as String, title: (coll['title'] ?? '').toString());
+    }
+  }
+
   final rows = await client
       .from('moment_chits')
       .select(
           'id, name, chit_type, archetype_family, tier, aura_cost, atk, hp, '
           'keywords, card_art_url, mp4_cutscene_url, is_active, previewed_at, '
           'original_minter_handle, source_platform, created_at, '
-          'rules_text, flavor_text, card_serial')
+          'rules_text, flavor_text, card_serial, total_supply')
       .inFilter('id', allIds)
       .order('created_at', ascending: false);
 
   return (rows as List).map((e) {
     final m = e as Map<String, dynamic>;
-    return CollectionChit.fromRow(m, listingId: listingByChit[m['id']]);
+    final cid = m['id'] as String;
+    final coll = collByChit[cid];
+    return CollectionChit.fromRow(
+      m,
+      listingId: listingByChit[cid],
+      ownedSerials: serialsByChit[cid] ?? const [],
+      totalSupply: supplyByChit[cid] ?? (m['total_supply'] as num?)?.toInt() ?? 1,
+      collectionId: coll?.id,
+      collectionTitle: coll?.title,
+    );
   }).toList();
 });
 
