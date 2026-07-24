@@ -177,6 +177,61 @@ final listedCollectionsProvider =
       .toList();
 });
 
+/// A minter's public collection with sold/remaining set counts (N4 profile
+/// section). Counts only — never a price or value figure (G-COLL).
+class PublicCollectionSummary {
+  const PublicCollectionSummary({
+    required this.id,
+    required this.title,
+    required this.status,
+    required this.cardCount,
+    required this.soldSets,
+    required this.remainingSets,
+  });
+
+  final String id;
+  final String title;
+  final String status;
+  final int cardCount;
+  final int soldSets;
+  final int remainingSets;
+
+  int get totalSets => soldSets + remainingSets;
+}
+
+/// A user's publicly listed/sold-out collections + set counts, for the profile
+/// "Collections" section (REPO-CHECK N4.2: public shows collections CREATED).
+final userPublicCollectionsProvider = FutureProvider.autoDispose
+    .family<List<PublicCollectionSummary>, String>((ref, userId) async {
+  final client = Supabase.instance.client;
+  final rows = await client
+      .from('collections')
+      .select('id, title, status, collection_chits(chit_id)')
+      .eq('market_maker_user_id', userId)
+      .inFilter('status', ['listed', 'sold_out'])
+      .order('created_at', ascending: false);
+
+  final out = <PublicCollectionSummary>[];
+  for (final e in rows as List) {
+    final m = e as Map<String, dynamic>;
+    final id = m['id'] as String;
+    final cards = (m['collection_chits'] as List?)?.length ?? 0;
+    // Public-safe SECURITY DEFINER count aggregates (mig 173).
+    final sold = await client.rpc('collection_sold_sets', params: {'p_collection': id});
+    final remaining =
+        await client.rpc('collection_sets_remaining', params: {'p_collection': id});
+    out.add(PublicCollectionSummary(
+      id: id,
+      title: (m['title'] ?? '').toString(),
+      status: (m['status'] ?? 'listed').toString(),
+      cardCount: cards,
+      soldSets: (sold as num?)?.toInt() ?? 0,
+      remainingSets: (remaining as num?)?.toInt() ?? 0,
+    ));
+  }
+  return out;
+});
+
 /// Thin wrappers over the server-authoritative collection RPCs (mig 171).
 class CollectionService {
   static SupabaseClient get _client => Supabase.instance.client;

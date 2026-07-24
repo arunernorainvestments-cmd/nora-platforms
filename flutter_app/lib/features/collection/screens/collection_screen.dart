@@ -11,14 +11,19 @@ import '../providers/collection_providers.dart';
 import '../services/ascension_service.dart';
 import '../../../core/widgets/n_back_button.dart';
 
+/// Toggle: group the collection by its source Collections vs a flat grid.
+final _groupByCollectionProvider = StateProvider.autoDispose<bool>((_) => false);
+
 /// "My BattleChits" — the minted moment chits the user owns. This is where a
-/// freshly minted card lands after the mint wizard finalizes it.
+/// freshly minted card lands after the mint wizard finalizes it. Cards can be
+/// viewed flat or grouped by their source Collection (Collections spec N4).
 class CollectionScreen extends ConsumerWidget {
   const CollectionScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(myCollectionProvider);
+    final grouped = ref.watch(_groupByCollectionProvider);
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(
@@ -26,6 +31,12 @@ class CollectionScreen extends ConsumerWidget {
         backgroundColor: AppTheme.background,
         title: const Text('My BattleChits'),
         actions: [
+          IconButton(
+            tooltip: grouped ? 'Flat view' : 'Group by collection',
+            icon: Icon(grouped ? Icons.grid_view : Icons.collections_outlined),
+            onPressed: () =>
+                ref.read(_groupByCollectionProvider.notifier).state = !grouped,
+          ),
           const _AscensionAction(),
           IconButton(
             tooltip: 'My Collections',
@@ -55,7 +66,9 @@ class CollectionScreen extends ConsumerWidget {
           ),
           data: (chits) => chits.isEmpty
               ? _EmptyState(onMint: () => context.push('/mint'))
-              : _grid(context, chits),
+              : grouped
+                  ? _grouped(context, chits)
+                  : _grid(context, chits),
         ),
       ),
     );
@@ -76,6 +89,58 @@ class CollectionScreen extends ConsumerWidget {
         chit: chits[i],
         onTap: () => _showCard(ctx, chits[i]),
       ),
+    );
+  }
+
+  /// Grouped view: one section per source collection, then "Singles" for cards
+  /// that don't belong to a collection.
+  Widget _grouped(BuildContext context, List<CollectionChit> chits) {
+    final byCollection = <String, List<CollectionChit>>{};
+    final singles = <CollectionChit>[];
+    final titles = <String, String>{};
+    for (final c in chits) {
+      if (c.collectionId != null) {
+        (byCollection[c.collectionId!] ??= []).add(c);
+        titles[c.collectionId!] = c.collectionTitle ?? 'Collection';
+      } else {
+        singles.add(c);
+      }
+    }
+    final sections = [
+      ...byCollection.entries
+          .map((e) => (title: titles[e.key]!, chits: e.value)),
+      if (singles.isNotEmpty) (title: 'Singles', chits: singles),
+    ];
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        for (final s in sections) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10, top: 4),
+            child: Text('${s.title}  ·  ${s.chits.length}',
+                style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800)),
+          ),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 220,
+              childAspectRatio: 0.62,
+              crossAxisSpacing: 14,
+              mainAxisSpacing: 14,
+            ),
+            itemCount: s.chits.length,
+            itemBuilder: (ctx, i) => _ChitCard(
+              chit: s.chits[i],
+              onTap: () => _showCard(ctx, s.chits[i]),
+            ),
+          ),
+          const SizedBox(height: 20),
+        ],
+      ],
     );
   }
 
@@ -106,8 +171,18 @@ class CollectionScreen extends ConsumerWidget {
                   rulesText: chit.rulesText,
                   flavor: chit.flavor,
                   serial: chit.serial,
+                  copyOf: chit.copyOfLabel,
                 ),
               ),
+              if (chit.ownedSerials.length > 1) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'You own ${chit.ownedSerials.length} copies · serials '
+                  '${(chit.ownedSerials..sort()).map((s) => '#$s').join(', ')}',
+                  style: const TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 12),
+                ),
+              ],
               if (chit.cutsceneUrl != null) ...[
                 const SizedBox(height: 12),
                 _CutscenePreview(url: chit.cutsceneUrl!),
