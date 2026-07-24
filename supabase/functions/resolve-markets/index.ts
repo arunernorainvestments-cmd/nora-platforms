@@ -47,9 +47,23 @@ interface Market {
   title: string;
   opening_resolution_score: number | null;
   end_at: string;
-  resolution_type: 'display_score' | 'battle_outcome';
+  resolution_type:
+    | 'display_score'
+    | 'battle_outcome'
+    | 'card_ascension_time'
+    | 'collection_sellout_date'
+    | 'spotlight_champion';
   battle_match_id: string | null;
 }
+
+// Card-centric market types (Collections spec N5) — token-settled, resolved from
+// an internal-table oracle (card_market_outcome, mig 174), reusing the existing
+// pool payout. Never social-API-dependent.
+const CARD_CENTRIC_TYPES = [
+  'card_ascension_time',
+  'collection_sellout_date',
+  'spotlight_champion',
+] as const;
 
 interface Bet {
   id: string;
@@ -148,6 +162,13 @@ async function resolveMarket(
     return;
   }
 
+  // Card-centric markets (N5): the internal-table oracle decides yes/no/refund;
+  // settlement reuses the token pool payout below.
+  if ((CARD_CENTRIC_TYPES as readonly string[]).includes(market.resolution_type)) {
+    await resolveCardCentricMarket(db, market);
+    return;
+  }
+
   // 1. Fetch creator's current composite display_score (sum across all platforms).
   const { data: allMetrics } = await db
     .from('platform_metrics')
@@ -217,6 +238,58 @@ async function resolveMarket(
   } else {
     await processPayout(db, market, bets as Bet[], result, creatorName);
   }
+}
+
+async function resolveCardCentricMarket(
+  db: Db,
+  market: Market,
+): Promise<void> {
+  // The oracle reads only internal tables (moment_chits/tier_ladder, collections,
+  // arena_spotlight_assignments) — no social-API dependency (Collections spec N5).
+  const { data: outcome, error: oracleErr } = await db.rpc('card_market_outcome', {
+    p_market_id: market.id,
+  });
+  if (oracleErr) throw oracleErr;
+
+  const { data: bets, error: betsError } = await db
+    .from('bets')
+    .select('id, user_id, position, amount')
+    .eq('market_id', market.id)
+    .eq('status', 'active');
+  if (betsError) throw betsError;
+
+  // No bets → void silently (same as the display path).
+  if (!bets || bets.length === 0) {
+    await db.from('markets').update({
+      status: 'voided',
+      resolution_result: 'voided',
+      resolved_at: new Date().toISOString(),
+      platform_fee_collected: 0,
+      market_maker_fee_collected: 0,
+    }).eq('id', market.id);
+    console.log(`[resolve-markets] card market ${market.id}: no bets → voided`);
+    return;
+  }
+
+  // Map the oracle to the pool payout's 'above' (YES) / 'below' (NO) result.
+  let result: 'above' | 'below' | 'refund' =
+    outcome === 'yes' ? 'above' : outcome === 'no' ? 'below' : 'refund';
+
+  // If the winning side has no bets, refund (no counterparty).
+  if (result !== 'refund') {
+    const winningPosition = result === 'above' ? 'yes' : 'no';
+    if (!(bets as Bet[]).some((b) => b.position === winningPosition)) {
+      result = 'refund';
+    }
+  }
+
+  const label = market.title.length > 60 ? `${market.title.slice(0, 57)}…` : market.title;
+  if (result === 'refund') {
+    await processRefund(db, market, bets as Bet[], label);
+  } else {
+    await processPayout(db, market, bets as Bet[], result, label);
+  }
+  console.log(`[resolve-markets] card market ${market.id} (${market.resolution_type}) → ${outcome}`);
 }
 
 async function resolveBattleOutcomeMarket(

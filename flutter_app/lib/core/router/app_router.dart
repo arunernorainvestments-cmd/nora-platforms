@@ -35,6 +35,7 @@ import '../../features/home/screens/home_screen.dart';
 import '../../features/mint/screens/mint_moment_screen.dart';
 import '../../features/collection/screens/collection_screen.dart';
 import '../../features/collection/screens/collections_screen.dart';
+import '../../features/markets/screens/card_markets_screen.dart';
 import '../../features/market/screens/market_screen.dart';
 import '../../features/home/screens/plan_screen.dart';
 import '../../features/settings/screens/support_screen.dart';
@@ -149,6 +150,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           loc.startsWith('/battle/') ||
           loc.startsWith('/decks/') ||
           loc.startsWith('/collections') ||
+          loc.startsWith('/markets/') ||
           loc.startsWith('/marketplace/') ||
           loc == '/emergency-fund/request' ||
           loc == '/emergency-fund/my-requests' ||
@@ -429,6 +431,12 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: '/markets',
             builder: (context, state) => const MarketsScreen(),
+          ),
+          // Card-centric prediction markets (Collections spec N5) — ascension,
+          // sell-out, spotlight. Declared before nothing ambiguous; token-settled.
+          GoRoute(
+            path: '/markets/cards',
+            builder: (context, state) => const CardMarketsScreen(),
           ),
           GoRoute(
             path: '/profile',

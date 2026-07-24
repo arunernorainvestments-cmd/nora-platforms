@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/n_back_button.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../markets/providers/card_market_providers.dart';
 import '../providers/collections_providers.dart';
 
 /// `/collections` — the Market Maker's collection workshop (Collections spec
@@ -368,14 +369,30 @@ class CollectionEditorScreen extends ConsumerWidget {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(color: AppTheme.success.withValues(alpha: 0.4)),
           ),
-          child: Text(
-            'Listed for ${c.priceLabel} — buyers receive one serialized copy '
-            'of each card.',
-            style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
-          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(
+              'Listed for ${c.priceLabel} — buyers receive one serialized copy '
+              'of each card.',
+              style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
+            ),
+            const SizedBox(height: 8),
+            TextButton.icon(
+              onPressed: () => _selloutMarketDialog(context, c),
+              icon: const Icon(Icons.insights_outlined, size: 18),
+              label: const Text('Open a sell-out prediction market'),
+            ),
+          ]),
         )
       else if (c.isListed && !isOwner)
-        _BuyCollectionButton(collection: c)
+        Column(children: [
+          _BuyCollectionButton(collection: c),
+          const SizedBox(height: 8),
+          TextButton.icon(
+            onPressed: () => _selloutMarketDialog(context, c),
+            icon: const Icon(Icons.insights_outlined, size: 18),
+            label: const Text('Predict when it sells out'),
+          ),
+        ])
       else if (c.isSoldOut)
         Container(
           padding: const EdgeInsets.all(14),
@@ -542,6 +559,58 @@ class CollectionEditorScreen extends ConsumerWidget {
             content: Text('Collection published.'),
             backgroundColor: AppTheme.surface));
       }
+    }
+  }
+
+  /// Opens a token sell-out prediction market on this collection (N5). Deadline
+  /// picked in whole days; resolves automatically from the sold-out transition.
+  Future<void> _selloutMarketDialog(
+      BuildContext context, Collection c) async {
+    var days = 30;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          backgroundColor: AppTheme.surface,
+          title: const Text('Sell-out market',
+              style: TextStyle(color: AppTheme.textPrimary, fontSize: 17)),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            Text('"Will ${c.title} sell out within $days days?" — token bets.',
+                style:
+                    const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+            Slider(
+              value: days.toDouble(),
+              min: 1,
+              max: 90,
+              divisions: 89,
+              label: '$days days',
+              onChanged: (v) => setState(() => days = v.round()),
+            ),
+          ]),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Cancel')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Open market')),
+          ],
+        ),
+      ),
+    );
+    if (ok != true || !context.mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await CardMarketService.createSelloutMarket(
+          collectionId: c.id,
+          endAt: DateTime.now().add(Duration(days: days)));
+      messenger.showSnackBar(const SnackBar(
+          content: Text('Market opened — find it under Card Markets.'),
+          backgroundColor: AppTheme.surface));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(
+          content: Text(CardMarketService.errorMessage(e)),
+          backgroundColor: AppTheme.danger));
     }
   }
 }

@@ -20,7 +20,16 @@ class MarketsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Markets'),
-        actions: const [SettingsMenuButton()],
+        actions: [
+          // Card-centric markets (Collections spec N5) — ascension, sell-out,
+          // spotlight. Same token rail, different subjects.
+          IconButton(
+            tooltip: 'Card Markets',
+            icon: const Icon(Icons.insights_outlined),
+            onPressed: () => context.go('/markets/cards'),
+          ),
+          const SettingsMenuButton(),
+        ],
       ),
       body: const _MarketsBody(key: PageStorageKey('markets')),
     );
