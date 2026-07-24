@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/n_back_button.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../providers/collections_providers.dart';
 
 /// `/collections` — the Market Maker's collection workshop (Collections spec
@@ -182,7 +183,7 @@ class _EligibilityCard extends StatelessWidget {
         Row(children: [
           if (!status.kycVerified)
             TextButton(
-              onPressed: () => context.go('/kyc'),
+              onPressed: () => context.go('/verify-identity'),
               child: const Text('Verify identity'),
             ),
           if (!status.linkedSocial)
@@ -309,6 +310,8 @@ class CollectionEditorScreen extends ConsumerWidget {
   }
 
   Widget _body(BuildContext context, WidgetRef ref, Collection c) {
+    final myId = ref.watch(currentUserProvider)?.id;
+    final isOwner = myId != null && myId == c.marketMakerUserId;
     return ListView(padding: const EdgeInsets.all(16), children: [
       Text(c.title,
           style: const TextStyle(
@@ -328,7 +331,7 @@ class CollectionEditorScreen extends ConsumerWidget {
                 fontSize: 15,
                 fontWeight: FontWeight.w700)),
         const Spacer(),
-        if (c.isDraft)
+        if (c.isDraft && isOwner)
           TextButton.icon(
             onPressed: () => context.go('/mint?collection=${c.id}'),
             icon: const Icon(Icons.add, size: 18),
@@ -348,7 +351,7 @@ class CollectionEditorScreen extends ConsumerWidget {
       else
         for (final m in c.members) _memberRow(m, c.isListed),
       const SizedBox(height: 24),
-      if (c.isDraft)
+      if (c.isDraft && isOwner)
         FilledButton.icon(
           style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
           onPressed: c.members.isEmpty || c.members.any((m) => !m.finalized)
@@ -357,7 +360,7 @@ class CollectionEditorScreen extends ConsumerWidget {
           icon: const Icon(Icons.rocket_launch_outlined),
           label: const Text('Set supply & price, publish'),
         )
-      else if (c.isListed)
+      else if (c.isListed && isOwner)
         Container(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
@@ -366,10 +369,23 @@ class CollectionEditorScreen extends ConsumerWidget {
             border: Border.all(color: AppTheme.success.withValues(alpha: 0.4)),
           ),
           child: Text(
-            'Listed for \$${((c.priceCents ?? 0) / 100).toStringAsFixed(2)} — '
-            'buyers receive one serialized copy of each card.',
+            'Listed for ${c.priceLabel} — buyers receive one serialized copy '
+            'of each card.',
             style: const TextStyle(color: AppTheme.textPrimary, fontSize: 13),
           ),
+        )
+      else if (c.isListed && !isOwner)
+        _BuyCollectionButton(collection: c)
+      else if (c.isSoldOut)
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.cardBorder),
+          ),
+          child: const Text('This collection is sold out.',
+              style: TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
         ),
     ]);
   }
@@ -528,4 +544,173 @@ class CollectionEditorScreen extends ConsumerWidget {
       }
     }
   }
+}
+
+/// Buy-collection CTA with its own busy state + a stable idempotency key so a
+/// double-tap (or a retry after a flaky network) never double-charges — the
+/// key is generated once and reused across retries (server is idempotent too).
+class _BuyCollectionButton extends ConsumerStatefulWidget {
+  const _BuyCollectionButton({required this.collection});
+  final Collection collection;
+
+  @override
+  ConsumerState<_BuyCollectionButton> createState() =>
+      _BuyCollectionButtonState();
+}
+
+class _BuyCollectionButtonState extends ConsumerState<_BuyCollectionButton> {
+  bool _busy = false;
+  late final String _idemKey = CollectionService.newIdempotencyKey();
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.collection;
+    return Column(children: [
+      Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppTheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.cardBorder),
+        ),
+        child: Row(children: [
+          Expanded(
+            child: Text(
+              '${c.members.length} serialized card'
+              '${c.members.length == 1 ? '' : 's'} — one copy of each, playable '
+              'in Arena.',
+              style:
+                  const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+            ),
+          ),
+          Text(c.priceLabel,
+              style: const TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800)),
+        ]),
+      ),
+      const SizedBox(height: 12),
+      SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          style: FilledButton.styleFrom(backgroundColor: AppTheme.primary),
+          onPressed: _busy ? null : _buy,
+          icon: _busy
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Icon(Icons.shopping_cart_checkout),
+          label: Text('Buy collection · ${c.priceLabel}'),
+        ),
+      ),
+    ]);
+  }
+
+  Future<void> _buy() async {
+    setState(() => _busy = true);
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await CollectionService.buyCollection(widget.collection.id,
+          idempotencyKey: _idemKey);
+      if (!mounted) return;
+      messenger.showSnackBar(const SnackBar(
+          content:
+              Text('Collection purchased — the cards are in your collection.'),
+          backgroundColor: AppTheme.surface));
+      ref.invalidate(collectionProvider(widget.collection.id));
+    } catch (e) {
+      if (mounted) setState(() => _busy = false);
+      messenger.showSnackBar(SnackBar(
+          content: Text(CollectionService.errorMessage(e)),
+          backgroundColor: AppTheme.danger));
+    }
+  }
+}
+
+/// `/market/collections` — browse publicly listed collections and open one to
+/// buy. G-COLL: collectible game assets only; no value/appreciation framing.
+class CollectionsBrowseScreen extends ConsumerWidget {
+  const CollectionsBrowseScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final listed = ref.watch(listedCollectionsProvider);
+    return Scaffold(
+      backgroundColor: AppTheme.background,
+      appBar: AppBar(
+        leading: const NBackButton(fallback: '/market'),
+        backgroundColor: AppTheme.background,
+        title: const Text('Collections'),
+      ),
+      body: RefreshIndicator(
+        onRefresh: () => ref.refresh(listedCollectionsProvider.future),
+        child: listed.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Center(
+              child: Text('Could not load: $e',
+                  style: const TextStyle(color: AppTheme.danger))),
+          data: (list) => list.isEmpty
+              ? ListView(children: const [
+                  SizedBox(height: 120),
+                  Icon(Icons.collections_bookmark_outlined,
+                      size: 48, color: AppTheme.textSecondary),
+                  SizedBox(height: 12),
+                  Center(
+                    child: Text('No collections listed yet',
+                        style: TextStyle(
+                            color: AppTheme.textPrimary,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700)),
+                  ),
+                ])
+              : ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [for (final c in list) _tile(context, c)],
+                ),
+        ),
+      ),
+    );
+  }
+
+  Widget _tile(BuildContext context, Collection c) => GestureDetector(
+        onTap: () => context.go('/collections/${c.id}'),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.cardBorder),
+          ),
+          child: Row(children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(c.title,
+                      style: const TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${c.members.length} card'
+                    '${c.members.length == 1 ? '' : 's'}'
+                    '${c.isSoldOut ? ' · sold out' : ''}',
+                    style: const TextStyle(
+                        color: AppTheme.textSecondary, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            Text(c.priceLabel,
+                style: const TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w800)),
+          ]),
+        ),
+      );
 }

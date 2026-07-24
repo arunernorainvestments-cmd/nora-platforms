@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -86,6 +87,7 @@ class CollectionMember {
 class Collection {
   const Collection({
     required this.id,
+    required this.marketMakerUserId,
     required this.title,
     required this.description,
     required this.coverArtUrl,
@@ -95,6 +97,7 @@ class Collection {
   });
 
   final String id;
+  final String marketMakerUserId;
   final String title;
   final String? description;
   final String? coverArtUrl;
@@ -104,6 +107,10 @@ class Collection {
 
   bool get isDraft => status == 'draft' || status == 'minting';
   bool get isListed => status == 'listed';
+  bool get isSoldOut => status == 'sold_out';
+
+  String get priceLabel =>
+      priceCents == null ? '—' : '\$${(priceCents! / 100).toStringAsFixed(2)}';
 
   factory Collection.fromRow(Map<String, dynamic> r) {
     final memberRows =
@@ -113,6 +120,7 @@ class Collection {
       ..sort((a, b) => a.name.compareTo(b.name));
     return Collection(
       id: r['id'] as String,
+      marketMakerUserId: (r['market_maker_user_id'] ?? '').toString(),
       title: (r['title'] ?? '').toString(),
       description: r['description'] as String?,
       coverArtUrl: r['cover_art_url'] as String?,
@@ -124,7 +132,8 @@ class Collection {
 }
 
 const _collectionSelect =
-    'id, title, description, cover_art_url, status, price_cents, created_at, '
+    'id, market_maker_user_id, title, description, cover_art_url, status, '
+    'price_cents, created_at, '
     'collection_chits(chit_id, display_order, '
     'moment_chits(name, archetype_family, chit_type, tier, total_supply, '
     'card_art_url, card_serial, finalized_at, is_active))';
@@ -209,6 +218,31 @@ class CollectionService {
       ],
     });
     return Map<String, dynamic>.from(res as Map);
+  }
+
+  /// Buys a listed collection (USD, sim rail): one serialized copy of every
+  /// member card. The idempotency key makes a retried tap a no-op server-side,
+  /// so a stable key must be generated ONCE per purchase attempt and reused on
+  /// retry — [idempotencyKey] is that key.
+  static Future<String> buyCollection(String collectionId,
+      {required String idempotencyKey}) async {
+    final res = await _client.rpc('marketplace_buy_collection', params: {
+      'p_collection': collectionId,
+      'p_idempotency_key': idempotencyKey,
+    });
+    return res as String;
+  }
+
+  /// A random v4-style UUID for the buy idempotency key (avoids a package dep).
+  static String newIdempotencyKey() {
+    final r = Random.secure();
+    final b = List<int>.generate(16, (_) => r.nextInt(256));
+    b[6] = (b[6] & 0x0f) | 0x40; // version 4
+    b[8] = (b[8] & 0x3f) | 0x80; // variant
+    String h(int i) => b[i].toRadixString(16).padLeft(2, '0');
+    final s = List.generate(16, h).join();
+    return '${s.substring(0, 8)}-${s.substring(8, 12)}-${s.substring(12, 16)}'
+        '-${s.substring(16, 20)}-${s.substring(20)}';
   }
 
   static String errorMessage(Object e) =>

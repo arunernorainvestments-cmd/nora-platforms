@@ -498,6 +498,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/collections',
             builder: (context, state) => const CollectionsScreen(),
           ),
+          // Public browse of listed collections (buy surface, N3). Declared
+          // before the :collectionId route so 'browse' isn't read as an id.
+          GoRoute(
+            path: '/collections/browse',
+            builder: (context, state) => const CollectionsBrowseScreen(),
+          ),
           GoRoute(
             path: '/collections/:collectionId',
             builder: (context, state) => CollectionEditorScreen(
