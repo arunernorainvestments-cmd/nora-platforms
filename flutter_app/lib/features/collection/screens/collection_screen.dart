@@ -28,6 +28,11 @@ class CollectionScreen extends ConsumerWidget {
         actions: [
           const _AscensionAction(),
           IconButton(
+            tooltip: 'My Collections',
+            icon: const Icon(Icons.collections_bookmark_outlined),
+            onPressed: () => context.push('/collections'),
+          ),
+          IconButton(
             tooltip: 'Chit Market',
             icon: const Icon(Icons.storefront_outlined),
             onPressed: () => context.push('/market'),

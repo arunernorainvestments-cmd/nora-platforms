@@ -23,7 +23,11 @@ import '../../../core/widgets/n_back_button.dart';
 /// Step 5  preview: the generated card art + cutscene; finalizing adds it to the
 ///         collection (web preview stands in for the practice-battle gate for now).
 class MintMomentScreen extends StatefulWidget {
-  const MintMomentScreen({super.key});
+  const MintMomentScreen({super.key, this.collectionId});
+
+  /// When set (Collections spec N2), the card is minted INTO this collection —
+  /// slot-exempt, no personal swap prompt. Passed via `/mint?collection=<id>`.
+  final String? collectionId;
 
   @override
   State<MintMomentScreen> createState() => _MintMomentScreenState();
@@ -383,6 +387,7 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         name: _nameController.text,
         swapOfChitId: swapOfChitId,
         swapConfirm: swapConfirm,
+        collectionId: widget.collectionId,
       );
       if (!mounted) return;
       if (res['error'] == 'self_mint_slot_occupied') {
@@ -406,6 +411,7 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
             name: _nameController.text,
             swapOfChitId: swapOfChitId,
             swapConfirm: swapConfirm,
+            collectionId: widget.collectionId,
           ),
         );
         if (!mounted) return;

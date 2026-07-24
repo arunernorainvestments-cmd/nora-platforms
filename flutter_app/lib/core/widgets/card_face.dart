@@ -27,6 +27,7 @@ class CardFace extends StatelessWidget {
     this.rulesText,
     this.flavor,
     this.serial,
+    this.copyOf,
   });
 
   final String name;
@@ -43,6 +44,11 @@ class CardFace extends StatelessWidget {
   final String? rulesText;
   final String? flavor;
   final String? serial;
+
+  /// Per-copy serialization line, e.g. '#3 of 100' (Collections spec N2 —
+  /// chit_copies.serial_number / total_supply). Distinct from [serial], the
+  /// definition-level catalog serial ('NORA-0042').
+  final String? copyOf;
 
   bool get _isCreature => chitType != 'spell_moment';
 
@@ -268,6 +274,7 @@ class CardFace extends StatelessWidget {
         : 'Minted from ${minterHandle!}${sourcePlatform != null ? ' · ${_titleCase(sourcePlatform!)}' : ''}';
     final right = [
       if (serial != null) serial!,
+      if (copyOf != null) copyOf!,
       if (tier.isNotEmpty) '${tier.toUpperCase()}-Tier',
     ].join(' · ');
     return Row(

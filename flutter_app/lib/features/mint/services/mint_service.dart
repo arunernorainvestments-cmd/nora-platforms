@@ -154,6 +154,7 @@ class MintService {
     String? name,
     String? swapOfChitId,
     bool swapConfirm = false,
+    String? collectionId,
   }) async {
     try {
       final res = await _client.functions.invoke(
@@ -166,6 +167,9 @@ class MintService {
           if (name != null && name.trim().isNotEmpty) 'name': name.trim(),
           if (swapOfChitId != null) 'swap_of_chit_id': swapOfChitId,
           if (swapConfirm) 'swap_confirm': true,
+          // Collections spec N2: mint this card into the caller's collection
+          // (slot-exempt lane; the server validates minter eligibility).
+          if (collectionId != null) 'collection_id': collectionId,
         },
       );
       return Map<String, dynamic>.from(res.data as Map);
