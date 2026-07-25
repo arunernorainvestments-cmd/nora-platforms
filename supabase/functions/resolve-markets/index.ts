@@ -54,6 +54,20 @@ interface Market {
     | 'collection_sellout_date'
     | 'spotlight_champion';
   battle_match_id: string | null;
+  // Pool figures frozen at the first settlement attempt (mig 178). Present only
+  // when a previous pass was interrupted partway through paying winners.
+  settlement_snapshot: SettlementSnapshot | null;
+}
+
+/// Written once by the first settlement pass, then reused verbatim by every
+/// retry so an interrupted run never re-prices the survivors (audit bug #3).
+interface SettlementSnapshot {
+  result: 'above' | 'below';
+  total_winning: number;
+  winning_pool: number;
+  rake: number;
+  platform_fee: number;
+  market_maker_fee: number;
 }
 
 // Card-centric market types (Collections spec N5) — token-settled, resolved from
@@ -105,7 +119,7 @@ serve(async (req: Request) => {
     // closes_at column, since migration 009 adds resolution columns only.
     const { data: markets, error: marketsError } = await db
       .from('markets')
-      .select('id, creator_id, opened_by, title, opening_resolution_score, end_at, resolution_type, battle_match_id')
+      .select('id, creator_id, opened_by, title, opening_resolution_score, end_at, resolution_type, battle_match_id, settlement_snapshot')
       .lte('end_at', new Date().toISOString())
       .eq('status', 'open');
 
@@ -204,13 +218,16 @@ async function resolveMarket(
 
   // No bets at all → void the market silently
   if (!bets || bets.length === 0) {
-    await db.from('markets').update({
+    const { error: voidErr } = await db.from('markets').update({
       status: 'voided',
       resolution_result: 'voided',
       resolved_at: new Date().toISOString(),
       platform_fee_collected: 0,
       market_maker_fee_collected: 0,
     }).eq('id', market.id);
+    // Throw rather than fall through: an unchecked failure here is what left
+    // markets stuck 'open' for months while the run reported success (audit #6).
+    if (voidErr) throw new Error(`Void failed for market ${market.id}: ${voidErr.message}`);
     console.log(`Market ${market.id}: no bets → voided`);
     return;
   }
@@ -260,13 +277,14 @@ async function resolveCardCentricMarket(
 
   // No bets → void silently (same as the display path).
   if (!bets || bets.length === 0) {
-    await db.from('markets').update({
+    const { error: voidErr } = await db.from('markets').update({
       status: 'voided',
       resolution_result: 'voided',
       resolved_at: new Date().toISOString(),
       platform_fee_collected: 0,
       market_maker_fee_collected: 0,
     }).eq('id', market.id);
+    if (voidErr) throw new Error(`Void failed for card market ${market.id}: ${voidErr.message}`);
     console.log(`[resolve-markets] card market ${market.id}: no bets → voided`);
     return;
   }
@@ -355,6 +373,8 @@ async function processRefund(
 ): Promise<void> {
   console.log(`Refunding market ${market.id} — ${bets.length} bet(s)`);
 
+  let refundFailures = 0;
+
   for (const bet of bets) {
     const amount = Math.floor(Number(bet.amount));
 
@@ -364,7 +384,14 @@ async function processRefund(
       p_amount: amount,
     });
     if (creditError) {
-      console.error(`Refund credit failed for bet ${bet.id}:`, creditError);
+      // Same rule as the payout path: never record a refund that did not land.
+      // The bet stays 'active' and the market stays open for the next run.
+      console.error(
+        `Refund credit FAILED for bet ${bet.id} (market ${market.id}) — left unsettled for retry:`,
+        creditError,
+      );
+      refundFailures++;
+      continue;
     }
 
     // Record refund transaction
@@ -391,14 +418,23 @@ async function processRefund(
     });
   }
 
-  // Mark market as voided
-  await db.from('markets').update({
+  // Mark market as voided — only once every bet was actually refunded.
+  if (refundFailures > 0) {
+    console.error(
+      `Market ${market.id} NOT voided — ${refundFailures} refund(s) failed. ` +
+      `Left open for the next run.`,
+    );
+    return;
+  }
+
+  const { error: voidErr } = await db.from('markets').update({
     status: 'voided',
     resolution_result: 'voided',
     resolved_at: new Date().toISOString(),
     platform_fee_collected: 0,
     market_maker_fee_collected: 0,
   }).eq('id', market.id);
+  if (voidErr) throw new Error(`Void failed for market ${market.id}: ${voidErr.message}`);
 
   console.log(`Market ${market.id} voided, ${bets.length} bet(s) refunded`);
 }
@@ -417,15 +453,56 @@ async function processPayout(
   const winningBets = bets.filter((b) => b.position === winningPosition);
   const losingBets  = bets.filter((b) => b.position === losingPosition);
 
-  const totalWinning = winningBets.reduce((sum, b) => sum + Math.floor(Number(b.amount)), 0);
-  const totalLosing  = losingBets.reduce((sum, b) => sum + Math.floor(Number(b.amount)), 0);
-  const totalPool    = totalWinning + totalLosing;
+  // ── Pool figures: reuse the frozen snapshot if a previous pass was interrupted
+  //    partway through paying, otherwise compute them and freeze them NOW —
+  //    before a single token moves. `bets` only ever contains bets still
+  //    'active', so recomputing on a retry would price the survivors against a
+  //    shrunken losing pool (audit bug #3). mig 178.
+  let snapshot = market.settlement_snapshot ?? null;
 
-  // Integer rake calculation (all percentages of losing pool, rounded down)
-  const rake           = Math.floor(totalLosing * 0.10);
-  const platformFee    = Math.floor(totalLosing * 0.05);
-  const marketMakerFee = rake - platformFee;
-  const winningPool    = totalPool - rake;
+  if (!snapshot) {
+    const totalWinningNow = winningBets.reduce((sum, b) => sum + Math.floor(Number(b.amount)), 0);
+    const totalLosingNow  = losingBets.reduce((sum, b) => sum + Math.floor(Number(b.amount)), 0);
+    const totalPoolNow    = totalWinningNow + totalLosingNow;
+
+    // Integer rake (percentages of the losing pool, rounded down).
+    const rakeNow           = Math.floor(totalLosingNow * 0.10);
+    const platformFeeNow    = Math.floor(totalLosingNow * 0.05);
+    const marketMakerFeeNow = rakeNow - platformFeeNow;
+
+    snapshot = {
+      result,
+      total_winning: totalWinningNow,
+      winning_pool: totalPoolNow - rakeNow,
+      rake: rakeNow,
+      platform_fee: platformFeeNow,
+      market_maker_fee: marketMakerFeeNow,
+    };
+
+    const { error: snapErr } = await db.from('markets')
+      .update({ settlement_snapshot: snapshot }).eq('id', market.id);
+    if (snapErr) {
+      // Without a durable snapshot a partial run cannot be retried safely, so
+      // refuse to start paying at all. The market stays open for the next tick.
+      throw new Error(
+        `Could not freeze settlement snapshot for market ${market.id}: ${snapErr.message}`,
+      );
+    }
+  } else {
+    console.log(`Market ${market.id}: resuming an interrupted settlement from its snapshot`);
+  }
+
+  const totalWinning   = snapshot.total_winning;
+  const winningPool    = snapshot.winning_pool;
+  const rake           = snapshot.rake;
+  const platformFee    = snapshot.platform_fee;
+  const marketMakerFee = snapshot.market_maker_fee;
+  const totalLosing    = winningPool + rake - totalWinning;
+  const totalPool      = totalWinning + totalLosing;
+
+  // Set by any credit that fails: the market must NOT be finalised, so the next
+  // run retries the stragglers against these same frozen figures.
+  let payoutFailures = 0;
 
   console.log(
     `Market ${market.id}: pool=${totalPool}, winning=${totalWinning}, losing=${totalLosing}, ` +
@@ -449,7 +526,16 @@ async function processPayout(
       p_amount: payout,
     });
     if (creditError) {
-      console.error(`Payout credit failed for bet ${bet.id}:`, creditError);
+      // Do NOT write the ledger row and do NOT settle the bet — recording an
+      // unpaid bet as 'won' made it unretryable, because the per-bet status is
+      // also the double-pay guard. Leaving it 'active' lets the next run pay it
+      // from the frozen snapshot (audit bug #2).
+      console.error(
+        `Payout credit FAILED for bet ${bet.id} (market ${market.id}) — left unsettled for retry:`,
+        creditError,
+      );
+      payoutFailures++;
+      continue;
     }
 
     await db.from('token_transactions').insert({
@@ -544,16 +630,19 @@ async function processPayout(
   }
 
   // --- Credit Market Maker fee ---
-  if (market.opened_by && marketMakerFee > 0) {
+  // Skipped entirely while any payout is still outstanding: the fee is paid once,
+  // on the pass that actually finalises the market, so a retry cannot pay it twice.
+  if (payoutFailures === 0 && market.opened_by && marketMakerFee > 0) {
     const { error: mmCreditError } = await db.rpc('increment_token_balance', {
       p_user_id: market.opened_by,
       p_amount: marketMakerFee,
     });
     if (mmCreditError) {
       console.error(`MM fee credit failed for market ${market.id}:`, mmCreditError);
+      payoutFailures++;
     }
 
-    await db.from('token_transactions').insert({
+    if (payoutFailures === 0) await db.from('token_transactions').insert({
       user_id: market.opened_by,
       type: 'promoted',
       amount: marketMakerFee,
@@ -571,13 +660,26 @@ async function processPayout(
   }
 
   // --- Update market to resolved ---
-  await db.from('markets').update({
+  // Only when every winner was actually credited. Otherwise the market stays
+  // 'open' so the next cron tick retries the unsettled bets against the frozen
+  // snapshot — bets already paid are excluded by their own status, so nobody is
+  // paid twice (audit bug #2).
+  if (payoutFailures > 0) {
+    console.error(
+      `Market ${market.id} NOT finalised — ${payoutFailures} payout(s) failed. ` +
+      `Left open; the next run retries from the settlement snapshot.`,
+    );
+    return;
+  }
+
+  const { error: finalErr } = await db.from('markets').update({
     status: 'resolved',
     resolution_result: result,
     resolved_at: new Date().toISOString(),
     platform_fee_collected: platformFee,
     market_maker_fee_collected: marketMakerFee,
   }).eq('id', market.id);
+  if (finalErr) throw new Error(`Finalise failed for market ${market.id}: ${finalErr.message}`);
 
   console.log(`Market ${market.id} resolved as '${result}'`);
 }

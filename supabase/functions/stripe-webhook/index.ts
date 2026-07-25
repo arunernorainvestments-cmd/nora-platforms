@@ -254,32 +254,41 @@ serve(async (req: Request) => {
 
     const serviceClient = createClient(supabaseUrl, serviceRoleKey);
 
-    // Idempotency check — if already completed, do not credit again
-    const { data: existing } = await serviceClient
-      .from('token_purchases')
-      .select('status')
-      .eq('stripe_session_id', stripeSessionId)
-      .single();
-
-    if (existing?.status === 'completed') {
-      console.log('Already processed session:', stripeSessionId, '— skipping');
-      return new Response(JSON.stringify({ received: true }), {
-        status: 200,
-        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
-      });
-    }
-
-    const { error: updateError } = await serviceClient
+    // ── Idempotency: CLAIM the purchase atomically, then credit ──────────────
+    // Stripe retries webhook deliveries by design, and two deliveries can be in
+    // flight at once. The previous shape (SELECT status → if completed skip →
+    // UPDATE → credit) let both callers pass the check and both credit, granting
+    // tokens twice for one payment. The compare-and-set below is the same pattern
+    // mobile_iap_confirm already uses: exactly one caller can flip
+    // 'pending' → 'completed', and only that caller credits.
+    const { data: claimed, error: claimError } = await serviceClient
       .from('token_purchases')
       .update({
         status: 'completed',
         stripe_payment_intent_id: paymentIntentId,
         completed_at: new Date().toISOString(),
       })
-      .eq('stripe_session_id', stripeSessionId);
+      .eq('stripe_session_id', stripeSessionId)
+      .eq('status', 'pending')
+      .select('id');
 
-    if (updateError) {
-      console.error('token_purchases update error:', JSON.stringify(updateError));
+    if (claimError) {
+      // Never credit on an unconfirmed claim — 500 so Stripe redelivers.
+      console.error('token_purchases claim error:', JSON.stringify(claimError));
+      return new Response(JSON.stringify({ error: 'Purchase claim failed' }), {
+        status: 500,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!claimed?.length) {
+      // Lost the race, already processed, or an unknown session — either way this
+      // delivery must not credit. 200 stops Stripe retrying a settled purchase.
+      console.log('Session already claimed or unknown:', stripeSessionId, '— skipping credit');
+      return new Response(JSON.stringify({ received: true, skipped: 'already_processed' }), {
+        status: 200,
+        headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+      });
     }
 
     const { error: creditError } = await serviceClient.rpc('increment_token_balance', {
@@ -288,7 +297,20 @@ serve(async (req: Request) => {
     });
 
     if (creditError) {
+      // Release the claim so a redelivery can retry, otherwise the purchase is
+      // stuck 'completed' with no tokens ever granted.
       console.error('increment_token_balance error:', JSON.stringify(creditError));
+      const { error: releaseError } = await serviceClient
+        .from('token_purchases')
+        .update({ status: 'pending', completed_at: null })
+        .eq('stripe_session_id', stripeSessionId);
+      if (releaseError) {
+        console.error(
+          'CRITICAL: paid session', stripeSessionId,
+          'is marked completed but the credit failed and the claim could not be released:',
+          JSON.stringify(releaseError),
+        );
+      }
       return new Response(JSON.stringify({ error: 'Token credit failed' }), {
         status: 500,
         headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
