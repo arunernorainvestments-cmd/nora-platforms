@@ -1,5 +1,5 @@
 # NORA Platforms — PLAN.md
-# Where we're going. Last updated: 2026-07-19.
+# Where we're going. Last updated: 2026-07-25.
 # Rules for HOW to build any of this live in CLAUDE.md ("Building future work safely").
 # Full specs / schemas / build history for anything referenced here live in ARCHIVE.md.
 # Cross-repo (nora-arena) contract: RECONCILIATION.md. Doc map: README.md.
@@ -10,7 +10,7 @@
 
 ---
 
-## Status snapshot (where we are, 2026-07-08)
+## Status snapshot (where we are, 2026-07-25)
 
 - **Live & built (v2.x base, reused by v3):** Markets, Hot Topic, Likeness Cards + stat sheets +
   marketplaces, celebrity integration, KYC flow, Emergency Fund (sim), Licensing Marketplace (backend +
@@ -27,16 +27,33 @@
   **USD lane built like-live but OFF** behind `platform_integrity_settings.marketplace_usd_lane` (founder
   gate) — KYC-on-USD gates + **provenance lock** (token-bought → token-resale-only) already enforced; sim
   settlement on the mig-132 rail. ⚠️ Not yet browser-verified (see the 2026-07-08 next-steps entry below).
-- **Migration ledger:** remote DB in sync at **156** (via `supabase db push`). Next = **157**.
+- **Collections spec N1–N7 COMPLETE** (2026-07-23→25, migs 170–176, PRs #47–#53 — spec
+  `NORA_PLATFORMS_COLLECTIONS_SPEC.md`, history in ARCHIVE "2026-07-23→25"): serialized `chit_copies`
+  ("# of N"), Collections + primary sale + USD-first copy resale, profile surfaces, card-centric
+  prediction markets (token-settled), **Mystery Box** (built, beta-**disabled**, boxes structurally
+  unsellable — HR41), and **Clip Campaigns** (moderation-wall in RLS, escrowed payouts — HR42).
+- **Admin console iteration 3** (mig 177, PR #54): campaign-clip review queue, `admin_audit_log`
+  (append-only), the Mystery gate in Config, and the missing pg_cron schedule for campaign expiry.
+- **Money-path audit — 6 bugs found, all fixed + prod-verified** (migs 178–180, PRs #55–#56). Every one
+  was in a TypeScript edge function; every in-database plpgsql money path passed live invariant checks.
+  Headline: **the token Markets rail had never settled a single market** — a void UPDATE failed a CHECK
+  and the error was never inspected, so markets sat 'open' since 2026-04-12 while the run reported
+  success. Also fixed: a Stripe double-credit race, payouts recorded that never happened, and
+  read-then-write balance races that LOST debits. HR5 now encodes signed ledger amounts +
+  "money math belongs in an RPC, not an edge function".
+- **Migration ledger:** remote DB in sync at **180** (via `supabase db push`). Next = **181**.
   138–147 cinematic/minting-v2 · 148 chit display fields · 149 `{VIDEO_DESC}` · 150 mint-cancel ·
-  151/152 effect library · 153–155 marketplace M1 · 156 marketplace M2 (USD seam).
-- **`flutter analyze`:** clean (2026-07-08). **`deno check`:** ⚠️ 9 pre-existing fns fail under the
+  151/152 effect library · 153–155 marketplace M1 · 156 marketplace M2 (USD seam) · 157–169 (see
+  ARCHIVE) · 170–176 Collections N2–N7 · 177 admin iter 3 · 178–180 money-path audit fixes.
+- **`flutter analyze`:** clean (2026-07-25); `flutter test` 5/5. **`deno check`:** ⚠️ 9 pre-existing fns fail under the
   Codespace's Deno 2.9/TS 5.7 strictness (`lkn-verify`, `resolve-markets`, `apply-promotion`,
   `arena-dev-*`, `hot-topic-resolve-week`, `likeness-{buy-listed,purchase}-card`,
   `ubi-assemble-voting-panel`) — type-level only, unrelated to recent work; sweep queued below.
 - **Config flags:** `MINT_INGEST_MODE=live` · `MOMENT_CLASSIFY_MODE=sim` · `CINEMATIC_MODE=sim` ·
   `MODERATION_MODE=sim` · `MINT_CLIP_MODE=sim` · `SEGMIND_API_KEY` set · TikTok **sandbox** creds · IG none ·
-  `battle_payments_mode=sim` · `marketplace_usd_lane=FALSE`. Flipping any is a spend/creds/founder decision.
+  `battle_payments_mode=sim` · `marketplace_usd_lane=FALSE` · `mystery_pool_settings.mode=disabled`
+  (G-MYSTERY) · `ALLOW_DEV_TOOLS` **still set — recommended to disarm now**, it keeps `arena-dev-reset`
+  destructive-callable. Flipping any is a spend/creds/founder decision.
 
 **Active build tracks — see "Where we're going next."**
 
@@ -600,8 +617,22 @@ the mobile cutover). Work it in that file's §6 order; move completed rows into 
 - **G-MON confirmation** before any real-money go-live (the gate is built; the rule needs sign-off).
 - **`marketplace_usd_lane` + §6 economy sign-offs** (Track C).
 - Rotate the `service_role`, `SUPABASE_ACCESS_TOKEN` (multiple tokens have appeared in session transcripts,
-  latest 2026-07-08) and `NORA_SIGNING_PRIVATE_KEY` (known-compromised, generated in Codespace) — all
+  latest **2026-07-25**) and `NORA_SIGNING_PRIVATE_KEY` (known-compromised, generated in Codespace) — all
   post-launch, pre-live.
+- **Collections-spec founder calls left open** (all surfaced, deliberately not self-answered):
+  • **N5.2** — fate of the display-score markets. Default taken: they **run alongside** the new
+    card-centric markets during beta. Retiring them is a product call.
+  • **N6 / G-MYSTERY** — `mystery_pool_tier_config` payout rates + draw weights and `max_submit_pct`
+    (20%) are placeholders. `mystery_pool_settings.mode` stays `disabled` until you flip it (now
+    flippable from **/admin → Config**); the gameplay grant hooks get wired **with** that flip, not before.
+  • **N7.1** — payout structure. Only the **per-accepted-clip** model is built (budget = payout × max,
+    escrowed in full); contest/winner-takes-budget is **not**. `clip_campaign_fee_bps` (10%) is a placeholder.
+  • **REPO-CHECK 1.1** — the two platform fee numbers in `platform_fee_config` are still placeholders.
+- **Disarm `ALLOW_DEV_TOOLS`** (see P7 7.4). Not launch teardown — it keeps a destructive endpoint
+  (`arena-dev-reset`: wipes arena state, hard-sets balances) callable on prod today.
+- **Reconcile the drifted accounts.** `SELECT * FROM public.token_balance_drift();` (mig 180) lists real
+  accounts whose balance ≠ ledger, caused by the now-struck manual top-up recipe. Each needs an explicit
+  `admin_adjustment` (admin console → Users → Adjust tokens) — removing the dev tooling will NOT heal them.
 - Browser-verify a fresh end-to-end mint now that rules/effects populate (analyze/PostgREST-verified only).
 
 ---
