@@ -33,6 +33,57 @@
 # lives in supabase/migrations/.
 
 # ---------------------------------------------------------------------------
+# 2026-07-23→25 — Collections spec N1–N7 COMPLETE + admin iter 3 + money-path audit (SHIPPED)
+# ---------------------------------------------------------------------------
+# Governing spec: NORA_PLATFORMS_COLLECTIONS_SPEC.md (all 7 phases now shipped). Migration ledger 170–180.
+#
+# Collections (PRs #47–#53, migs 170–176):
+#   • N1 (—) home category buttons route to the card market with family/trending filters.
+#   • N2 (170) `chit_copies` — per-copy "# of N" identity + append-only `chit_copy_transfers`, maintained by
+#     a SECOND trigger on the same `chit_acquisition_ledger` choke point, so quantities and copy identity
+#     cannot diverge. `total_supply` fixed at mint (1–1000), one sanctioned writer.
+#   • N2/N3 (171–172) `collections` + `platform_fee_config`; collection primary sale, USD-first copy resale
+#     (seller-set within tier bands), withdraw stub. N4 (173) profile/collection surfaces.
+#   • N5 (174) card-centric markets — `card_ascension_time` / `collection_sellout_date` /
+#     `spotlight_champion`, TOKEN-settled (HR33), oracle reads INTERNAL tables only; minter self-bet blocked.
+#   • N6 (175) Mystery Box — pool + submission + weighted award engine behind `mystery_pool_settings.mode`
+#     (**beta default `disabled`**). Boxes are NEVER sellable: no purchase RPC exists, `mystery_box_grant`
+#     is REVOKEd from `authenticated`, and the smoke FAILS the migration if a `%mystery%` buy fn appears.
+#     Generic cards (`is_generic`) are in-game only — unlistable, enforced in the listing RPC. HR41.
+#   • N7 (176) Clip Campaigns — new `clip_campaign*` namespace (mig-089 `campaigns` untouched). The
+#     moderation wall is **RLS, not app code**: the campaign owner's SELECT policy only matches
+#     approved|accepted|paid. Escrow at creation; leaves only via accept (UNIQUE-anchored) or refunds.
+#     REPO-CHECK 1.6 resolved via `source_moment_id` — tethered ⇒ mint-eligible, untethered ⇒
+#     licensing-only. HR37 NOT weakened; campaigns never mint, they feed the pipeline. HR42.
+#
+# Admin console iteration 3 (PR #54, mig 177): second moderation queue for campaign clips (their
+#   escalations live in their own table — `moderation_escalations.moment_id` is NOT NULL / FK'd to
+#   `moments`), `admin_audit_log` (append-only), the Mystery gate in Config, and the MISSING pg_cron
+#   schedule for `clip_campaigns_expire_due()` — mig 176 shipped that function with no caller, so expired
+#   campaigns never refunded escrow. Minor-safety clips are unapprovable from the console, enforced in the
+#   DB and still refused after a case is cleared.
+#
+# Money-path audit (PRs #55–#56, migs 178–180) — every bug was in a TypeScript edge function; every
+# in-database plpgsql money path verified clean by live invariant queries:
+#   • stripe-webhook could DOUBLE-CREDIT a purchase (check-then-act idempotency vs Stripe's retries) →
+#     compare-and-set claim, the `mobile_iap_confirm` pattern.
+#   • resolve-markets recorded payouts that never happened (failed credit logged + marked paid, and the
+#     per-bet status guard made it unretryable) → failed credit writes nothing and blocks finalisation.
+#   • mig 178 `settlement_snapshot` freezes pool figures before the first token moves, so an interrupted
+#     run never re-prices the survivors against a shrunken pool.
+#   • **The token Markets rail had NEVER settled a single market.** `markets_status_check` allowed
+#     'voided' but `markets_resolution_result_check` did not, so every void UPDATE failed its CHECK — and
+#     that error was never inspected, so markets sat 'open' since 2026-04-12 while the run returned
+#     `{"resolved":N,"errors":[]}`. mig 179 widens the constraint; every market state transition now
+#     checks its error and throws. Verified: the 00:45 cron tick on 2026-07-25 settled all three.
+#   • mig 180 canonical ledger signs — debits negative; `token_ledger_signed` normalises by TYPE so it is
+#     correct across the cutover (~341k historical `arena_back` rows stored magnitudes). Atomic debit RPCs
+#     `hot_topic_place_bet_atomic` + `chit_marketplace_buy_atomic` replace read-then-write balance
+#     updates that LOST a debit under concurrency (demonstrated: old shape charged 100 of 200).
+#   • HR5 now encodes the signed convention and the rule the audit converged on: **money math belongs in
+#     a SECURITY DEFINER RPC, not an edge function.**
+
+# ---------------------------------------------------------------------------
 # 2026-07-02→05 — Cinematic engine + minting v2 + effect library (SHIPPED)
 # ---------------------------------------------------------------------------
 # The web-side minting pipeline is now END-TO-END and cards carry real, balanced effects.
@@ -535,8 +586,15 @@ is still a test-match placeholder), acquisition flows (challenge/pack/gift scaff
 
 ### Test accounts (migration 051): 20 creators, 2 per archetype
 athlete/musician/healthcare/performer/gamer/influencer/educator/politician/religion/business,
-usernames `test_<archetype>_<role>_1`, UUIDs `10000000-…-000001` through `…000020`. Top up:
-`UPDATE token_balances SET available_tokens=1000 WHERE user_id=(SELECT id FROM profiles WHERE username='…');`
+usernames `test_<archetype>_<role>_1`, UUIDs `10000000-…-000001` through `…000020`.
+
+**~~Top up: `UPDATE token_balances SET available_tokens=1000 WHERE …`~~ — STRUCK 2026-07-25.**
+That recipe writes a balance with **no `token_transactions` row**, which breaks Hard Rule 5 and is what
+actually drifted the *real* (non-test) accounts — the dev tools never could, since `dev_bot_backer` and
+`arena-dev-reset` both filter to `is_test_account = true`. Top up through the **admin console → Users →
+Adjust tokens** instead (`admin_adjust_tokens_internal`, mig 168): same effect, but audited via
+`token_transactions` type `admin_adjustment` **and** `admin_audit_log` (mig 177). Check the books with
+`SELECT * FROM public.token_balance_drift();` (mig 180).
 
 ### Pre-launch cleanup
 `SELECT cron.unschedule('dev-test-match-maintainer'); SELECT cron.unschedule('dev-bot-backer');

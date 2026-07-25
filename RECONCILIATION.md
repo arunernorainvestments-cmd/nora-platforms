@@ -1,5 +1,5 @@
 # Cross-Repo Reconciliation — nora-platforms ↔ nora-arena
-# The backend/platform side of the contract. Last updated: 2026-07-01 (v3 CCG pivot — see §5).
+# The backend/platform side of the contract. Last updated: 2026-07-25 (Collections N1–N7 layer — see §1a).
 #
 # Pairs 1:1 with nora-arena/RECONCILIATION.md (the client side). nora-arena is the
 # Arena/Battle mobile app — a SEPARATE GitHub repo (arunernorainvestments-cmd/nora-arena,
@@ -56,6 +56,29 @@ published contract.
 | `mobile_iap_confirm(product_id, purchase_token)` + `mobile_iap_receipts` idempotency | mig 115 (merged + deployed, 2f09ddc) | RevenueCat → token grant; same `token_transactions` |
 | `profiles.fcm_token_mobile` | mig 114 | push token sink |
 | Shared models (`// SHARED MODEL`): BattleEvent, BattleParticipant, BattleMatch, BattleSpectatorBet, StatSheet, UnlockedCharacter, VerifiedLicense | — | keep JSON keys identical on any column change |
+
+### 1a. Collections layer (added 2026-07-25 — mirrors the N-spec cross-repo table)
+
+Shipped by `NORA_PLATFORMS_COLLECTIONS_SPEC.md` N1–N7 (migs 170–176). nora-arena consumes these as
+**reads**; every write stays on this side through the RPCs. Minting, collections and campaigns remain
+**web-only** (Companion-App model) — mobile deep-links to web for all three.
+
+| Contract | Where | Notes |
+|---|---|---|
+| `chit_copies` read (`serial_number`, `total_supply`, `owner_user_id`, `state`) | mig 170, own-or-listed RLS | card display shows "#3 of 100" + minter handle + source platform. `card_serial` (mig 148, `NORA-0042`) is DEFINITION-level and unrelated — both display together |
+| Copy states `owned / listed_escrow / wager_escrow / mystery_pool / released` | mig 170 | anything not `owned` is out of circulation — do NOT offer play/sell affordances on it |
+| `collections` + `collection_chits` read | migs 171–172, public rows | collection-grouped view + badges |
+| Copy-level wager escrow | mig 170 machinery | wager mode now stakes a **specific serial**, not a fungible quantity; the winner takes that exact copy |
+| `mystery_box_grants` read (own rows) + granted copy lands in `chit_copies` | mig 175 | box-reveal UI. **Boxes are never purchasable** — there is no buy RPC to call, by construction (HR41). Gated by `mystery_pool_settings.mode`, `disabled` in beta |
+| `moment_chits.is_generic` | mig 175 | platform filler cards: render + play normally, **never** show a sell affordance — the listing RPC refuses them |
+| New market types `card_ascension_time` / `collection_sellout_date` / `spotlight_champion` | mig 174 | same token Markets rail + bet mechanics, no client change beyond labels. **Token-settled** (HR33) |
+| Champion Spotlight = holding any slot in `arena_spotlight_assignments` for that week | mig 041 (N5.1 resolution) | no new event type was introduced — the spotlight market resolves from this existing weekly record |
+| `clip_campaigns` public board read | mig 176 | **web-only surface.** A submission is invisible to the campaign owner until moderation approves it — that is RLS-enforced, so a client cannot surface one by accident |
+
+🟡 **Notify-on-change for nora-arena:** `token_transactions.amount` is now **signed** (debits negative,
+mig 180). Any client-side balance/history math must read the **`token_ledger_signed`** view's
+`signed_amount`, never `amount` — rows written before 2026-07-25 stored debits as positive magnitudes and
+the view normalises both. `mobile_iap_confirm` is unaffected (credits were always positive).
 
 ---
 
