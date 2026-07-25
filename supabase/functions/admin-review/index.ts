@@ -46,6 +46,28 @@
 //                      → marketplace_admin_delist_internal (mig 168): escrow
 //                        returns to the seller, listing → 'delisted' (HR 40).
 //
+// Iteration 3 (mig 177 — Clip Campaigns ops, the Mystery Box gate, audit):
+// GET  ?action=campaigns → open clip_campaign_moderation cases (with short-lived
+//                        signed clip URLs — clip-staging is private), campaign
+//                        clips still awaiting a verdict, and campaigns whose
+//                        deadline has passed but are still holding escrow.
+// GET  ?action=audit   → the recent admin_audit_log tail.
+// POST {action:'resolve_clip_escalation', escalation_id, cleared, note?}
+//                      → close a clip_campaign_moderation case. As with the mint
+//                        queue, clearing a minor_safety case NEVER approves the
+//                        clip — it only closes the case.
+// POST {action:'clip_submission_verdict', submission_id, approved}
+//                      → the explicit human re-run. The RPC refuses to approve a
+//                        submission carrying a minor_safety case, whatever the
+//                        case's resolution says (enforced in the DB, mig 177).
+// POST {action:'expire_campaigns'}
+//                      → run the escrow-refund sweep now (pg_cron runs hourly).
+// POST {action:'set_mystery_mode', value:'disabled'|'sim'|'live'}
+//                      → the G-MYSTERY founder gate (Hard Rule 41).
+//
+// Every POST is recorded in admin_audit_log (mig 177) — console.log alone does
+// not survive log rotation, and founder-gate flips must stay attributable.
+//
 // Privacy: this function exposes mint-pipeline state only. It must never read
 // ubi_* documents/votes or lkn private data (Hard Rules 23–25, 29–32).
 
@@ -80,6 +102,20 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const { data: profile } = await db.from('profiles')
     .select('is_admin').eq('id', user.id).single();
   if (!profile?.is_admin) return json({ error: 'Admin only' }, 403);
+
+  // Append-only audit (mig 177). Best-effort: a logging failure must never block
+  // the moderation action itself, but it is loud in the function logs.
+  const audit = async (
+    act: string, target?: string | null, detail?: Record<string, unknown>,
+  ) => {
+    const { error } = await db.rpc('admin_log_action', {
+      p_admin: user.id,
+      p_action: act,
+      p_target: target ?? null,
+      p_detail: detail ?? null,
+    });
+    if (error) console.error(`admin-review: AUDIT WRITE FAILED for ${act}`, error.message);
+  };
 
   const action = req.method === 'GET'
     ? new URL(req.url).searchParams.get('action')
@@ -190,7 +226,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       .select('*').eq('id', true).single();
     const { data: pricing } = await db.from('marketplace_tier_pricing')
       .select('tier, token_price, fee_bps, usd_cents').order('token_price');
-    const [escalations, listings, jobs, held] = await Promise.all([
+    const { data: mystery } = await db.from('mystery_pool_settings')
+      .select('mode').eq('id', true).maybeSingle();
+    const [escalations, listings, jobs, held,
+      clipEscalations, pendingClips, overdueCampaigns] = await Promise.all([
       db.from('moderation_escalations').select('id', { count: 'exact', head: true })
         .eq('status', 'open'),
       db.from('marketplace_listings').select('id', { count: 'exact', head: true })
@@ -199,15 +238,25 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .eq('status', 'running'),
       db.from('cinematic_generations').select('id', { count: 'exact', head: true })
         .eq('status', 'generated'),
+      db.from('clip_campaign_moderation').select('id', { count: 'exact', head: true })
+        .eq('status', 'open'),
+      db.from('clip_campaign_submissions').select('id', { count: 'exact', head: true })
+        .in('status', ['submitted', 'in_moderation']),
+      db.from('clip_campaigns').select('id', { count: 'exact', head: true })
+        .in('status', ['open', 'reviewing']).lte('deadline', new Date().toISOString()),
     ]);
     return json({
       settings: settings ?? null,
       tier_pricing: pricing ?? [],
+      mystery_pool_mode: mystery?.mode ?? 'disabled',
       counts: {
         open_escalations: escalations.count ?? 0,
         active_listings: listings.count ?? 0,
         running_jobs: jobs.count ?? 0,
         held_generations: held.count ?? 0,
+        open_clip_escalations: clipEscalations.count ?? 0,
+        pending_clip_submissions: pendingClips.count ?? 0,
+        overdue_campaigns: overdueCampaigns.count ?? 0,
       },
     });
   }
@@ -237,6 +286,72 @@ Deno.serve(async (req: Request): Promise<Response> => {
     });
   }
 
+  if (req.method === 'GET' && action === 'campaigns') {
+    // Open human-review cases on campaign clips (mig 176 keeps these in their own
+    // table — moderation_escalations.moment_id is NOT NULL and FK'd to moments).
+    const { data: cases } = await db.from('clip_campaign_moderation')
+      .select('id, submission_id, reason, status, created_at, '
+        + 'clip_campaign_submissions(id, campaign_id, clipper_user_id, clip_path, '
+        + 'status, note, created_at, clip_campaigns(title, market_maker_user_id))')
+      .eq('status', 'open').order('created_at', { ascending: false }).limit(50);
+
+    // Sign each clip for review — the bucket is private and has no read policy.
+    const escalations = [];
+    for (const c of (cases ?? []) as unknown as Record<string, unknown>[]) {
+      const sub = c.clip_campaign_submissions as Record<string, unknown> | null;
+      let clipUrl: string | null = null;
+      if (sub?.clip_path) {
+        const { data: s } = await db.storage.from('clip-staging')
+          .createSignedUrl(sub.clip_path as string, 1800);
+        clipUrl = s?.signedUrl ?? null;
+      }
+      escalations.push({ ...c, clip_url: clipUrl });
+    }
+
+    // Clips that never got a verdict (e.g. moderation was rate-limited mid-flight).
+    const { data: pending } = await db.from('clip_campaign_submissions')
+      .select('id, campaign_id, clipper_user_id, clip_path, status, note, created_at, '
+        + 'clip_campaigns(title)')
+      .in('status', ['submitted', 'in_moderation'])
+      .order('created_at', { ascending: false }).limit(50);
+
+    // Overdue campaigns still sitting on escrow — the sweep should have caught
+    // these, so anything here means the hourly cron is not running.
+    const { data: overdue } = await db.from('clip_campaigns')
+      .select('id, title, market_maker_user_id, escrow_remaining_cents, deadline, status')
+      .in('status', ['open', 'reviewing'])
+      .lte('deadline', new Date().toISOString())
+      .order('deadline').limit(50);
+
+    return json({
+      escalations,
+      pending: pending ?? [],
+      overdue: overdue ?? [],
+    });
+  }
+
+  if (req.method === 'GET' && action === 'audit') {
+    const { data: rows } = await db.from('admin_audit_log')
+      .select('id, admin_id, action, target_id, detail, created_at')
+      .order('created_at', { ascending: false }).limit(100);
+    const adminIds = [...new Set((rows ?? []).map((r) => r.admin_id as string))];
+    const names: Record<string, string> = {};
+    if (adminIds.length) {
+      const { data: admins } = await db.from('profiles')
+        .select('id, username, display_name').in('id', adminIds);
+      for (const a of admins ?? []) {
+        names[a.id as string] =
+          (a.display_name ?? a.username ?? 'admin') as string;
+      }
+    }
+    return json({
+      entries: (rows ?? []).map((r) => ({
+        ...r,
+        admin_name: names[r.admin_id as string] ?? 'admin',
+      })),
+    });
+  }
+
   if (req.method !== 'POST') return json({ error: 'Unknown action' }, 400);
 
   let body: {
@@ -244,6 +359,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
     job_id?: string; moment_id?: string; escalation_id?: string; cleared?: boolean;
     note?: string; user_id?: string; is_test?: boolean; delta?: number;
     key?: string; value?: boolean | string; listing_id?: string;
+    submission_id?: string;
   };
   try { body = await req.json(); } catch { return json({ error: 'Invalid JSON body' }, 400); }
 
@@ -258,7 +374,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         p_reason: body.approved ? null : (body.reason ?? 'admin_rejected'),
       });
       if (error) return json({ error: error.message }, 409);
-      console.log(`admin-review: ${user.id} verdict ${body.approved ? 'APPROVE' : 'REJECT'} gen ${body.generation_id}`);
+      await audit('verdict', body.generation_id, { approved: body.approved });
       return json({ ok: true });
     }
     case 'reopen': {
@@ -269,7 +385,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .select('id');
       if (error) return json({ error: error.message }, 409);
       if (!data?.length) return json({ error: 'Not found or not rejected' }, 409);
-      console.log(`admin-review: ${user.id} reopened gen ${body.generation_id}`);
+      await audit('reopen', body.generation_id);
       return json({ ok: true });
     }
     case 'fail_job': {
@@ -283,6 +399,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .eq('id', body.job_id).eq('status', 'running').select('id');
       if (error) return json({ error: error.message }, 409);
       if (!data?.length) return json({ error: 'Not found or not running' }, 409);
+      await audit('fail_job', body.job_id);
       return json({ ok: true });
     }
     case 'clip_verdict': {
@@ -295,7 +412,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .select('id');
       if (error) return json({ error: error.message }, 409);
       if (!data?.length) return json({ error: 'Not found or not flagged' }, 409);
-      console.log(`admin-review: ${user.id} clip ${body.approved ? 'APPROVE' : 'REJECT'} moment ${body.moment_id}`);
+      await audit('clip_verdict', body.moment_id, { approved: body.approved });
       return json({ ok: true });
     }
     case 'resolve_escalation': {
@@ -311,6 +428,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .eq('id', body.escalation_id).eq('status', 'open').select('id');
       if (error) return json({ error: error.message }, 409);
       if (!data?.length) return json({ error: 'Not found or not open' }, 409);
+      await audit('resolve_escalation', body.escalation_id, { cleared: body.cleared });
       return json({ ok: true });
     }
     case 'set_test_flag': {
@@ -322,7 +440,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .eq('id', body.user_id).select('id');
       if (error) return json({ error: error.message }, 409);
       if (!data?.length) return json({ error: 'User not found' }, 409);
-      console.log(`admin-review: ${user.id} set is_test_account=${body.is_test} on ${body.user_id}`);
+      await audit('set_test_flag', body.user_id, { is_test: body.is_test });
       return json({ ok: true });
     }
     case 'adjust_tokens': {
@@ -337,7 +455,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         p_note: body.note.trim(),
       });
       if (error) return json({ error: error.message }, 409);
-      console.log(`admin-review: ${user.id} adjusted tokens ${body.delta} on ${body.user_id}`);
+      await audit('adjust_tokens', body.user_id, { delta: body.delta, note: body.note.trim() });
       return json(data ?? { ok: true });
     }
     case 'toggle_setting': {
@@ -361,7 +479,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
         .update({ ...patch, updated_at: new Date().toISOString() })
         .eq('id', true);
       if (error) return json({ error: error.message }, 409);
-      console.log(`admin-review: ${user.id} set ${key}=${body.value}`);
+      await audit('toggle_setting', key, { value: body.value });
       return json({ ok: true });
     }
     case 'admin_delist': {
@@ -371,7 +489,56 @@ Deno.serve(async (req: Request): Promise<Response> => {
         p_listing_id: body.listing_id,
       });
       if (error) return json({ error: error.message }, 409);
-      console.log(`admin-review: ${user.id} delisted ${body.listing_id}`);
+      await audit('admin_delist', body.listing_id);
+      return json({ ok: true });
+    }
+    case 'resolve_clip_escalation': {
+      if (!body.escalation_id || typeof body.cleared !== 'boolean') {
+        return json({ error: 'escalation_id + cleared required' }, 400);
+      }
+      const { data, error } = await db.from('clip_campaign_moderation')
+        .update({
+          status: body.cleared ? 'resolved_cleared' : 'resolved_blocked',
+          resolution_note: body.note ?? null,
+          resolved_at: new Date().toISOString(),
+        })
+        .eq('id', body.escalation_id).eq('status', 'open').select('id');
+      if (error) return json({ error: error.message }, 409);
+      if (!data?.length) return json({ error: 'Not found or not open' }, 409);
+      await audit('resolve_clip_escalation', body.escalation_id,
+        { cleared: body.cleared });
+      return json({ ok: true });
+    }
+    case 'clip_submission_verdict': {
+      if (!body.submission_id || typeof body.approved !== 'boolean') {
+        return json({ error: 'submission_id + approved required' }, 400);
+      }
+      // The RPC re-checks admin AND refuses to approve a minor-safety clip.
+      const { error } = await db.rpc('admin_clip_submission_verdict_internal', {
+        p_admin: user.id,
+        p_submission: body.submission_id,
+        p_approved: body.approved,
+      });
+      if (error) return json({ error: error.message }, 409);
+      return json({ ok: true });
+    }
+    case 'expire_campaigns': {
+      const { data, error } = await db.rpc('admin_expire_campaigns_internal', {
+        p_admin: user.id,
+      });
+      if (error) return json({ error: error.message }, 409);
+      return json({ ok: true, expired: data ?? 0 });
+    }
+    case 'set_mystery_mode': {
+      const mode = body.value;
+      if (mode !== 'disabled' && mode !== 'sim' && mode !== 'live') {
+        return json({ error: 'value must be disabled | sim | live' }, 400);
+      }
+      const { error } = await db.rpc('admin_set_mystery_mode_internal', {
+        p_admin: user.id,
+        p_mode: mode,
+      });
+      if (error) return json({ error: error.message }, 409);
       return json({ ok: true });
     }
     default:
