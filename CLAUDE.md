@@ -32,7 +32,14 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
 2. sync-platform-metrics stays a single Edge Function — never split
 3. Never modify display_score outside sync-platform-metrics
 4. Never modify heat_score outside sync-platform-metrics (exception: arena-monday-rollover resets Spotlight winners)
-5. All token movements logged in token_transactions with type + reference_id
+5. All token movements logged in token_transactions with type + reference_id. **Amounts are
+   SIGNED — debits negative, credits positive** (mig 180). Reconciliation and reporting read
+   the `token_ledger_signed` view's `signed_amount`, **never** `token_transactions.amount`:
+   rows written before the 2026-07-25 cutover stored debits as positive magnitudes, and the
+   view normalises by type across both. **Money math belongs in a SECURITY DEFINER RPC, not an
+   edge function** — debit with one guarded `UPDATE … WHERE available_tokens >= cost` in the
+   same transaction as the thing being paid for. Never read-a-balance-then-write-it-back: that
+   loses a debit under concurrency (audit #5). Never treat a failed credit as success.
 6. ON CONFLICT DO NOTHING wherever badges are inserted
 7. Passive effects are read-only at query time
 8. Handle HTTP 429 gracefully — log and skip, never throw

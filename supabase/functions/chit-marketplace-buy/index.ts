@@ -51,106 +51,32 @@ serve(async (req: Request) => {
     });
   }
 
-  // Load listing
-  const { data: listing } = await supabase
-    .from('chit_marketplace_listings')
-    .select('id, seller_user_id, chit_definition_id, quantity_listed, price_per_unit_tokens, status')
-    .eq('id', listing_id)
-    .single();
-
-  if (!listing || listing.status !== 'active') {
-    return new Response(JSON.stringify({ error: 'Listing not found or not active' }), {
-      status: 404, headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
-  }
-
-  if (listing.seller_user_id === user.id) {
-    return new Response(JSON.stringify({ error: 'Cannot buy your own listing' }), {
-      status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
-  }
-
-  if (listing.quantity_listed < quantity) {
-    return new Response(JSON.stringify({ error: 'Insufficient quantity in listing' }), {
-      status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
-  }
-
-  const totalCost = listing.price_per_unit_tokens * quantity;
-
-  // Deduct buyer tokens
-  const { data: buyerBal } = await supabase
-    .from('token_balances')
-    .select('available_tokens')
-    .eq('user_id', user.id)
-    .single();
-
-  if (!buyerBal || buyerBal.available_tokens < totalCost) {
-    return new Response(JSON.stringify({ error: 'Insufficient token balance' }), {
-      status: 400, headers: { ...CORS, 'Content-Type': 'application/json' },
-    });
-  }
-
-  const { error: deductErr } = await supabase
-    .from('token_balances')
-    .update({ available_tokens: buyerBal.available_tokens - totalCost })
-    .eq('user_id', user.id);
-  if (deductErr) throw deductErr;
-
-  // Credit seller
-  await supabase.rpc('increment_token_balance', {
-    p_user_id: listing.seller_user_id,
-    p_amount: totalCost,
+  // ── One atomic RPC (mig 180) ────────────────────────────────────────────────
+  // Was: read balance -> write (balance - cost), read listing qty -> write qty-n,
+  // read inventory -> write qty+n, then log. Three separate read-then-write races
+  // (lost debit, oversold listing, lost inventory), and none of it atomic with the
+  // payment — a mid-flight failure could take tokens and deliver nothing.
+  // chit_marketplace_buy_atomic locks the listing, debits with a single guarded
+  // UPDATE, moves inventory, and logs both ledger rows in ONE transaction.
+  const { data: result, error: buyError } = await supabase.rpc('chit_marketplace_buy_atomic', {
+    p_buyer: user.id,
+    p_listing: listing_id,
+    p_quantity: quantity,
   });
 
-  // Add to buyer's inventory
-  const { data: buyerInv } = await supabase
-    .from('user_battle_chits')
-    .select('id, quantity')
-    .eq('user_id', user.id)
-    .eq('chit_definition_id', listing.chit_definition_id)
-    .maybeSingle();
-
-  if (buyerInv) {
-    await supabase
-      .from('user_battle_chits')
-      .update({ quantity: buyerInv.quantity + quantity })
-      .eq('id', buyerInv.id);
-  } else {
-    await supabase.from('user_battle_chits').insert({
-      user_id: user.id,
-      chit_definition_id: listing.chit_definition_id,
-      quantity,
-      acquired_via: 'marketplace_purchase',
+  if (buyError) {
+    const msg = buyError.message ?? '';
+    const status =
+      msg.includes('Insufficient token balance') ? 400 :
+      msg.includes('Insufficient quantity')      ? 400 :
+      msg.includes('Cannot buy your own')        ? 400 :
+      msg.includes('not found or not active')    ? 404 : 500;
+    return new Response(JSON.stringify({ error: msg || 'Purchase failed' }), {
+      status, headers: { ...CORS, 'Content-Type': 'application/json' },
     });
   }
 
-  // Update listing quantity / status
-  const newQty = listing.quantity_listed - quantity;
-  await supabase
-    .from('chit_marketplace_listings')
-    .update({ quantity_listed: newQty, status: newQty === 0 ? 'sold' : 'active' })
-    .eq('id', listing_id);
-
-  // Log transactions (Hard Rule #5)
-  await supabase.from('token_transactions').insert([
-    {
-      user_id: user.id,
-      type: 'chit_purchase',
-      amount: totalCost,
-      reference_id: listing_id,
-      description: `Bought ${quantity} chit(s) from marketplace`,
-    },
-    {
-      user_id: listing.seller_user_id,
-      type: 'chit_sale',
-      amount: totalCost,
-      reference_id: listing_id,
-      description: `Sold ${quantity} chit(s) on marketplace`,
-    },
-  ]);
-
-  return new Response(JSON.stringify({ success: true, quantity_purchased: quantity }), {
+  return new Response(JSON.stringify(result ?? { success: true, quantity_purchased: quantity }), {
     status: 200, headers: { ...CORS, 'Content-Type': 'application/json' },
   });
 });
