@@ -122,82 +122,56 @@ serve(async (req: Request) => {
     }
   }
 
-  // ── Check token balance ──────────────────────────────────────────────────────
-  const { data: balanceRow } = await db
+  // ── Place the bet atomically (debit + bet row + ledger in ONE transaction) ──
+  // Was: read balance -> write (balance - wager) -> insert bet -> log. That lost a
+  // debit under concurrency, and its failure path restored a STALE absolute
+  // balance, clobbering any concurrent change. hot_topic_place_bet_atomic
+  // (mig 180) does the debit as a single guarded UPDATE and rolls the whole thing
+  // back together if the bet insert violates its uniqueness constraint.
+  const { data: betId, error: placeError } = await db.rpc('hot_topic_place_bet_atomic', {
+    p_user: user.id,
+    p_week_id: weekId,
+    p_bet_category: bet_category,
+    p_tokens: tokens_wagered,
+    p_simple_direction: bet_category === 'simple' ? simple_direction : null,
+    p_celeb_id: celeb_id ?? null,
+    p_scoring_window: bet_category === 'simple' ? scoringWindow : null,
+    p_weekly_bet_type: bet_category === 'simple' ? null : weekly_bet_type,
+  });
+
+  if (placeError) {
+    const msg = placeError.message ?? '';
+    if (msg.includes('Insufficient tokens')) {
+      return jsonResponse({ error: 'Insufficient tokens for that wager.' }, 409);
+    }
+    // 23505 surfaces through the RPC as a duplicate-key message.
+    if (placeError.code === '23505' || msg.includes('duplicate key')) {
+      return jsonResponse({
+        error: bet_category === 'simple'
+          ? "You've already bet on this celeb this window"
+          : "You've already placed your weekly bet for this week",
+      }, 409);
+    }
+    console.error('hot_topic_place_bet_atomic failed:', msg);
+    return jsonResponse({ error: 'Failed to place bet', detail: msg }, 500);
+  }
+
+  const insertedBet = { id: betId as string };
+
+  // Read the balance back for the response. The debit already happened inside the
+  // RPC, so this is display only — never the basis for a write.
+  const { data: afterRow } = await db
     .from('token_balances')
     .select('available_tokens')
     .eq('user_id', user.id)
     .maybeSingle();
-
-  const currentBalance = (balanceRow as { available_tokens?: number } | null)?.available_tokens ?? 0;
-  if (currentBalance < tokens_wagered) {
-    return jsonResponse({ error: `Insufficient tokens. Balance: ${currentBalance}, required: ${tokens_wagered}` }, 409);
-  }
-
-  // ── Deduct tokens ────────────────────────────────────────────────────────────
-  const { error: deductError } = await db
-    .from('token_balances')
-    .update({ available_tokens: currentBalance - tokens_wagered })
-    .eq('user_id', user.id);
-
-  if (deductError) {
-    return jsonResponse({ error: 'Failed to deduct tokens' }, 500);
-  }
-
-  // ── Insert bet ───────────────────────────────────────────────────────────────
-  const betRow: Record<string, unknown> = {
-    user_id: user.id,
-    week_id: weekId,
-    bet_category,
-    tokens_wagered,
-    status: 'pending',
-  };
-  if (bet_category === 'simple') {
-    betRow.simple_direction = simple_direction;
-    betRow.celeb_id = celeb_id;
-    betRow.scoring_window = scoringWindow;
-  } else {
-    betRow.weekly_bet_type = weekly_bet_type;
-    if (celeb_id) betRow.celeb_id = celeb_id;
-  }
-
-  const { data: insertedBet, error: betError } = await db
-    .from('weekly_bets')
-    .insert(betRow)
-    .select('id')
-    .single();
-
-  if (betError) {
-    // Restore tokens on failure
-    await db
-      .from('token_balances')
-      .update({ available_tokens: currentBalance })
-      .eq('user_id', user.id);
-
-    if (betError.code === '23505') {
-      const msg = bet_category === 'simple'
-        ? "You've already bet on this celeb this window"
-        : "You've already placed your weekly bet for this week";
-      return jsonResponse({ error: msg }, 409);
-    }
-    return jsonResponse({ error: 'Failed to place bet', detail: betError.message }, 500);
-  }
-
-  // ── Log token transaction ────────────────────────────────────────────────────
-  await db.from('token_transactions').insert({
-    user_id: user.id,
-    type: 'bet_placed',
-    amount: tokens_wagered,
-    reference_id: insertedBet.id,
-    description: bet_category === 'simple'
-      ? `Hot Topic simple bet (${simple_direction})`
-      : `Hot Topic weekly bet (${weekly_bet_type})`,
-  });
+  const tokensRemaining =
+    (afterRow as { available_tokens?: number } | null)?.available_tokens ?? null;
 
   return jsonResponse({
     bet_id: insertedBet.id,
     bet_category,
     scoring_window: scoringWindow,
-    tokens_remaining: currentBalance - tokens_wagered,
+    tokens_remaining: tokensRemaining,
   });
 });
