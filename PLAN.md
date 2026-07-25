@@ -620,6 +620,21 @@ P0–P6 shipped to prod (migs 116–137; per-phase history in ARCHIVE). What P7 
       sweep dev-seed chits (P2/P3), `is_test` matches, and the smoke identities
       (`cinematic-smoke*@`, `mkt-smoke-1/2@`, `crossplay-smoke-*@`, `money-smoke-*@noraplatforms.com`
       + their ledger/sales residue — the crossplay/money ones are FK-anchored, all is_test-flagged).
+      **Operational notes (money-path audit, 2026-07-25):**
+      • **Unschedule BEFORE truncating.** `dev-test-match-maintainer` recreates a match within 2 min and
+        `dev-bot-backer` starts backing it within 1 min, so truncating first just refills the tables.
+      • **Also remove the `ALLOW_DEV_TOOLS` secret**, not just the crons — `arena-dev-reset` stays callable
+        and destructive while it is set. (Recommended: disarm it NOW; it does not need to wait for launch.)
+      • **Decide explicitly whether to purge the bot history.** As of 2026-07-25 the synthetic loop had
+        produced 20k arena matches, 342k arena_events and **505,162 of 505,306 token_transactions rows
+        (99.97%)**, growing ~100k rows/month since April. Retaining it means every future analytics or
+        money-reconciliation query depends on the Hard Rule 15 test-account filter being right, forever.
+      • **Strike the manual top-up recipe from ARCHIVE §A5** (`UPDATE token_balances SET available_tokens=…`).
+        It writes a balance with no `token_transactions` row, which is what actually drifted the real
+        (non-test) accounts — NOT the dev tools, which both filter to `is_test_account = true`. Post-mig-180
+        the auditable way to move tokens by hand is an `admin_adjustment` via the admin console.
+      • Removal does **not** heal existing drift: `SELECT * FROM public.token_balance_drift()` (mig 180)
+        lists the accounts still off, and each needs an explicit `admin_adjustment` to reconcile.
 - [x] **7.5 Final verification** — ✅ DONE 2026-07-19: `flutter analyze` clean; **real-money round-trip
       PASSED on prod** (`tools/battle/smoke_money_roundtrip.ts` — 2 sim-KYC users, sim USD: G-MON market →
       guarded bets → settle → moment-owner + passive-holder credits, asserted to the cent) and the
