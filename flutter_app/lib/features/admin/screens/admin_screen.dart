@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/n_back_button.dart';
 
@@ -22,6 +23,8 @@ class _AdminScreenState extends State<AdminScreen> {
   Map<String, dynamic>? _config;
   List<Map<String, dynamic>> _listings = const [];
   List<Map<String, dynamic>> _users = const [];
+  Map<String, dynamic>? _campaigns;
+  List<Map<String, dynamic>> _audit = const [];
   final _userSearch = TextEditingController();
   bool _searching = false;
   bool _loading = true;
@@ -68,12 +71,16 @@ class _AdminScreenState extends State<AdminScreen> {
       final jobs = await _get('jobs');
       final config = await _get('config');
       final listings = await _get('listings');
+      final campaigns = await _get('campaigns');
+      final audit = await _get('audit');
       if (!mounted) return;
       setState(() {
         _queue = queue;
         _jobs = _asList(jobs['jobs']);
         _config = config;
         _listings = _asList(listings['listings']);
+        _campaigns = campaigns;
+        _audit = _asList(audit['entries']);
       });
     } on FunctionException catch (e) {
       if (!mounted) return;
@@ -135,7 +142,7 @@ class _AdminScreenState extends State<AdminScreen> {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 5,
+      length: 7,
       child: Scaffold(
         backgroundColor: AppTheme.background,
         appBar: AppBar(
@@ -156,8 +163,10 @@ class _AdminScreenState extends State<AdminScreen> {
               Tab(text: 'Review queue'),
               Tab(text: 'Mint jobs'),
               Tab(text: 'Users'),
+              Tab(text: 'Campaigns'),
               Tab(text: 'Config'),
               Tab(text: 'Market'),
+              Tab(text: 'Audit'),
             ],
           ),
         ),
@@ -177,8 +186,10 @@ class _AdminScreenState extends State<AdminScreen> {
                         _reviewTab(),
                         _jobsTab(),
                         _usersTab(),
+                        _campaignsTab(),
                         _configTab(),
                         _marketTab(),
+                        _auditTab(),
                       ]),
       ),
     );
@@ -615,6 +626,205 @@ class _AdminScreenState extends State<AdminScreen> {
     });
   }
 
+  // ── Campaigns tab (iteration 3) ───────────────────────────────────────────
+  /// The Clip Campaigns review queue. mig 176 keeps campaign-clip escalations in
+  /// their own table (moderation_escalations.moment_id is NOT NULL and FK'd to
+  /// moments, and a campaign clip has no moment), so this is the second queue —
+  /// without it, escalated campaign clips pile up unreviewed.
+  Widget _campaignsTab() {
+    final escalations = _asList(_campaigns?['escalations']);
+    final pending = _asList(_campaigns?['pending']);
+    final overdue = _asList(_campaigns?['overdue']);
+
+    if (escalations.isEmpty && pending.isEmpty && overdue.isEmpty) {
+      return const Center(
+          child: Text('No campaign clips need attention 🎉',
+              style: TextStyle(color: AppTheme.textSecondary)));
+    }
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (escalations.isNotEmpty)
+            _sectionTitle('Clip escalations (${escalations.length})'),
+          ...escalations.map(_clipEscalationCard),
+          if (pending.isNotEmpty)
+            _sectionTitle('Awaiting a verdict (${pending.length})'),
+          ...pending.map(_pendingClipCard),
+          if (overdue.isNotEmpty) ...[
+            _sectionTitle('Overdue, still holding escrow (${overdue.length})'),
+            _card(children: [
+              const Text(
+                  'These campaigns are past their deadline but still hold '
+                  'escrow. The hourly sweep should clear them — if they persist, '
+                  'the cron job is not running.',
+                  style:
+                      TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+              const SizedBox(height: 10),
+              for (final c in overdue)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: _meta(
+                      '${c['title']} · '
+                      '\$${(((c['escrow_remaining_cents'] as num?) ?? 0) / 100).toStringAsFixed(2)} held · '
+                      'due ${c['deadline']}'),
+                ),
+              const SizedBox(height: 10),
+              FilledButton.icon(
+                onPressed: () => _act({'action': 'expire_campaigns'}),
+                icon: const Icon(Icons.cleaning_services_outlined, size: 16),
+                label: const Text('Run the refund sweep now'),
+              ),
+            ]),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _clipEscalationCard(Map<String, dynamic> e) {
+    final sub = (e['clip_campaign_submissions'] as Map?)?.cast<String, dynamic>() ??
+        const {};
+    final camp =
+        (sub['clip_campaigns'] as Map?)?.cast<String, dynamic>() ?? const {};
+    final minorSafety = e['reason'] == 'minor_safety';
+    final clipUrl = e['clip_url'] as String?;
+    return _card(children: [
+      Row(children: [
+        Icon(minorSafety ? Icons.gpp_maybe : Icons.flag_outlined,
+            size: 16, color: minorSafety ? AppTheme.danger : AppTheme.secondary),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text('${e['reason']} · ${camp['title'] ?? 'campaign'}',
+              style: const TextStyle(
+                  color: AppTheme.textPrimary, fontWeight: FontWeight.w600)),
+        ),
+      ]),
+      const SizedBox(height: 6),
+      _meta('submission ${e['submission_id']} · opened ${e['created_at']}'),
+      _meta('clipper ${sub['clipper_user_id'] ?? 'unknown'} · '
+          'status ${sub['status'] ?? '—'}'),
+      const SizedBox(height: 4),
+      _meta(minorSafety
+          ? 'Minor-safety is absolute: this clip can never be approved from the '
+              'console, whatever the case resolution says.'
+          : 'Review-only flag — resolving does not change the clip verdict.'),
+      const SizedBox(height: 10),
+      Wrap(spacing: 8, runSpacing: 8, children: [
+        if (clipUrl != null)
+          OutlinedButton.icon(
+            onPressed: () => _openUrl(clipUrl),
+            icon: const Icon(Icons.play_circle_outline, size: 16),
+            label: const Text('Watch clip'),
+          ),
+        OutlinedButton(
+          onPressed: () => _act({
+            'action': 'resolve_clip_escalation',
+            'escalation_id': e['id'],
+            'cleared': true,
+          }),
+          child: const Text('Resolve — cleared'),
+        ),
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(foregroundColor: AppTheme.danger),
+          onPressed: () => _act({
+            'action': 'resolve_clip_escalation',
+            'escalation_id': e['id'],
+            'cleared': false,
+          }),
+          child: const Text('Resolve — blocked'),
+        ),
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(foregroundColor: AppTheme.danger),
+          onPressed: () => _act({
+            'action': 'clip_submission_verdict',
+            'submission_id': e['submission_id'],
+            'approved': false,
+          }),
+          child: const Text('Reject the clip'),
+        ),
+      ]),
+    ]);
+  }
+
+  Widget _pendingClipCard(Map<String, dynamic> s) {
+    final camp =
+        (s['clip_campaigns'] as Map?)?.cast<String, dynamic>() ?? const {};
+    return _card(children: [
+      Text('${camp['title'] ?? 'campaign'} · ${s['status']}',
+          style: const TextStyle(
+              color: AppTheme.textPrimary, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 6),
+      _meta('submission ${s['id']} · submitted ${s['created_at']}'),
+      if (s['note'] != null) _meta('note: ${s['note']}'),
+      const SizedBox(height: 4),
+      _meta('Never got a verdict — usually moderation was rate-limited '
+          'mid-flight. The Market Maker cannot see it in this state.'),
+      const SizedBox(height: 10),
+      Row(children: [
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: AppTheme.success),
+          onPressed: () => _act({
+            'action': 'clip_submission_verdict',
+            'submission_id': s['id'],
+            'approved': true,
+          }),
+          child: const Text('Approve'),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton(
+          style: OutlinedButton.styleFrom(foregroundColor: AppTheme.danger),
+          onPressed: () => _act({
+            'action': 'clip_submission_verdict',
+            'submission_id': s['id'],
+            'approved': false,
+          }),
+          child: const Text('Reject'),
+        ),
+      ]),
+    ]);
+  }
+
+  void _openUrl(String url) {
+    // Signed review URLs are short-lived; open in a new tab rather than caching.
+    launchUrlString(url);
+  }
+
+  // ── Audit tab (iteration 3) ───────────────────────────────────────────────
+  Widget _auditTab() {
+    if (_audit.isEmpty) {
+      return const Center(
+          child: Text('No admin actions recorded yet',
+              style: TextStyle(color: AppTheme.textSecondary)));
+    }
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _card(children: [
+            const Text(
+                'Every console action is recorded here, append-only. Rows can '
+                'never be edited or deleted — a flipped founder gate stays '
+                'attributable.',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+          ]),
+          ..._audit.map((a) => _card(children: [
+                Text('${a['action']} · ${a['admin_name']}',
+                    style: const TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontWeight: FontWeight.w600)),
+                const SizedBox(height: 4),
+                _meta('${a['created_at']}'),
+                if (a['target_id'] != null) _meta('target ${a['target_id']}'),
+                if (a['detail'] != null) _meta('${a['detail']}'),
+              ])),
+        ],
+      ),
+    );
+  }
+
   // ── Config tab (iteration 2) ──────────────────────────────────────────────
   Widget _configTab() {
     final settings =
@@ -622,6 +832,8 @@ class _AdminScreenState extends State<AdminScreen> {
     final counts =
         (_config?['counts'] as Map?)?.cast<String, dynamic>() ?? const {};
     final pricing = _asList(_config?['tier_pricing']);
+    final mysteryMode =
+        (_config?['mystery_pool_mode'] ?? 'disabled').toString();
 
     return RefreshIndicator(
       onRefresh: _refresh,
@@ -634,6 +846,12 @@ class _AdminScreenState extends State<AdminScreen> {
             _meta('Open escalations: ${counts['open_escalations'] ?? '—'}'),
             _meta('Running mint jobs: ${counts['running_jobs'] ?? '—'}'),
             _meta('Active listings: ${counts['active_listings'] ?? '—'}'),
+            _meta('Open clip escalations: '
+                '${counts['open_clip_escalations'] ?? '—'}'),
+            _meta('Campaign clips awaiting a verdict: '
+                '${counts['pending_clip_submissions'] ?? '—'}'),
+            _meta('Overdue campaigns holding escrow: '
+                '${counts['overdue_campaigns'] ?? '—'}'),
           ]),
           _sectionTitle('Integrity + money gates'),
           _card(children: [
@@ -688,6 +906,31 @@ class _AdminScreenState extends State<AdminScreen> {
                           'when Stripe prereqs are in place.'
                       : 'SIM settles against simulated balances.',
                 ),
+              ),
+            ]),
+          ]),
+          _sectionTitle('Mystery Box gate (G-MYSTERY)'),
+          _card(children: [
+            const Text(
+                'Beta ships DISABLED: submissions and awards both refuse while '
+                'this is off. Boxes are never sellable in any mode — that is '
+                'structural, not a setting.',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12)),
+            const SizedBox(height: 8),
+            Row(children: [
+              const Expanded(
+                child: Text('Mystery pool mode',
+                    style:
+                        TextStyle(color: AppTheme.textPrimary, fontSize: 13)),
+              ),
+              SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'disabled', label: Text('off')),
+                  ButtonSegment(value: 'sim', label: Text('sim')),
+                  ButtonSegment(value: 'live', label: Text('live')),
+                ],
+                selected: {mysteryMode},
+                onSelectionChanged: (sel) => _confirmMysteryMode(sel.first),
               ),
             ]),
           ]),
@@ -774,6 +1017,43 @@ class _AdminScreenState extends State<AdminScreen> {
     );
     if (confirmed == true) {
       await _act({'action': 'toggle_setting', 'key': key, 'value': value});
+    }
+  }
+
+  Future<void> _confirmMysteryMode(String mode) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text('Set Mystery Box mode to ${mode.toUpperCase()}?',
+            style:
+                const TextStyle(color: AppTheme.textPrimary, fontSize: 16)),
+        content: Text(
+            mode == 'disabled'
+                ? 'Submissions and awards both stop refusing-safe: nothing can '
+                    'enter or leave the pool.'
+                : mode == 'sim'
+                    ? 'Opens pool submissions and box awards against SIMULATED '
+                        'dollar balances. Payout rates are still placeholders.'
+                    : 'LIVE moves real money to creators who submit cards. Only '
+                        'flip this once the founder and the payment rail are ready.',
+            style:
+                const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel')),
+          FilledButton(
+              style: FilledButton.styleFrom(
+                  backgroundColor:
+                      mode == 'live' ? AppTheme.danger : AppTheme.primary),
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Confirm')),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _act({'action': 'set_mystery_mode', 'value': mode});
     }
   }
 
