@@ -67,9 +67,21 @@ class CollectionScreen extends ConsumerWidget {
           ),
           data: (chits) => chits.isEmpty
               ? _EmptyState(onMint: () => context.push('/mint'))
-              : grouped
-                  ? _grouped(context, chits)
-                  : _grid(context, chits),
+              : Column(
+                  children: [
+                    // The playset is the floor; the personal mint is the point.
+                    // Shown until this account owns a card it minted itself.
+                    if (chits.every((c) => c.isStarter))
+                      _MintYourMomentBanner(
+                          onMint: () => context.push('/mint'),
+                          onBuildDeck: () => context.push('/decks')),
+                    Expanded(
+                      child: grouped
+                          ? _grouped(context, chits)
+                          : _grid(context, chits),
+                    ),
+                  ],
+                ),
         ),
       ),
     );
@@ -175,7 +187,17 @@ class CollectionScreen extends ConsumerWidget {
                   copyOf: chit.copyOfLabel,
                 ),
               ),
-              if (chit.ownedSerials.length > 1) ...[
+              if (chit.isStarter) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Standard Playset card · you own ${chit.ownedQuantity} '
+                  '${chit.ownedQuantity == 1 ? 'copy' : 'copies'}. Free with every '
+                  'account, playable everywhere — starters are never traded or sold.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 12),
+                ),
+              ] else if (chit.ownedSerials.length > 1) ...[
                 const SizedBox(height: 8),
                 Text(
                   'You own ${chit.ownedSerials.length} copies · serials '
@@ -894,6 +916,12 @@ class _ChitCard extends StatelessWidget {
                     top: 8,
                     left: 8,
                     child: _pill('Listed', AppTheme.success),
+                  )
+                else if (chit.isStarter)
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: _pill('Starter', AppTheme.textSecondary),
                   ),
               ],
             ),
@@ -971,6 +999,58 @@ class _ChitCard extends StatelessWidget {
                   fontWeight: FontWeight.w600)),
         ],
       );
+}
+
+/// The onboarding beat the playset exists to set up (Playset spec S2): you have a
+/// real deck already — now put YOUR moment in it.
+class _MintYourMomentBanner extends StatelessWidget {
+  const _MintYourMomentBanner({required this.onMint, required this.onBuildDeck});
+  final VoidCallback onMint;
+  final VoidCallback onBuildDeck;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.primary.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.primary.withValues(alpha: 0.35)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Your starter deck is ready',
+              style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          const Text(
+            'Every account gets the Standard Playset — 30 cards, 2 copies each, '
+            'enough for thousands of legal decks. Now add the card only you can '
+            'make: mint a moment you posted.',
+            style: TextStyle(
+                color: AppTheme.textSecondary, fontSize: 12.5, height: 1.5),
+          ),
+          const SizedBox(height: 12),
+          Wrap(spacing: 10, runSpacing: 8, children: [
+            FilledButton.icon(
+              onPressed: onMint,
+              icon: const Icon(Icons.auto_awesome, size: 18),
+              label: const Text('Mint your moment'),
+            ),
+            OutlinedButton.icon(
+              onPressed: onBuildDeck,
+              icon: const Icon(Icons.style_outlined, size: 18),
+              label: const Text('Build a deck'),
+            ),
+          ]),
+        ],
+      ),
+    );
+  }
 }
 
 class _EmptyState extends StatelessWidget {

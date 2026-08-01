@@ -28,6 +28,8 @@ class CollectionChit {
     this.totalSupply = 1,
     this.collectionId,
     this.collectionTitle,
+    this.isStarter = false,
+    this.ownedQuantity = 0,
   });
 
   final String id;
@@ -63,12 +65,22 @@ class CollectionChit {
   final String? collectionId;
   final String? collectionTitle;
 
+  /// Standard Playset card (mig 181/182): platform-authored, granted free at
+  /// signup, playable everywhere — and never listable, tradeable or stakeable.
+  final bool isStarter;
+
+  /// Copies held. Starters are unserialized, so this is their only count.
+  final int ownedQuantity;
+
   /// The lowest owned serial, for the "# of N" display line.
   int? get displaySerial =>
       ownedSerials.isEmpty ? null : (ownedSerials..sort()).first;
 
   /// "#3 of 100" for the lowest owned serial, or null for a lone 1-of-1.
+  /// Starters have no serials at all — supply is unbounded by design — so they
+  /// show their starter label instead (mig 181 REPO-CHECK S1.4).
   String? get copyOfLabel {
+    if (isStarter) return 'Starter';
     final s = displaySerial;
     if (s == null) return null;
     return '#$s of $totalSupply';
@@ -81,15 +93,17 @@ class CollectionChit {
   bool get isListed => listingId != null;
 
   /// Eligible for the marketplace Sell action: finalized, live, not already
-  /// listed. (The server re-checks everything; this only drives the UI.)
-  bool get isSellable => isActive && !isListed;
+  /// listed, not a starter (starters are never goods — mig 181 enforces it
+  /// server-side; this only keeps the UI honest).
+  bool get isSellable => isActive && !isListed && !isStarter;
 
   factory CollectionChit.fromRow(Map<String, dynamic> r,
           {String? listingId,
           List<int> ownedSerials = const [],
           int? totalSupply,
           String? collectionId,
-          String? collectionTitle}) =>
+          String? collectionTitle,
+          int ownedQuantity = 0}) =>
       CollectionChit(
         id: r['id'] as String,
         name: (r['name'] ?? 'BattleChit').toString(),
@@ -114,8 +128,29 @@ class CollectionChit {
         totalSupply: totalSupply ?? (r['total_supply'] as num?)?.toInt() ?? 1,
         collectionId: collectionId,
         collectionTitle: collectionTitle,
+        isStarter: r['is_starter'] == true,
+        ownedQuantity: ownedQuantity,
       );
 }
+
+/// Standard Playset self-heal (Playset spec S2). The grant normally lands in the
+/// signup trigger; this is the client-side safety net for accounts whose signup
+/// grant failed and for accounts created before the playset existed. The RPC is
+/// idempotent behind a receipt row, so calling it is always safe — it returns
+/// `granted: false` when there is nothing to do.
+///
+/// Deliberately NOT autoDispose: once per app session per user is enough.
+final starterPlaysetProvider = FutureProvider<bool>((ref) async {
+  final user = ref.watch(currentUserProvider);
+  if (user == null) return false;
+  try {
+    final res = await Supabase.instance.client.rpc('claim_starter_playset');
+    return (res is Map && res['granted'] == true);
+  } catch (_) {
+    // Never block the collection on the safety net.
+    return false;
+  }
+});
 
 /// The user's owned chits. Two-step (ownership ids → chits) because the public
 /// `moment_chits_select_active` RLS policy would otherwise expose every active
@@ -132,14 +167,22 @@ final myCollectionProvider =
   if (user == null) return [];
   final client = Supabase.instance.client;
 
+  // Make sure the starter playset exists before we read holdings, so a first-time
+  // account never sees an empty collection it should not have.
+  await ref.watch(starterPlaysetProvider.future);
+
   final owned = await client
       .from('chit_ownership')
-      .select('chit_id')
+      .select('chit_id, quantity')
       .eq('user_id', user.id)
       .gt('quantity', 0);
   final ids = (owned as List)
       .map((e) => (e as Map)['chit_id'] as String)
       .toList();
+  final qtyByChit = <String, int>{
+    for (final e in owned)
+      (e as Map)['chit_id'] as String: (e['quantity'] as num?)?.toInt() ?? 0,
+  };
 
   final listed = await client
       .from('marketplace_listings')
@@ -191,7 +234,7 @@ final myCollectionProvider =
           'id, name, chit_type, archetype_family, tier, aura_cost, atk, hp, '
           'keywords, card_art_url, mp4_cutscene_url, is_active, previewed_at, '
           'original_minter_handle, source_platform, created_at, '
-          'rules_text, flavor_text, card_serial, total_supply')
+          'rules_text, flavor_text, card_serial, total_supply, is_starter')
       .inFilter('id', allIds)
       .order('created_at', ascending: false);
 
@@ -206,6 +249,7 @@ final myCollectionProvider =
       totalSupply: supplyByChit[cid] ?? (m['total_supply'] as num?)?.toInt() ?? 1,
       collectionId: coll?.id,
       collectionTitle: coll?.title,
+      ownedQuantity: qtyByChit[cid] ?? 0,
     );
   }).toList();
 });

@@ -62,14 +62,25 @@ const _pages = [
     hint: 'Profile tab → Connections.',
   ),
   _TourPage(
+    icon: Icons.style_outlined,
+    color: AppTheme.secondary,
+    title: 'Your starter deck is already yours',
+    body: 'Every account opens with the Standard Playset: 30 NORA-original '
+        'cards, 2 copies of each. That is a real deck on day one — enough to '
+        'build thousands of legal 20-card decks and discover fusions. Starters '
+        'are free forever and never bought, sold, or traded.',
+    hint: 'Collection tab → Build a deck.',
+  ),
+  _TourPage(
     icon: Icons.auto_awesome_outlined,
     color: Color(0xFFFFD700),
-    title: 'Mint your moment',
-    body: 'Pick a viral post you own and mint it into a playable card. Its '
+    title: 'Now mint YOUR moment',
+    body: 'The starters are the floor. The point is the card only you can '
+        'make: pick a viral post you own and mint it into a playable card. Its '
         'tier (F up to S) comes from how viral the moment was — stats are '
         'derived, never bought. You preview every card in a practice battle '
         'before it\'s final.',
-    hint: 'Opens with launch — watch the Battle tab.',
+    hint: 'Collection tab → Mint your moment.',
   ),
   _TourPage(
     icon: Icons.style_outlined,
