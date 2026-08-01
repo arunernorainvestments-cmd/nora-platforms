@@ -269,9 +269,15 @@ class CardFace extends StatelessWidget {
   }
 
   Widget _creditStrip() {
+    // Platform-authored cards (Standard Playset, mig 181) carry the "NORA" minter
+    // and a 'platform' source that is deliberately not a social network — they read
+    // as authored, never as a missing badge (REPO-CHECK S1.3).
+    final isPlatform = sourcePlatform == 'platform' || minterHandle == 'NORA';
     final left = minterHandle == null
         ? ''
-        : 'Minted from ${minterHandle!}${sourcePlatform != null ? ' · ${_titleCase(sourcePlatform!)}' : ''}';
+        : isPlatform
+            ? 'NORA original'
+            : 'Minted from ${minterHandle!}${sourcePlatform != null ? ' · ${_titleCase(sourcePlatform!)}' : ''}';
     final right = [
       if (serial != null) serial!,
       if (copyOf != null) copyOf!,
