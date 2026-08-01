@@ -23,6 +23,30 @@ class MintService {
     }
   }
 
+  /// Operator seed lane (mig 185): stands in for [ingest] when the card has no
+  /// social post behind it — house content authored by an admin. Admin-only,
+  /// enforced server-side in the edge function AND in SQL. Returns the same payload
+  /// shape as [ingest], so the rest of the wizard runs unchanged.
+  ///
+  /// [targetTier] targets a tier by its engagement FLOOR; the ladder still derives
+  /// the actual tier (Hard Rule 34). [brief] is the only screenable surface a seed
+  /// card has, so it is what gets moderated and classified — hence required.
+  static Future<Map<String, dynamic>> seedMoment({
+    required String name,
+    required String targetTier,
+    required String brief,
+  }) async {
+    try {
+      final res = await _client.functions.invoke(
+        'admin-seed-moment',
+        body: {'name': name, 'target_tier': targetTier, 'brief': brief},
+      );
+      return Map<String, dynamic>.from(res.data as Map);
+    } on FunctionException catch (e) {
+      throw MintException(_messageFrom(e));
+    }
+  }
+
   /// Uploads the trimmed clip + moderation frames into the caller's staging
   /// prefix. Upsert on purpose: retrying a failed attach re-uses the paths.
   static Future<void> uploadStaged({
