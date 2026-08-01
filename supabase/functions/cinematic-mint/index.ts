@@ -97,6 +97,16 @@ Deno.serve(async (req: Request): Promise<Response> => {
   }
   if (moment.minted_chit_id) return json({ error: 'Moment already minted' }, 409);
 
+  // ── operator seed lane (mig 185): house content with no post behind it ──────────
+  // The moment is owned by an admin operator, so every guard above already passed on
+  // ownership alone. What it changes downstream: no personal self-mint slot, its own
+  // generation allowance, and no collection lane (moment_mint refuses that outright —
+  // a seed card is stamped generic, and generics can never join a collection).
+  const isSeedMint = moment.is_platform_seed === true;
+  if (isSeedMint && body.collection_id) {
+    return json({ error: 'A platform seed card cannot be minted into a collection' }, 409);
+  }
+
   // ── collection lane (Collections spec N2): validate + stamp the moment ──────────
   // The stamp lives on the moment so every resume path completes into the same
   // collection; moment_mint (mig 171) re-validates in SQL at completion. A
@@ -178,14 +188,21 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // Guard 2: per-user daily generation cap (bug loops, multi-tab spam, abuse).
   // A resume makes no provider calls, so it does not consume the allowance.
+  // The seed lane gets its OWN allowance, counted separately: authoring a slate of
+  // house cards in one sitting is the point of it, and it must not silently eat the
+  // operator's personal allowance (nor be capped at 6 while seeding 30 cards). It is
+  // still a bounded spend guard, not an exemption.
   if (!resumeGen && !renderResume) {
-    const dailyCap = Math.max(1, Number(Deno.env.get('CINEMATIC_DAILY_CAP') ?? '6'));
+    const dailyCap = isSeedMint
+      ? Math.max(1, Number(Deno.env.get('CINEMATIC_SEED_DAILY_CAP') ?? '40'))
+      : Math.max(1, Number(Deno.env.get('CINEMATIC_DAILY_CAP') ?? '6'));
     const { count: dayCount } = await db.from('cinematic_generations')
-      .select('id, moments!inner(owner_user_id)', { count: 'exact', head: true })
+      .select('id, moments!inner(owner_user_id, is_platform_seed)', { count: 'exact', head: true })
       .eq('moments.owner_user_id', user.id)
+      .eq('moments.is_platform_seed', isSeedMint)
       .gte('created_at', new Date(Date.now() - 24 * 3600 * 1000).toISOString());
     if ((dayCount ?? 0) >= dailyCap) {
-      console.warn(`cinematic-mint: daily cap hit for user ${user.id} (${dayCount}/${dailyCap})`);
+      console.warn(`cinematic-mint: daily cap hit for user ${user.id} (${dayCount}/${dailyCap}, seed=${isSeedMint})`);
       return json({
         error: 'generation_limit',
         detail: `Daily card-generation limit reached (${dailyCap}). Try again tomorrow.`,
@@ -198,9 +215,11 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // old chit is retired IN THE SAME TX as the new mint (mig 142) — never before the
   // new mint confirms; its media is deleted below only after that tx succeeds.
   // Collection mints are EXEMPT (Collections spec §1.2): they never consume nor
-  // swap the personal slot (moment_mint enforces the same in SQL, mig 171).
+  // swap the personal slot (moment_mint enforces the same in SQL, mig 171). Seed
+  // mints likewise (mig 185) — house content is not the operator's personal card, so
+  // authoring one must neither consume their slot nor demand a swap of it.
   let slotChit: string | null = null;
-  if (!isCollectionMint) {
+  if (!isCollectionMint && !isSeedMint) {
     const { data } = await db.rpc('self_mint_slot', { p_user: user.id });
     slotChit = data as string | null;
   }

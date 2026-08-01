@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:web/web.dart' as web;
 import '../../../core/theme/app_theme.dart';
@@ -11,10 +12,14 @@ import '../services/trim_interop.dart';
 import '../widgets/clip_trimmer.dart';
 import '../widgets/reveal_share_sheet.dart';
 import '../../../core/widgets/n_back_button.dart';
+import '../../../core/widgets/settings_menu_button.dart' show isAdminProvider;
 
 /// "Create Your BattleChit" — minting v2 §1 (Minting_Workflow.md) end to end.
 ///
 /// Step 1  link an owned post (moment-ingest: OAuth ownership + source moderation).
+///         ADMINS also get the operator seed lane (mig 185) here: house content that
+///         has no post behind it, seeded by name + target tier instead of a URL.
+///         Every later step is identical — including both moderation gates.
 /// Step 2  the platform APIs can't hand us the file, so the user uploads the clip
 ///         from their device and trims it to 1–15s in-browser (ffmpeg.wasm).
 /// Step 3  trimmed mp4 + 4 sample frames upload to mint-staging; moment-clip-attach
@@ -23,7 +28,7 @@ import '../../../core/widgets/n_back_button.dart';
 ///         name + subject; the user confirms, then cinematic-mint generates the card.
 /// Step 5  preview: the generated card art + cutscene; finalizing adds it to the
 ///         collection (web preview stands in for the practice-battle gate for now).
-class MintMomentScreen extends StatefulWidget {
+class MintMomentScreen extends ConsumerStatefulWidget {
   const MintMomentScreen({super.key, this.collectionId});
 
   /// When set (Collections spec N2), the card is minted INTO this collection —
@@ -31,17 +36,25 @@ class MintMomentScreen extends StatefulWidget {
   final String? collectionId;
 
   @override
-  State<MintMomentScreen> createState() => _MintMomentScreenState();
+  ConsumerState<MintMomentScreen> createState() => _MintMomentScreenState();
 }
 
 enum _Step { link, clip, processing, review, generating, preview, done }
 
-class _MintMomentScreenState extends State<MintMomentScreen> {
+class _MintMomentScreenState extends ConsumerState<MintMomentScreen> {
   _Step _step = _Step.link;
   final _urlController = TextEditingController();
   final _nameController = TextEditingController();
   bool _busy = false;
   String? _error;
+
+  // Operator seed lane (admin only — the server enforces it twice over). Step 1
+  // swaps the URL field for a name + target tier + brief.
+  bool _seedMode = false;
+  final _seedNameController = TextEditingController();
+  final _seedBriefController = TextEditingController();
+  String _seedTier = 'C';
+  static const _seedTiers = ['F', 'E', 'D', 'C', 'B', 'A', 'S'];
 
   // Step-1 output.
   Map<String, dynamic>? _moment;
@@ -91,6 +104,8 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
   void dispose() {
     _urlController.dispose();
     _nameController.dispose();
+    _seedNameController.dispose();
+    _seedBriefController.dispose();
     _genClock?.cancel();
     _revokeObjectUrl();
     super.dispose();
@@ -127,6 +142,49 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       if (mounted) setState(() => _busy = false);
     }
   }
+
+  // ── Step 1 (operator seed lane): author a house card with no post ─────────
+  // Same landing state as [_ingest] — an approved moment the wizard carries into
+  // the upload step. The clip upload, its re-moderation, and the post-generation
+  // screen are all unchanged from here on.
+  Future<void> _seed() async {
+    final name = _seedNameController.text.trim();
+    final brief = _seedBriefController.text.trim();
+    if (name.isEmpty || brief.isEmpty) {
+      setState(() => _error = 'Give the card a name and a one-line description.');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final res = await MintService.seedMoment(
+        name: name,
+        targetTier: _seedTier,
+        brief: brief,
+      );
+      if (!mounted) return;
+      if (res['status'] != 'approved') {
+        setState(() => _error =
+            res['detail']?.toString() ?? 'This card cannot be seeded');
+        return;
+      }
+      // Prefill the card name from the seed name — the operator already typed it.
+      _nameController.text = name;
+      setState(() {
+        _moment = res;
+        _step = _Step.clip;
+      });
+    } on MintException catch (e) {
+      if (mounted) setState(() => _error = e.message);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  /// True once step 1 produced a seed moment (no post behind this card).
+  bool get _isSeed => _moment?['is_platform_seed'] == true;
 
   // ── Step 2: pick + trim the device clip ───────────────────────────────────
   Future<void> _pickFile() async {
@@ -709,6 +767,11 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
       _familyBusy = false;
       _urlController.clear();
       _nameController.clear();
+      _seedNameController.clear();
+      _seedBriefController.clear();
+      _seedTier = 'C';
+      // _seedMode deliberately survives: an operator authoring a slate of house
+      // cards lands back on the seed form, not the URL field.
       _revokeObjectUrl();
     });
   }
@@ -837,51 +900,142 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
         );
 
   Widget _buildLinkStep() {
+    // Visibility only — admin-seed-moment re-checks profiles.is_admin, and
+    // moment_mint refuses a seed moment whose owner is not an admin.
+    final isAdmin = ref.watch(isAdminProvider).value ?? false;
     return _card(children: [
-      const Text('1 · Pick your moment',
-          style: TextStyle(
+      Text(_seedMode ? '1 · Seed a house card' : '1 · Pick your moment',
+          style: const TextStyle(
               color: AppTheme.textPrimary,
               fontSize: 18,
               fontWeight: FontWeight.w700)),
       const SizedBox(height: 8),
-      const Text(
-        'Here\'s how it works: verify a post you own → upload & trim that clip → '
-        'we run safety checks → review the card we recommend → preview it and add '
-        'it to your collection. Takes about a minute.',
-        style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+      Text(
+        _seedMode
+            ? 'Platform-authored card with no post behind it. Name it, target a tier, '
+                'describe it — then upload the clip exactly as normal. Both safety '
+                'checks still run, and the card is marked house content: it can never '
+                'be listed, traded, staked or ascended.'
+            : 'Here\'s how it works: verify a post you own → upload & trim that clip → '
+                'we run safety checks → review the card we recommend → preview it and add '
+                'it to your collection. Takes about a minute.',
+        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
       ),
       const SizedBox(height: 16),
-      const Text(
-        'Paste a link to a TikTok, Instagram, or YouTube post you own. It has to be '
-        'on an account you\'ve linked, and your engagement on it sets the card\'s tier.',
-        style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
-      ),
-      const SizedBox(height: 16),
-      TextField(
-        controller: _urlController,
-        style: const TextStyle(color: AppTheme.textPrimary),
-        decoration: const InputDecoration(
-          hintText: 'https://www.youtube.com/watch?v=…',
-          hintStyle: TextStyle(color: AppTheme.textSecondary),
+      if (_seedMode) ...[
+        TextField(
+          controller: _seedNameController,
+          maxLength: 40,
+          style: const TextStyle(color: AppTheme.textPrimary),
+          decoration: const InputDecoration(
+            labelText: 'Card name',
+            labelStyle: TextStyle(color: AppTheme.textSecondary),
+            counterText: '',
+            hintText: 'Bottle Flip',
+            hintStyle: TextStyle(color: AppTheme.textSecondary),
+          ),
         ),
-        onSubmitted: (_) => _ingest(),
-      ),
-      const SizedBox(height: 8),
-      TextButton(
-        onPressed: () => context.go('/profile'),
-        child: const Text('Manage linked accounts in Profile',
-            style: TextStyle(color: AppTheme.secondary, fontSize: 12)),
-      ),
-      const SizedBox(height: 8),
-      FilledButton(
-        onPressed: _busy ? null : _ingest,
-        child: _busy
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2))
-            : const Text('Verify my post'),
-      ),
+        const SizedBox(height: 12),
+        DropdownButtonFormField<String>(
+          initialValue: _seedTier,
+          dropdownColor: AppTheme.surfaceLight,
+          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
+          decoration: const InputDecoration(
+            labelText: 'Target tier',
+            labelStyle: TextStyle(color: AppTheme.textSecondary),
+          ),
+          items: [
+            for (final t in _seedTiers)
+              DropdownMenuItem(value: t, child: Text('Tier $t')),
+          ],
+          onChanged: (v) => v == null ? null : setState(() => _seedTier = v),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'Targets the tier by feeding that band\'s engagement floor through the '
+          'ladder — the ladder still decides the stats, never you.',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _seedBriefController,
+          maxLength: 200,
+          maxLines: 2,
+          style: const TextStyle(color: AppTheme.textPrimary),
+          decoration: const InputDecoration(
+            labelText: 'What is this card?',
+            labelStyle: TextStyle(color: AppTheme.textSecondary),
+            counterText: '',
+            hintText: 'A skater landing an impossible trick down a stair set',
+            hintStyle: TextStyle(color: AppTheme.textSecondary),
+          ),
+        ),
+        const SizedBox(height: 4),
+        const Text(
+          'With no post to read, this line is what gets moderated and what the '
+          'classifier reads to pick the family.',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 11),
+        ),
+        const SizedBox(height: 16),
+        FilledButton(
+          onPressed: _busy ? null : _seed,
+          child: _busy
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Seed this card'),
+        ),
+      ] else ...[
+        const Text(
+          'Paste a link to a TikTok, Instagram, or YouTube post you own. It has to be '
+          'on an account you\'ve linked, and your engagement on it sets the card\'s tier.',
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _urlController,
+          style: const TextStyle(color: AppTheme.textPrimary),
+          decoration: const InputDecoration(
+            hintText: 'https://www.youtube.com/watch?v=…',
+            hintStyle: TextStyle(color: AppTheme.textSecondary),
+          ),
+          onSubmitted: (_) => _ingest(),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: () => context.go('/profile'),
+          child: const Text('Manage linked accounts in Profile',
+              style: TextStyle(color: AppTheme.secondary, fontSize: 12)),
+        ),
+        const SizedBox(height: 8),
+        FilledButton(
+          onPressed: _busy ? null : _ingest,
+          child: _busy
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2))
+              : const Text('Verify my post'),
+        ),
+      ],
+      if (isAdmin) ...[
+        const Divider(height: 32, color: AppTheme.cardBorder),
+        TextButton.icon(
+          onPressed: _busy
+              ? null
+              : () => setState(() {
+                    _seedMode = !_seedMode;
+                    _error = null;
+                  }),
+          icon: Icon(_seedMode ? Icons.link : Icons.shield_outlined,
+              size: 16, color: AppTheme.secondary),
+          label: Text(
+            _seedMode ? 'Link a real post instead' : 'Admin: seed a house card (no post)',
+            style: const TextStyle(color: AppTheme.secondary, fontSize: 12),
+          ),
+        ),
+      ],
       _errorBanner(),
     ]);
   }
@@ -899,10 +1053,14 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
     final clipAttached = _moment?['clip_status'] == 'attached';
     return _card(children: [
       Row(children: [
-        const Icon(Icons.verified, color: AppTheme.success, size: 18),
+        Icon(_isSeed ? Icons.shield_outlined : Icons.verified,
+            color: _isSeed ? AppTheme.secondary : AppTheme.success, size: 18),
         const SizedBox(width: 6),
         Expanded(
-          child: Text('Post verified — $handle',
+          child: Text(
+              _isSeed
+                  ? 'House card — no post linked'
+                  : 'Post verified — $handle',
               style: const TextStyle(
                   color: AppTheme.textPrimary, fontWeight: FontWeight.w600)),
         ),
@@ -973,10 +1131,14 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
               fontSize: 18,
               fontWeight: FontWeight.w700)),
       const SizedBox(height: 8),
-      const Text(
-        'Social platforms don\'t let us download your video, so grab it from '
-        'your camera roll. Then trim the exact 1–15 seconds that IS the moment.',
-        style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+      Text(
+        _isSeed
+            ? 'Pick the source video for this house card, then trim the exact 1–15 '
+                'seconds that IS the moment. It gets moderated on upload like any '
+                'other clip.'
+            : 'Social platforms don\'t let us download your video, so grab it from '
+                'your camera roll. Then trim the exact 1–15 seconds that IS the moment.',
+        style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
       ),
       const SizedBox(height: 16),
       OutlinedButton.icon(
@@ -1420,9 +1582,9 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
                 'Held for safety review',
                 'Your cutscene was generated and is getting a quick safety check '
                     'before the card is created. Check back soon — no need to '
-                    'generate again. When it clears, re-enter your post link on '
-                    'the mint page and you can finish the card without '
-                    're-uploading.',
+                    'generate again. When it clears, ${_isSeed ? 'seed the same '
+                        'card name again' : 're-enter your post link on the mint '
+                        'page'} and you can finish the card without re-uploading.',
               )
             : switch (status) {
             'similarity_flagged' => (
@@ -1471,12 +1633,16 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
           onPressed: () => context.go('/collection'),
           child: const Text('View my collection'),
         ),
-        const SizedBox(height: 8),
-        OutlinedButton.icon(
-          onPressed: _sellFreshMint,
-          icon: const Icon(Icons.sell_outlined),
-          label: const Text('Sell it on the Chit Market'),
-        ),
+        // A seed card is stamped house content (is_generic) — the marketplace
+        // refuses it by design, so don't offer the button at all.
+        if (!_isSeed) ...[
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _sellFreshMint,
+            icon: const Icon(Icons.sell_outlined),
+            label: const Text('Sell it on the Chit Market'),
+          ),
+        ],
       ] else
         FilledButton(
           onPressed: () => context.go('/battle'),
