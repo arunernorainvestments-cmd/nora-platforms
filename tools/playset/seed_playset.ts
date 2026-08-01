@@ -18,6 +18,12 @@
 //                          --add="Card Name" --family=gamer --type=creature --tier=D \
 //                          --effect=gamer_on_summon_multikill [--keywords=charge,taunt]
 //                          [--flavor="one line"] [--no-grant]
+//   --clip             — PAID. Turn a local video file into a starter card's cutscene:
+//                        stage it → Segmind V2V restyle into the house cel-shaded look →
+//                        store the result → hold it for review. It does NOT attach:
+//                        watch the output, then run --attach with the printed URL.
+//                          --clip=./volley.mp4 --card="Last-Minute Volley" \
+//                          [--provider=kling-o3|runway-aleph] [--duration=5] [--confirm-spend]
 //   --render-art       — PAID. Generate the card-art illustration for cards that have
 //                        none, via the shared Segmind client, and store it in
 //                        battle-media. Requires CINEMATIC_MODE=live, SEGMIND_API_KEY and
@@ -42,13 +48,26 @@
 //   CINEMATIC_MODE=live SEGMIND_API_KEY=… SUPABASE_URL=… SERVICE_KEY=… \
 //     deno run --allow-net --allow-env tools/playset/seed_playset.ts \
 //       --render-art --confirm-spend [--limit=5]
+//
+//   # clip → cutscene needs --allow-read for the local file
+//   CINEMATIC_MODE=live SEGMIND_API_KEY=… SUPABASE_URL=… SERVICE_KEY=… \
+//     deno run --allow-net --allow-env --allow-read tools/playset/seed_playset.ts \
+//       --clip=./volley.mp4 --card="Last-Minute Volley" --confirm-spend
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import {
   cinematicConfigFromEnv,
   generateIllustration,
+  generateV2VRestyle,
+  type V2VProvider,
 } from '../../supabase/functions/_shared/segmind.ts';
-import { illustrationPrompt, type Family } from '../../supabase/functions/_shared/cinematic_directives.ts';
+import {
+  illustrationPrompt,
+  v2vRestylePrompt,
+  TIER_INTENSITY,
+  type Family,
+  type Tier,
+} from '../../supabase/functions/_shared/cinematic_directives.ts';
 
 const url = (Deno.env.get('SUPABASE_URL') ?? 'https://cceisywxwhgljdpisjrl.supabase.co').replace(/\/$/, '');
 const serviceKey = Deno.env.get('SERVICE_KEY') ?? Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '';
@@ -293,6 +312,105 @@ async function addCard(): Promise<void> {
   console.log(`  granted to ${touched} account(s); new signups get it automatically.\n`);
 }
 
+// ── clip: local file → house-style cutscene draft ───────────────────────────────
+// The missing leg of the seed path. The user mint has one (device clip → trim →
+// re-moderate → V2V restyle); platform cards had no way to carry motion at all, so
+// starter cutscenes could only ever be hand-attached files.
+//
+// This deliberately stops one step short of the card: the restyle lands in storage
+// and prints its URL, and a human decides whether it ships (--attach). Same anti-slop
+// gate as everything else here — the tool never publishes its own output.
+async function clipRestyle(): Promise<void> {
+  const file = args.get('clip')!;
+  const cardArg = args.get('card') ?? '';
+  const cards = await loadPlayset();
+  const card = cards.find((c) => c.name.toLowerCase() === cardArg.toLowerCase() || c.id === cardArg);
+  if (!card) {
+    console.error(`--card="<name|id>" required and must match a starter card (got "${cardArg}")`);
+    Deno.exit(1);
+  }
+
+  const cfg = cinematicConfigFromEnv();
+  const provider = (args.get('provider') ?? cfg.v2vProvider ?? 'kling-o3') as V2VProvider;
+  if (provider !== 'kling-o3' && provider !== 'runway-aleph') {
+    console.error('--provider must be kling-o3 or runway-aleph');
+    Deno.exit(1);
+  }
+  if (cfg.mode === 'live' && !args.has('confirm-spend')) {
+    console.error('A live restyle spends real Segmind budget. Re-run with --confirm-spend.');
+    Deno.exit(1);
+  }
+
+  let bytes: Uint8Array;
+  try {
+    bytes = await Deno.readFile(file);
+  } catch (e) {
+    console.error(`cannot read ${file}: ${(e as Error).message}`);
+    Deno.exit(1);
+  }
+  console.log(`\nrestyling ${file} (${(bytes.length / 1e6).toFixed(1)} MB) → ${card.name} ` +
+    `[${cfg.mode}/${provider}]\n`);
+
+  // Stage privately. mint-staging is the same private bucket the user mint uses;
+  // the provider needs a signed URL it can fetch, not a public object.
+  const stagePath = `playset/${card.id}/source-${Date.now()}.mp4`;
+  const up = await db.storage.from('mint-staging')
+    .upload(stagePath, bytes, { contentType: 'video/mp4', upsert: true });
+  if (up.error) {
+    console.error(`staging failed: ${up.error.message}`);
+    Deno.exit(1);
+  }
+  const { data: signed } = await db.storage.from('mint-staging').createSignedUrl(stagePath, 900);
+  if (!signed?.signedUrl) {
+    console.error('could not sign the staged clip');
+    Deno.exit(1);
+  }
+
+  // House style-lock, never authored here (Hard Rule 39): the STYLE and CONSTRAINTS
+  // blocks come from the shared prompt grammar, the card supplies only its subject.
+  const prompt = v2vRestylePrompt({
+    subjectDesc: card.name,
+    videoDesc: args.get('action') ?? null,
+    tierIntensity: TIER_INTENSITY[card.tier as Tier] ?? TIER_INTENSITY.F,
+    provider,
+    withCardArtRef: Boolean(card.card_art_url),
+  });
+  console.log(prompt.split('\n').map((l) => `  ${l}`).join('\n'));
+
+  const res = await generateV2VRestyle(cfg, provider, {
+    prompt,
+    videoUrl: signed.signedUrl,
+    referenceImageUrl: card.card_art_url ?? undefined,
+    durationS: Number(args.get('duration') ?? 5),
+    keepAudio: args.get('keep-audio') !== 'false',
+    aspectRatio: args.get('aspect') ?? '16:9',
+  });
+
+  await db.storage.from('mint-staging').remove([stagePath]);
+
+  if (!res.ok) {
+    console.error(`\n✗ restyle failed: ${res.reason}${res.detail ? ` — ${res.detail}` : ''}`);
+    if (res.reason === 'provider_moderation') {
+      console.error('  The provider refused the INPUT. Its filter trips on recognisable');
+      console.error('  likeness and copyrighted material as well as unsafe content.');
+    }
+    Deno.exit(1);
+  }
+
+  const outPath = `playset/cutscene/${card.id}-${res.seed}.mp4`;
+  const store = await db.storage.from('battle-media')
+    .upload(outPath, res.bytes, { contentType: res.contentType, upsert: true });
+  if (store.error) {
+    console.error(`store failed: ${store.error.message}`);
+    Deno.exit(1);
+  }
+  const { data: pub } = db.storage.from('battle-media').getPublicUrl(outPath);
+
+  console.log(`\n✓ restyled (${res.model}, seed ${res.seed}) → ${pub.publicUrl}`);
+  console.log(`\n  NOT attached yet. Watch it, then:`);
+  console.log(`    --attach="${card.name}" --mp4=${pub.publicUrl} --verdict=approved\n`);
+}
+
 // ── render-art: PAID drafts, human review still required before they ship ───────
 async function renderArt(cards: Chit[]): Promise<void> {
   const cfg = cinematicConfigFromEnv();
@@ -379,7 +497,9 @@ if (cards.length === 0) {
   Deno.exit(1);
 }
 
-if (args.has('add')) {
+if (args.has('clip')) {
+  await clipRestyle();
+} else if (args.has('add')) {
   await addCard();
 } else if (args.has('attach')) {
   await attach(cards);
