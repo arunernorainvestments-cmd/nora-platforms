@@ -75,6 +75,20 @@ Shipped by `NORA_PLATFORMS_COLLECTIONS_SPEC.md` N1–N7 (migs 170–176). nora-a
 | Champion Spotlight = holding any slot in `arena_spotlight_assignments` for that week | mig 041 (N5.1 resolution) | no new event type was introduced — the spotlight market resolves from this existing weekly record |
 | `clip_campaigns` public board read | mig 176 | **web-only surface.** A submission is invisible to the campaign owner until moderation approves it — that is RLS-enforced, so a client cannot surface one by accident |
 
+### 1b. Standard Playset + share loop (added 2026-08-01 — mirrors the Playset spec cross-repo table)
+
+Shipped by `NORA_PLATFORMS_STANDARD_PLAYSET_SPEC.md` S1–S4 (migs 181–184). Reads only on the Arena side.
+
+| Platforms provides | Arena consumes |
+|---|---|
+| `moment_chits.is_starter` (implies `is_generic`) | **no sell / trade / barter / wager affordances on starter cards** — every RPC refuses them, so an offered affordance is a dead button |
+| Starter cards are **unserialized** — no `chit_copies` rows, `total_supply` is meaningless for them | do NOT render "#n of N" on a starter; show the starter badge and the owned quantity from `chit_ownership` instead |
+| Starter playset granted at signup (30 cards × 2 copies) | collection view + deck-builder work day one, before any mint. `claim_starter_playset()` is the idempotent self-heal if a client ever sees an empty collection |
+| Platform-minter attribution: `original_minter_handle = 'NORA'`, `source_platform = 'platform'` | render the **"NORA original"** variant — no social badge, no missing-value placeholder |
+| Platform cards never ascend (`seed_source='platform'`; `moment_chit_rederive` RAISEs) | no ascension UI on generics/starters |
+| `moment_chits.reveal_asset_url` — 9:16 mint-reveal MP4 in `battle-media` | share sheet after a mint; **never gate sharing** behind KYC or any other friction. Composed via `mint-reveal-compose`; a null URL means "not composed yet", not an error |
+| `profiles.is_founding_market_maker` + `founding_market_maker_showcase(limit)` | cosmetic cohort badge + a featured row. Cohort members are REAL accounts — never test-filtered (HR15) |
+
 🟡 **Notify-on-change for nora-arena:** `token_transactions.amount` is now **signed** (debits negative,
 mig 180). Any client-side balance/history math must read the **`token_ledger_signed`** view's
 `signed_amount`, never `amount` — rows written before 2026-07-25 stored debits as positive magnitudes and

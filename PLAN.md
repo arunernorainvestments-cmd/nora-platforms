@@ -41,7 +41,8 @@
   success. Also fixed: a Stripe double-credit race, payouts recorded that never happened, and
   read-then-write balance races that LOST debits. HR5 now encodes signed ledger amounts +
   "money math belongs in an RPC, not an edge function".
-- **Migration ledger:** remote DB in sync at **180** (via `supabase db push`). Next = **181**.
+- **Migration ledger:** remote DB in sync at **180** (via `supabase db push`). **181–184 are written
+  but NOT applied** (Standard Playset S1–S4 — see the 2026-08-01 entry). Next push = 181.
   138–147 cinematic/minting-v2 · 148 chit display fields · 149 `{VIDEO_DESC}` · 150 mint-cancel ·
   151/152 effect library · 153–155 marketplace M1 · 156 marketplace M2 (USD seam) · 157–169 (see
   ARCHIVE) · 170–176 Collections N2–N7 · 177 admin iter 3 · 178–180 money-path audit fixes.
@@ -56,6 +57,50 @@
   destructive-callable. Flipping any is a spend/creds/founder decision.
 
 **Active build tracks — see "Where we're going next."**
+
+---
+
+## 2026-08-01 — 🟡 BUILT, NOT YET PUSHED: Standard Playset S1–S4 (migs 181–184)
+
+Spec: `NORA_PLATFORMS_STANDARD_PLAYSET_SPEC.md`. Everything below is written and
+`flutter analyze` / `deno check` clean, but **migrations 181–184 have not been applied** and the
+new edge function is not deployed — that is the next action (`supabase db push`, then deploy
+`mint-reveal-compose`, then redeploy the Cloud Run stitch worker for the watermark overlay).
+
+- **S1 (mig 181) — admin seed path + generic/starter enforcement.** `admin_seed_moment` /
+  `admin_seed_chit` / `admin_seed_attach_media` (service-only): platform Lane-A content, moderated
+  like everything else, stats ladder-derived, tier targeted by the band's engagement floor. Closed
+  the four leak paths N6 left open on generics — barter, wager escrow, `collection_chits`,
+  ascension — and made starters **unserialized** so a 2-copies-per-account grant cannot exhaust the
+  1000-serial supply cap (that was a latent signup-breaking bug the moment a playset shipped).
+- **S2 (mig 182) — the 30-card slate + the grant.** 10 families × 3 (2 creatures + 1 spell),
+  F10/E9/D7/C4, no A/S. Covers all 4 timing types, all 4 keywords, and **all six** active launch
+  fusion rules with starters alone. `grant_starter_playset` is idempotent per **(account, card)** —
+  so cards authored after launch top up existing accounts automatically, and
+  `tools/playset/seed_playset.ts --add` authors one end-to-end (ladder-derived, granted to all).
+  Wired best-effort into `handle_new_user`, self-healed by `claim_starter_playset()`, and
+  backfilled to every existing non-test account.
+- **S3 (mig 183 + `tools/marketing/`) — marketing pipeline.** Spot briefs, render ledger (the
+  `cinematic_generations` twin — REPO-CHECK S3.1 resolved as "twin", since a spot has no moment and
+  no plate FKs), a budget cap that refuses the render rather than reporting it afterwards, the
+  G-COLL language ban enforced on ad copy by trigger, and a publish gate that RAISEs without a named
+  human reviewer. Six launch spots seeded as briefs, incl. the **Nov 19** gamer drop.
+- **S4 (mig 184 + `mint-reveal-compose` + stitch watermark) — the share loop + cohort.** Every mint
+  ends on a 9:16 reveal with one-tap share and a referral-carrying join link; `is_founding_market_maker`
+  + cosmetic badge + `/market` featured row; runbook at `tools/playset/FOUNDING_COHORT_RUNBOOK.md`.
+
+**Open [FOUNDER] items surfaced by this build (none guessed):**
+1. Approve the final 30-card slate (§1.3 sourcing brief → the shipped names) and schedule the single
+   counsel pass over it **plus** the reveal template and all S3 marketing copy (gate **G-IP**).
+2. `marketing_budget_config.cap_cents` is **0** — no marketing spend is authorised until it is raised.
+   Calibrate per-render cost from `tools/cinematic/trial_*.ts` first (spec §4 Q12).
+3. Name the human who owns pre-publish review (`reviewed_by`; spec §4 Q13).
+4. Select the 10–25 Founding Market Makers and decide whether their mints get **live** renders
+   (the strongest case for unlocking Segmind spend early).
+5. Author + review the reveal watermark plate (`battle-media/reveal/nora_reveal_watermark_v1.png`) —
+   it will be the most-seen artifact the platform produces.
+6. Playset trim lever: `starter_playset_settings` (`is_enabled`, `copies_per_card`) is config, not
+   code — the planned sunset path as minted supply grows (spec §4 Q4).
 
 ---
 

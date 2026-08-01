@@ -102,6 +102,34 @@ bg #0A0A0F | surface #1A1A2E | primary #6C63FF | secondary #03DAC6 | success #00
     **licensing-only**: payment + profile display, no mint feed. Either way the campaign system
     **never mints** — it hands the clip to the existing pipeline, which owns consent.
 
+43. **Standard Playset (migs 181–182):** the 30 platform-authored starter cards granted free to
+    every account at signup are `is_generic AND is_starter` and are **never listable, tradeable,
+    barterable, stakeable, collectible, or ascendable** — enforced in the marketplace, barter,
+    wager-escrow, `collection_chits` and ascension paths, not in UI. They are **unserialized**
+    (the `chit_copies` machinery skips starters): supply is unbounded by design, so the mig-170
+    invariant reads "quantity == owned copies **for every non-starter chit**". Platform cards are
+    authored ONLY through `admin_seed_chit` (service-role): moderation is **not** skipped for
+    platform content, stats stay ladder-derived (HR34), and the tier is targeted by feeding the
+    band's engagement FLOOR through `tier_for_engagement` — never hand-set. **No A/S (or B)
+    starters**, enforced in the RPC: the free floor must never outclass the paid ceiling. The
+    grant's unit of idempotency is the **(account, card)** receipt row
+    (`starter_playset_grants`, PK-enforced via ON CONFLICT DO NOTHING) — so a card can never
+    be granted twice AND a starter authored after launch **tops up** every existing account
+    on the next call, instead of reaching new signups only; signup wires it
+    best-effort and `claim_starter_playset()` self-heals. Users keep exactly **one** personal
+    self-mint — the seed path bypasses the per-USER slot and nothing else.
+
+44. **Share loop + marketing (migs 183–184):** every mint ends in a shareable 9:16 **reveal asset**
+    (`moment_chits.reveal_asset_url`, battle-media only — HR38); sharing is **never gated** behind
+    KYC or any friction, and referrals **never** pay out cards (sybil guard). Marketing renders are
+    a **separate budget line** from mint spend (`marketing_generations`, capped by
+    `marketing_budget_config.cap_cents`, default 0 = no spend authorised). **Nothing publishes
+    unreviewed:** `marketing_spot_publish` RAISEs without an approved render carrying a named human
+    `reviewed_by` — the anti-slop gate is schema, not process. The G-COLL language ban extends to ad
+    copy (the copy-guard trigger refuses investment/return/yield/dividend/revenue-share/profit/ROI/
+    appreciation). Founding Market Makers are **real accounts** — a profile can never be both
+    `is_founding_market_maker` and `is_test_account` (HR15).
+
 ## The game (v3 — "Moments" card-battler, canonical)
 > **v3 supersedes the v2.x 1v1 archetype-fighter model entirely.** The build path is `NORA_PLATFORMS_BUILD_SPEC_v3.md`
 > (P0–P6 shipped, migs 116–137; P7 remainder in PLAN.md). Backend owns ALL game logic; Arena is display-only/server-authoritative.
@@ -193,6 +221,9 @@ Everything queued in PLAN.md must respect these, in addition to the Hard Rules a
 - Cinematic Engine spec (anchor plates + motion prompts + Seedance/Segmind generation; supersedes the anchor-plate doc; §4 prompt grammar + moderation stack still govern under v2): **NORA_PLATFORMS_CINEMATIC_ENGINE_SPEC.md**
 - Chit marketplace spec (fixed-price, token-first; M1+M2 shipped, M3+ queued): **NORA_PLATFORMS_MARKETPLACE_SPEC.md**
 - Crossplay spec (web↔Arena shared matchmaking queue + play/spectate contract; migs 159–160 LIVE): **NORA_PLATFORMS_CROSSPLAY_SPEC.md**
+- Standard Playset + launch seeding (30 starter cards, admin seed path, marketing pipeline, mint-reveal
+  share loop, Founding Market Makers; S1–S4 built, migs 181–184): **NORA_PLATFORMS_STANDARD_PLAYSET_SPEC.md**
+  · cohort runbook `tools/playset/FOUNDING_COHORT_RUNBOOK.md` · marketing review gate `tools/marketing/README.md`
 - Effect system: design principles **NORA_CHIT_EFFECT_DESIGN_FRAMEWORK.md** · reactive-depth roadmap
   **NORA_INTERACTION_LAYER_SPEC.md** (the live Wave-1 library is the DB `effect_templates`; design record in ARCHIVE)
 - Where we're going, with build checklists (incl. the v3 P7 remainder): **PLAN.md**
