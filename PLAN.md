@@ -60,12 +60,27 @@
 
 ---
 
-## 2026-08-01 — 🟡 BUILT, NOT YET PUSHED: Standard Playset S1–S4 (migs 181–184)
+## 2026-08-01 — 🟡 MERGED TO MAIN, NOT YET APPLIED: Standard Playset S1–S4 (migs 181–184)
 
-Spec: `NORA_PLATFORMS_STANDARD_PLAYSET_SPEC.md`. Everything below is written and
-`flutter analyze` / `deno check` clean, but **migrations 181–184 have not been applied** and the
-new edge function is not deployed — that is the next action (`supabase db push`, then deploy
-`mint-reveal-compose`, then redeploy the Cloud Run stitch worker for the watermark overlay).
+Spec: `NORA_PLATFORMS_STANDARD_PLAYSET_SPEC.md`. Branch `playset-standard-set`, six commits
+(S1 · S2 · S3 · S4 · docs · `--clip`), merged. `flutter analyze` clean, `flutter test` 5/5,
+`deno check` clean on everything new.
+
+**⏭️ RESUME HERE — nothing is live yet. In order:**
+1. `supabase db push` — applies 181–184. This is the moment 30 cards appear and every existing
+   non-test account is backfilled. Each migration carries apply-time smokes that abort the push
+   rather than half-apply.
+2. `deno run --allow-net --allow-env tools/playset/seed_playset.ts --report` — verifies the
+   coverage contract against prod and prints per-card media state.
+3. `supabase functions deploy mint-reveal-compose --no-verify-jwt` (manual — CI never deploys
+   edge functions).
+4. Redeploy the Cloud Run stitch worker — `workers/stitch/server.js` gained the `watermark`
+   overlay the reveal composer needs. Until then reveals degrade honestly (share sheet still works).
+
+**⚠️ The cards ship with NO ARTWORK.** `card_art_url` is null on all 30, so CardFace renders its
+fallback: mechanically complete, visually bare. `--render-art` (Segmind image, one call per card)
+or hand-authored art via `--attach` fills it. Worth sequencing before public exposure — a blank
+starter set is the first thing every new user sees.
 
 - **S1 (mig 181) — admin seed path + generic/starter enforcement.** `admin_seed_moment` /
   `admin_seed_chit` / `admin_seed_attach_media` (service-only): platform Lane-A content, moderated
@@ -101,6 +116,42 @@ new edge function is not deployed — that is the next action (`supabase db push
    it will be the most-seen artifact the platform produces.
 6. Playset trim lever: `starter_playset_settings` (`is_enabled`, `copies_per_card`) is config, not
    code — the planned sunset path as minted supply grows (spec §4 Q4).
+
+### Open decisions carried out of the 2026-08-01 session (raised, not yet answered)
+
+**A. Five weak cards in the shipped slate.** Found by deriving every card's real stats off the
+ladder rather than reading the briefs. Fixing them is edits to the slate data in mig 182 and
+nothing else, but the tier swaps must stay inside a family so the F10/E9/D7/C4 spread survives.
+
+- **`Comeback Breath` (athlete, D, spell) does literally nothing.** Its effect is `heal` with
+  target `self`; `ccg_apply_card_effect` only heals cards with a HP value and a spell has none, so
+  it is a 3-cost blank. Athlete has no spell-friendly template (rush/highlight/secondwind are all
+  self- or damage-targeted), so the clean fix is to make it a **creature** (3-cost 4/5 that heals
+  itself 6) and give scientist the second spell (`formula` at E, "shield an ally 4" — ally-targeted,
+  so it works). That breaks the per-family "2 creatures + 1 spell" smoke assertion, which would
+  relax to per-family-3 plus a global 20 creatures / 10 spells.
+- **Four cards cost more for the same effect**, because cost scales with tier but count-type
+  effects carry `magnitude_scales = FALSE` (deliberately — an S-tier draw would otherwise draw 8).
+  Flat effect + high tier = strictly worse card:
+  `The Filibuster` (D, 3 Aura → refund 1) · `Hostile Acquisition` (D, 3 → draw 1) ·
+  `The Clapback` (C, 4 → discard 1) · `Stunt Double Swap` (D, 3 → grant taunt).
+  Each is beaten outright by a 1–2 cost card with the same effect **and** a body.
+  Proposed swaps (within family, spread preserved): Filibuster→F / Local Legend→D ·
+  Acquisition→F / Caper→D · Clapback→F / Ring Light→C · Stunt Double→F / Understudy→D.
+- Cosmetic: musician, comedian and gamer all read as "damage to ALL enemies" at F/E — samey.
+
+**B. Whether to hold 183/184 back from the launch push.** They are inert (new tables nobody reads,
+columns nobody writes, a worker param no existing caller sends), so applying all four is safe. If
+the smallest possible launch surface is wanted, S3+S4 can move to their own branch so `db push`
+carries only 181+182. Not done — it would rewrite history again and the migrations are harmless.
+
+**C. Source footage for the 30 cutscenes.** `--clip` (2026-08-01) is the pipeline half: local file
+→ staged → Segmind V2V restyle → stored for review → `--attach`. Sim mode exercises it with no
+spend. Note the practical constraint: the V2V providers screen the **input**, and recognisable
+likeness/copyrighted footage trips it — `CINEMATIC_SKIP_PROVIDER_MODERATION` only bypasses the
+Seedance layer, not the V2V models, and the platform's own post-gen screen is never skippable.
+Test cards and shipped cards need not be the same set: `--clip` produces a file, and nothing
+reaches a player until a human attaches it.
 
 ---
 
