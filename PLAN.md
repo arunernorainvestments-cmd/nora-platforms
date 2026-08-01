@@ -41,8 +41,8 @@
   success. Also fixed: a Stripe double-credit race, payouts recorded that never happened, and
   read-then-write balance races that LOST debits. HR5 now encodes signed ledger amounts +
   "money math belongs in an RPC, not an edge function".
-- **Migration ledger:** remote DB in sync at **180** (via `supabase db push`). **181–184 are written
-  but NOT applied** (Standard Playset S1–S4 — see the 2026-08-01 entry). Next push = 181.
+- **Migration ledger:** remote DB in sync at **184** (via `supabase db push`). 181–184 (Standard
+  Playset S1–S4) **APPLIED 2026-08-01**, all apply-time smokes passed. Next push = 185.
   138–147 cinematic/minting-v2 · 148 chit display fields · 149 `{VIDEO_DESC}` · 150 mint-cancel ·
   151/152 effect library · 153–155 marketplace M1 · 156 marketplace M2 (USD seam) · 157–169 (see
   ARCHIVE) · 170–176 Collections N2–N7 · 177 admin iter 3 · 178–180 money-path audit fixes.
@@ -60,22 +60,41 @@
 
 ---
 
-## 2026-08-01 — 🟡 MERGED TO MAIN, NOT YET APPLIED: Standard Playset S1–S4 (migs 181–184)
+## 2026-08-01 — ✅ APPLIED TO PROD: Standard Playset S1–S4 (migs 181–184)
+
+> **Applied 2026-08-01** (same day, later session). Root cause it fixed: the web app auto-deploys
+> from `main` but migrations are manual, so prod ran schema 180 against a client built for 184.
+> `moment_chits.is_starter` did not exist → PostgREST 42703 → **"Could not load your collection"**
+> on My BattleChits, plus a silently broken public profile, founding-cohort row, and a 404 on
+> `mint-reveal-compose`. `db push` applied all four cleanly; every smoke passed; **30 starter cards
+> seeded, 210 grants across 7 accounts** (backfill). `mint-reveal-compose` deployed. Verified via
+> the REST API: 30 starters, tier spread F10/E9/D7/C4, 20 creatures / 10 spells, 10 families,
+> **0/30 with card art, 0/30 with cutscenes**. Steps 1–3 below are DONE; step 4 (stitch worker) is
+> **still outstanding**.
+>
+> ⚠️ **Structural follow-up:** nothing in `.github/workflows/deploy.yml` runs `supabase db push`, so
+> any merge pairing a schema change with client code that reads it will ship the client first and
+> break prod again. Worth gating web deploy on migration parity.
 
 Spec: `NORA_PLATFORMS_STANDARD_PLAYSET_SPEC.md`. Branch `playset-standard-set`, six commits
 (S1 · S2 · S3 · S4 · docs · `--clip`), merged. `flutter analyze` clean, `flutter test` 5/5,
 `deno check` clean on everything new.
 
-**⏭️ RESUME HERE — nothing is live yet. In order:**
-1. `supabase db push` — applies 181–184. This is the moment 30 cards appear and every existing
-   non-test account is backfilled. Each migration carries apply-time smokes that abort the push
-   rather than half-apply.
-2. `deno run --allow-net --allow-env tools/playset/seed_playset.ts --report` — verifies the
-   coverage contract against prod and prints per-card media state.
-3. `supabase functions deploy mint-reveal-compose --no-verify-jwt` (manual — CI never deploys
-   edge functions).
-4. Redeploy the Cloud Run stitch worker — `workers/stitch/server.js` gained the `watermark`
-   overlay the reveal composer needs. Until then reveals degrade honestly (share sheet still works).
+**Rollout status:**
+1. ✅ `supabase db push` — 181–184 applied 2026-08-01, all smokes passed. 30 cards seeded,
+   210 grants across 7 accounts.
+2. ✅ Coverage contract verified via REST + the migrations' own apply-time smokes. (The
+   `seed_playset.ts --report` path needs a service-role key and was not run.)
+3. ✅ `supabase functions deploy mint-reveal-compose --no-verify-jwt` — deployed; now 401 (was 404).
+4. ⏭️ **STILL OUTSTANDING** — redeploy the Cloud Run stitch worker; `workers/stitch/server.js`
+   gained the `watermark` overlay the reveal composer needs. Requires GCP auth (project
+   `nora-stitch-v2`). Until then reveals degrade honestly (share sheet still works).
+
+**CLI constraint found while applying:** this repo's `config.toml` needs supabase CLI **≥ ~2.75**
+(v2.30 fails to parse it; v2.111 is a bun rewrite that crashes in Codespaces). **v2.75.5 works.**
+Also: the migration history is **not replayable from scratch** — a local `db reset` dies at mig 013
+(drops `heat_score` while `trg_update_spotlight` still depends on it), so local validation of new
+migrations is not available; rely on the apply-time smokes.
 
 **⚠️ The cards ship with NO ARTWORK.** `card_art_url` is null on all 30, so CardFace renders its
 fallback: mechanically complete, visually bare. `--render-art` (Segmind image, one call per card)
