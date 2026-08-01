@@ -9,6 +9,7 @@ import '../../market/providers/market_providers.dart';
 import '../services/mint_service.dart';
 import '../services/trim_interop.dart';
 import '../widgets/clip_trimmer.dart';
+import '../widgets/reveal_share_sheet.dart';
 import '../../../core/widgets/n_back_button.dart';
 
 /// "Create Your BattleChit" — minting v2 §1 (Minting_Workflow.md) end to end.
@@ -1455,7 +1456,18 @@ class _MintMomentScreenState extends State<MintMomentScreen> {
           style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13)),
       const SizedBox(height: 20),
       if (finalized) ...[
-        FilledButton(
+        // The share beat comes FIRST (Playset spec S4.1): the reveal is the
+        // shareable unit this whole flow exists to produce.
+        FilledButton.icon(
+          onPressed: () {
+            final chitId = _mint?['chit_id']?.toString();
+            if (chitId != null) showRevealShareSheet(context, chitId);
+          },
+          icon: const Icon(Icons.ios_share),
+          label: const Text('Share your card'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton(
           onPressed: () => context.go('/collection'),
           child: const Text('View my collection'),
         ),

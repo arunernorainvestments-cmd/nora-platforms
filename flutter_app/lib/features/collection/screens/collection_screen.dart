@@ -7,6 +7,7 @@ import '../../../core/widgets/cutscene_video.dart';
 import '../../market/providers/market_providers.dart';
 import '../../markets/providers/card_market_providers.dart';
 import '../../mint/services/mint_service.dart';
+import '../../mint/widgets/reveal_share_sheet.dart';
 import '../../wallet/providers/wallet_providers.dart';
 import '../providers/collection_providers.dart';
 import '../services/ascension_service.dart';
@@ -211,6 +212,15 @@ class CollectionScreen extends ConsumerWidget {
                 _CutscenePreview(url: chit.cutsceneUrl!),
               ],
               const SizedBox(height: 12),
+              // Every card a user minted can be shared as a reveal clip
+              // (Playset spec S4.1). Starters are platform-authored, so there
+              // is nothing personal to show off — no share action on those.
+              if (!chit.isPending && !chit.isStarter)
+                TextButton.icon(
+                  onPressed: () => showRevealShareSheet(context, chit.id),
+                  icon: const Icon(Icons.ios_share, size: 18),
+                  label: const Text('Share this card'),
+                ),
               if (chit.isPending)
                 _PendingActions(chit: chit, dialogContext: ctx)
               else

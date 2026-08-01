@@ -8,6 +8,9 @@ class PublicProfileData {
   final String? category1;
   final String? subcategory;
   final bool isMarketMaker;
+
+  /// Founding Market Makers cohort (Playset spec S4.2) — cosmetic badge only.
+  final bool isFoundingMarketMaker;
   final List<PlatformConnection> connections;
   final List<PlatformMetric> metrics;
 
@@ -18,6 +21,7 @@ class PublicProfileData {
     this.category1,
     this.subcategory,
     required this.isMarketMaker,
+    this.isFoundingMarketMaker = false,
     required this.connections,
     required this.metrics,
   });

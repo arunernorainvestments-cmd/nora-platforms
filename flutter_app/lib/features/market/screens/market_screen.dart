@@ -5,6 +5,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/card_face.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../collection/providers/collection_providers.dart';
+import '../../profile/providers/founding_cohort_provider.dart';
 import '../../wallet/providers/wallet_providers.dart';
 import '../providers/market_providers.dart';
 import '../../../core/widgets/n_back_button.dart';
@@ -73,6 +74,7 @@ class MarketScreen extends ConsumerWidget {
       ),
       body: Column(
         children: [
+          const _FoundingCohortRow(),
           _FilterChips(family: family, trending: _trending),
           Expanded(
             child: RefreshIndicator(
@@ -363,6 +365,86 @@ class _BuyButtonState extends ConsumerState<_BuyButton> {
 /// Horizontal filter row: All · Trending · the 10 archetype families. Each
 /// chip routes (URL is the single source of filter truth, so deep links,
 /// back/forward, and the home category buttons all behave identically).
+/// Launch-day featured row (Playset spec S4.2): the Founding Market Makers and
+/// the cards they minted. Silent when the cohort is empty, so it costs nothing
+/// before the cohort is onboarded.
+class _FoundingCohortRow extends ConsumerWidget {
+  const _FoundingCohortRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cohort = ref.watch(foundingCohortProvider).valueOrNull ?? const [];
+    if (cohort.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
+      alignment: Alignment.centerLeft,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(children: [
+            Icon(Icons.workspace_premium_outlined,
+                size: 16, color: AppTheme.secondary),
+            SizedBox(width: 6),
+            Text('Founding Market Makers',
+                style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800)),
+          ]),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 96,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: cohort.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 10),
+              itemBuilder: (context, i) {
+                final m = cohort[i];
+                return GestureDetector(
+                  onTap: () => context.push('/u/${m.userId}'),
+                  child: SizedBox(
+                    width: 76,
+                    child: Column(children: [
+                      CircleAvatar(
+                        radius: 26,
+                        backgroundColor: AppTheme.surfaceLight,
+                        backgroundImage: (m.cardArtUrl ?? m.avatarUrl) == null
+                            ? null
+                            : NetworkImage((m.cardArtUrl ?? m.avatarUrl)!),
+                        child: (m.cardArtUrl ?? m.avatarUrl) == null
+                            ? const Icon(Icons.person,
+                                color: AppTheme.textSecondary)
+                            : null,
+                      ),
+                      const SizedBox(height: 6),
+                      Text(m.displayName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: AppTheme.textSecondary, fontSize: 10.5)),
+                      if (m.chitName != null)
+                        Text(m.chitName!,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                                color: AppTheme.textPrimary,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600)),
+                    ]),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FilterChips extends StatelessWidget {
   const _FilterChips({required this.family, required this.trending});
   final String? family;

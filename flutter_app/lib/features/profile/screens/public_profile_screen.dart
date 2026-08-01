@@ -243,6 +243,31 @@ class _HeaderSection extends StatelessWidget {
             ),
           ),
 
+          // Founding Market Maker — cosmetic cohort badge (Playset spec S4.2).
+          if (profile.isFoundingMarketMaker) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppTheme.secondary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                    color: AppTheme.secondary.withValues(alpha: 0.4)),
+              ),
+              child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.workspace_premium_outlined,
+                    size: 13, color: AppTheme.secondary),
+                SizedBox(width: 5),
+                Text('Founding Market Maker',
+                    style: TextStyle(
+                        color: AppTheme.secondary,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700)),
+              ]),
+            ),
+          ],
+
           // Bio
           if (profile.bio != null && profile.bio!.isNotEmpty) ...[
             const SizedBox(height: 8),

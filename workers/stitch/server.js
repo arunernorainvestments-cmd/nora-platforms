@@ -28,7 +28,12 @@
 //     audio?:   { url, start?, duration?, at },   // overlay source; `at` = secs into output
 //     audio_from_segment?: <idx>,                 // use that VIDEO segment's own audio,
 //                    // delayed to where the segment starts in the output
-//     width?, height?, fps?,                      // default 1280x720@30
+//     watermark?: { image_url, position?, scale?, opacity?, margin? },
+//                    // persistent overlay for the whole composition (mint-reveal
+//                    // share asset, Playset spec S4.1). position: bottom_center
+//                    // (default) | bottom_left | bottom_right | top_left | top_right;
+//                    // scale = fraction of output width (default 0.24)
+//     width?, height?, fps?,                      // default 1280x720@30 (reveals: 1080x1920)
 //     upload: { bucket, path }                    // destination for final MP4
 //   } -> { ok, path, duration_s }
 //   GET /status -> ok   (NOT /healthz — Cloud Run's frontend reserves that
@@ -266,6 +271,13 @@ async function handleStitch(body) {
     const audioFile = audio?.url ? path.join(dir, 'audio_src.mp4') : null;
     if (audioFile) await download(audio.url, audioFile);
 
+    // Optional persistent watermark (Playset spec S4.1 — the mint-reveal share asset
+    // carries the NORA mark + join QR for its whole run). One overlay input, applied
+    // after the video chain resolves; keeps the reveal on this worker instead of
+    // needing a second compose service.
+    const wmFile = body.watermark?.image_url ? path.join(dir, 'wm.png') : null;
+    if (wmFile) await download(body.watermark.image_url, wmFile);
+
     // Effective length per segment — needed for xfade offsets AND to bound the
     // audio pad to the final duration (an unbounded apad overflows the filter
     // queue; -shortest alone does not stop the graph).
@@ -295,6 +307,9 @@ async function handleStitch(body) {
     // trimmed phone clips routinely carry a non-square PAR.
     const args = inputs.flatMap((f) => ['-i', f]);
     if (audioFile) args.push('-i', audioFile);
+    if (wmFile) args.push('-i', wmFile);
+    // The video chain resolves to [vbase] when a watermark still has to go on top.
+    const VOUT = wmFile ? '[vbase]' : '[v]';
 
     const norm = (i, seg) => {
       if (seg.image_url) {
@@ -324,13 +339,33 @@ async function handleStitch(body) {
       let off = 0;
       for (let i = 1; i < segments.length; i++) {
         off += durs[i - 1] - fade.dur;
-        const out = i === segments.length - 1 ? '[v]' : `[x${i}]`;
+        const out = i === segments.length - 1 ? VOUT : `[x${i}]`;
         chains.push(`${cur}[v${i}]xfade=transition=${fade.type}:duration=${fade.dur}:offset=${off.toFixed(3)}${out}`);
         cur = out;
       }
     } else {
       const concatIn = segments.map((_, i) => `[v${i}]`).join('');
-      chains.push(`${concatIn}concat=n=${segments.length}:v=1:a=0[v]`);
+      chains.push(`${concatIn}concat=n=${segments.length}:v=1:a=0${VOUT}`);
+    }
+
+    if (wmFile) {
+      // Corner-anchored, proportional to the output width so one asset works at any
+      // size. Positions are a fixed vocabulary — never caller text in the filtergraph.
+      const wmIdx = segments.length + (audioFile ? 1 : 0);
+      const scalePct = Math.min(0.6, Math.max(0.05, Number(body.watermark.scale ?? 0.24)));
+      const opacity = Math.min(1, Math.max(0.05, Number(body.watermark.opacity ?? 0.9)));
+      const margin = Math.max(0, Math.round(Number(body.watermark.margin ?? Math.round(width * 0.04))));
+      const pos = {
+        bottom_right: [`W-w-${margin}`, `H-h-${margin}`],
+        bottom_left: [`${margin}`, `H-h-${margin}`],
+        top_right: [`W-w-${margin}`, `${margin}`],
+        top_left: [`${margin}`, `${margin}`],
+        bottom_center: ['(W-w)/2', `H-h-${margin}`],
+      }[String(body.watermark.position ?? 'bottom_center')];
+      if (!pos) throw new Error(`unknown watermark position ${body.watermark.position}`);
+      chains.push(`[${wmIdx}:v]scale=${Math.round(width * scalePct)}:-1,format=rgba,` +
+        `colorchannelmixer=aa=${opacity}[wm]`);
+      chains.push(`${VOUT}[wm]overlay=${pos[0]}:${pos[1]}:format=auto[v]`);
     }
 
     // Output start time of segment i (xfade overlaps eat into the timeline).
