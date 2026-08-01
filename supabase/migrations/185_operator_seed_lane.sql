@@ -290,15 +290,20 @@ REVOKE ALL ON FUNCTION public.self_mint_slot(UUID) FROM PUBLIC, anon, authentica
 
 -- ═══════════════════════════════════════════════════════════════════════════════
 -- 5. APPLY-TIME SMOKE
--- Runs against a dedicated throwaway operator that is deleted on the way out — never
--- a real account (mig 181's posture: seed residue must not land on a live profile).
+-- Runs against a dedicated smoke identity, never a real account (mig 181's posture:
+-- seed residue must not land on a live profile). The identity is created once and
+-- REUSED on re-runs rather than deleted: deleting it would cascade into
+-- chit_acquisition_ledger and trip that table's append-only guard (mig 117). Leaving
+-- it is the repo's stated discipline — "append-only residue lives on is_test_account
+-- users; P7 sweeps" (mig 170) — so it carries is_test_account (Hard Rule 15 filters
+-- it from every ranking and discovery query) and its admin flag is dropped on exit.
 -- Proves: admin-only gate · no URL · tier derived from the floor · moderation still
 -- mandatory · the chit lands generic+platform · the personal slot is untouched · a
 -- SECOND seed mint is not blocked by the first.
 -- ═══════════════════════════════════════════════════════════════════════════════
 DO $$
 DECLARE
-  v_op    UUID := gen_random_uuid();
+  v_op    UUID;
   v_nobody UUID;
   v_m1 UUID; v_m2 UUID; v_c1 UUID; v_c2 UUID;
   v_c public.moment_chits%ROWTYPE;
@@ -306,12 +311,21 @@ DECLARE
   v_floor BIGINT;
   v_err BOOLEAN;
 BEGIN
-  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password,
-                          email_confirmed_at, created_at, updated_at, raw_user_meta_data)
-  VALUES (v_op, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
-          'seed-lane-smoke@noraplatforms.com', '', NOW(), NOW(), NOW(),
-          '{"full_name":"Seed Lane Smoke"}');
-  UPDATE public.profiles SET is_admin = TRUE, is_test_account = TRUE WHERE id = v_op;
+  SELECT id INTO v_op FROM auth.users WHERE email = 'seed-lane-smoke@noraplatforms.com';
+  IF v_op IS NULL THEN
+    v_op := gen_random_uuid();
+    INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password,
+                            email_confirmed_at, created_at, updated_at, raw_user_meta_data)
+    VALUES (v_op, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+            'seed-lane-smoke@noraplatforms.com', '', NOW(), NOW(), NOW(),
+            '{"full_name":"Seed Lane Smoke"}');
+  END IF;
+  -- Explicit rather than relying on the auth.users → handle_new_user trigger to have
+  -- produced the row: if that trigger is ever absent or deferred, the smoke would
+  -- otherwise fail with a confusing "admin-only" from three calls deeper.
+  INSERT INTO public.profiles (id, is_admin, is_test_account)
+  VALUES (v_op, TRUE, TRUE)
+  ON CONFLICT (id) DO UPDATE SET is_admin = TRUE, is_test_account = TRUE;
 
   -- admin-only gate: a non-admin is refused
   SELECT id INTO v_nobody FROM public.profiles WHERE NOT COALESCE(is_admin, FALSE) LIMIT 1;
@@ -382,12 +396,19 @@ BEGIN
   END;
   IF NOT v_err THEN RAISE EXCEPTION 'SMOKE FAIL: a seed card must never be wagerable'; END IF;
 
-  -- cleanup: zero the holding (append-only ledger keeps its rows), retire the cards,
-  -- drop the throwaway operator (moments cascade; chit.moment_id ON DELETE SET NULL).
+  -- cleanup. Three things are deliberately NOT deleted, because the tables that hold
+  -- them refuse it by design: chit_acquisition_ledger and chit_copy_transfers are
+  -- append-only (migs 117 / 170), so the holding is zeroed with a COMPENSATING entry
+  -- and the operator row is retired in place rather than dropped — deleting the auth
+  -- user would cascade into the ledger and RAISE. The moments and the catalog rows
+  -- have no such guard, so those go properly.
   PERFORM public.chit_grant(v_op, v_c1, -1, 'platform_correction');
   UPDATE public.moment_chits SET is_active = FALSE, retired_at = NOW(), retired_reason = 'admin'
   WHERE id IN (v_c1, v_c2);
-  DELETE FROM auth.users WHERE id = v_op;
+  DELETE FROM public.moments WHERE id IN (v_m1, v_m2);
+  -- no dormant admin left behind; is_test_account keeps the identity out of every
+  -- ranking and discovery query in the meantime (Hard Rule 15).
+  UPDATE public.profiles SET is_admin = FALSE WHERE id = v_op;
 
   RAISE NOTICE 'mig 185 smoke OK: operator seed lane (admin-gated, url-less, moderated, '
                'ladder-derived, generic+platform stamped, slot-exempt, unstakeable)';
