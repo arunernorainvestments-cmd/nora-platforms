@@ -42,6 +42,16 @@ const json = (body: unknown, status = 200) =>
 
 const TIERS = ['F', 'E', 'D', 'C', 'B', 'A', 'S'];
 
+// The classifier fails CLOSED: any infrastructure failure (bad/missing API key,
+// network error, unparseable reply) comes back as verdict 'rejected' with clean
+// labels — indistinguishable from a real content rejection unless you read the
+// reason. Failing closed is right; reporting it as "your description didn't pass
+// moderation" is not — it blames the operator for an outage and sends them off
+// rewriting text that was never the problem (2026-08-02: a stale ANTHROPIC_API_KEY
+// surfaced exactly this way). These are the only reasons that mean the classifier
+// actually looked at the content and objected.
+const CONTENT_REJECT_REASONS = new Set(['nsfw', 'graphic_violence', 'hate', 'minor_safety']);
+
 Deno.serve(async (req: Request): Promise<Response> => {
   if (req.method === 'OPTIONS') return new Response('ok', { status: 200, headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Method not allowed' }, 405);
@@ -100,6 +110,22 @@ Deno.serve(async (req: Request): Promise<Response> => {
     // and moment_mint refuses it until a verdict lands.
     console.warn('admin-seed-moment: moderation rate-limited');
     return json({ error: 'moderation_rate_limited', detail: 'Try again shortly' }, 429);
+  }
+
+  // Screening was unavailable rather than unhappy. Deliberately DO NOT persist a
+  // verdict: writing 'rejected' here would stamp a permanent-looking refusal onto a
+  // moment nothing ever screened. Leaving it unmoderated is both honest and safe —
+  // moment_mint refuses any moment without an approved verdict, so the seed simply
+  // cannot proceed until a real screen runs, and a retry re-screens cleanly.
+  if (verdict.verdict !== 'approved' && !CONTENT_REJECT_REASONS.has(verdict.reason ?? '')) {
+    console.error(`admin-seed-moment: moderation unavailable (${verdict.reason}) — no verdict persisted`);
+    return json({
+      error: 'moderation_unavailable',
+      detail: 'Content screening is unavailable right now, so this card was not created. ' +
+        'This is not a problem with your description — check the moderation provider ' +
+        'credentials and try again.',
+      reason: verdict.reason ?? 'unknown',
+    }, 503);
   }
 
   const { error: modErr } = await db.rpc('moment_pre_gen_moderate', {
