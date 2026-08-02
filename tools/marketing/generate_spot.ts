@@ -28,6 +28,8 @@ import {
   cinematicConfigFromEnv,
   generateIllustration,
   generateCutscene,
+  submitCutscene,
+  pollCutscene,
 } from '../../supabase/functions/_shared/segmind.ts';
 
 const url = (Deno.env.get('SUPABASE_URL') ?? 'https://cceisywxwhgljdpisjrl.supabase.co').replace(/\/$/, '');
@@ -111,6 +113,38 @@ function spotPrompt(s: Spot): string {
   ].filter(Boolean).join('\n');
 }
 
+// Seedance conditions on BOTH bookend frames (segmind.ts rejects a lone first frame —
+// that guard protects the mint path's plate bracket, Hard Rule 39, so a spot supplies
+// its own pair instead of weakening it). Two stills also buy deliberate control of the
+// closing frame: a spot whose last frame rhymes with its first loops seamlessly, and
+// on a short-form feed the replay is most of the watch time.
+function framePrompt(s: Spot, which: 'open' | 'close'): string {
+  const beat = which === 'open'
+    ? `Opening frame: the single most arresting image in the spot — "${s.hook ?? s.title}". ` +
+      'Full-bleed, high contrast, the subject already mid-action.'
+    : `Closing frame: rhymes with the opening image so the spot loops cleanly — same ` +
+      'composition and camera, resolved state, energy settling rather than building.';
+  return `${spotPrompt(s)}\n${beat}`;
+}
+
+// Poll the v2 async queue to a terminal state. Deliberately patient: a standard-tier
+// 12s render can sit in QUEUED for minutes, and giving up early would strand a render
+// we have already paid for.
+async function pollUntilDone(
+  cfg: ReturnType<typeof cinematicConfigFromEnv>, requestId: string, model: string, seed: number,
+) {
+  const deadline = Date.now() + 15 * 60_000;
+  let waited = 0;
+  while (Date.now() < deadline) {
+    const p = await pollCutscene(cfg, requestId, model, seed);
+    if (p.done) return p.result;
+    await new Promise((r) => setTimeout(r, 10_000));
+    waited += 10;
+    if (waited % 60 === 0) console.log(`  … still rendering (${waited}s)`);
+  }
+  return { ok: false as const, reason: 'provider_error' as const, detail: 'poll timed out after 15m (request id is still resumable)' };
+}
+
 async function render(key: string): Promise<void> {
   const all = await spots();
   const spot = all.find((s) => s.key === key);
@@ -131,46 +165,76 @@ async function render(key: string): Promise<void> {
   console.log(prompt.split('\n').map((l) => `  ${l}`).join('\n'));
 
   // A spot is a short film, not a card cutscene: no anchor plates, no match-cut seam.
-  // Still-first spots (starter reveals) use the image model; motion spots use the
-  // video model with the still as its opening frame.
-  const still = await generateIllustration(cfg, { prompt, width: 1080, height: 1920 });
-  if (!still.ok) {
-    console.error(`\n✗ still failed: ${still.reason}${still.detail ? ` — ${still.detail}` : ''}`);
-    Deno.exit(1);
-  }
-  const stillPath = `marketing/${spot.key}/still-${still.seed}.png`;
-  const upStill = await db.storage.from('battle-media')
-    .upload(stillPath, still.bytes, { contentType: still.contentType, upsert: true });
-  if (upStill.error) {
-    console.error(`✗ still upload failed: ${upStill.error.message}`);
-    Deno.exit(1);
-  }
-  const { data: stillPub } = db.storage.from('battle-media').getPublicUrl(stillPath);
-
-  let assetPath = stillPath;
-  let model = cfg.imageModel;
-  let seed = still.seed;
-
-  if (!args.has('still-only')) {
-    const clip = await generateCutscene(cfg, {
-      prompt,
-      firstFrameUrl: stillPub.publicUrl,
-      durationS: spot.duration_s,
-      seed: still.seed,
+  // It supplies its own bookend pair instead (see framePrompt) — cheap to iterate on,
+  // and the composition is approved as stills before any motion is paid for.
+  const frame = async (which: 'open' | 'close'): Promise<{ path: string; seed: number }> => {
+    const img = await generateIllustration(cfg, {
+      prompt: framePrompt(spot, which), width: 1080, height: 1920,
     });
-    if (!clip.ok) {
-      console.warn(`\n! motion pass failed (${clip.reason}) — keeping the still as the asset`);
+    if (!img.ok) {
+      console.error(`\n✗ ${which} frame failed: ${img.reason}${img.detail ? ` — ${img.detail}` : ''}`);
+      Deno.exit(1);
+    }
+    const path = `marketing/${spot.key}/${which}-${img.seed}.png`;
+    const up = await db.storage.from('battle-media')
+      .upload(path, img.bytes, { contentType: img.contentType, upsert: true });
+    if (up.error) {
+      console.error(`✗ ${which} frame upload failed: ${up.error.message}`);
+      Deno.exit(1);
+    }
+    console.log(`  ${which} frame → ${db.storage.from('battle-media').getPublicUrl(path).data.publicUrl}`);
+    return { path, seed: img.seed };
+  };
+
+  const open = await frame('open');
+  const close = await frame('close');
+  const openUrl = db.storage.from('battle-media').getPublicUrl(open.path).data.publicUrl;
+  const closeUrl = db.storage.from('battle-media').getPublicUrl(close.path).data.publicUrl;
+
+  let assetPath = open.path;
+  let model = cfg.imageModel;
+  let seed = open.seed;
+
+  if (args.has('still-only')) {
+    console.log('\n  --still-only: stopping at the bookend frames (no motion spend).');
+  } else {
+    const req = {
+      prompt, firstFrameUrl: openUrl, lastFrameUrl: closeUrl, durationS: spot.duration_s,
+    };
+    let clip;
+    if (cfg.mode === 'sim') {
+      clip = await generateCutscene(cfg, req);
     } else {
-      assetPath = `marketing/${spot.key}/spot-${clip.seed}.mp4`;
-      const upClip = await db.storage.from('battle-media')
-        .upload(assetPath, clip.bytes, { contentType: clip.contentType, upsert: true });
-      if (upClip.error) {
-        console.error(`✗ spot upload failed: ${upClip.error.message}`);
+      // Live renders run minutes, so hold a request id rather than a socket: a dropped
+      // connection or a killed terminal then costs nothing to resume (provider retains
+      // results for 1h). On a fixed budget, re-spending to recover a render is the
+      // expensive failure — print the id BEFORE the first poll, always.
+      const sub = await submitCutscene(cfg, req);
+      if (!sub.ok) {
+        console.error(`\n✗ motion submit failed: ${sub.reason}${sub.detail ? ` — ${sub.detail}` : ''}`);
         Deno.exit(1);
       }
-      model = clip.model;
-      seed = clip.seed;
+      console.log(`\n  submitted: request ${sub.requestId} (model ${sub.model}, seed ${sub.seed})`);
+      console.log(`  resume with: --resume=${sub.requestId} --model=${sub.model} --seed=${sub.seed} --spot=${spot.key}`);
+      clip = await pollUntilDone(cfg, sub.requestId, sub.model, sub.seed);
     }
+    if (!clip.ok) {
+      // Never quietly ship the still as if it were the spot — a silent downgrade is how
+      // a "rendered" slate turns out to be six PNGs. Fail loudly; --still-only is the
+      // deliberate way to ask for a frame.
+      console.error(`\n✗ motion pass failed: ${clip.reason}${clip.detail ? ` — ${clip.detail}` : ''}`);
+      console.error('  (bookend frames are uploaded and reusable; --still-only renders frames on purpose)');
+      Deno.exit(1);
+    }
+    assetPath = `marketing/${spot.key}/spot-${clip.seed}.mp4`;
+    const upClip = await db.storage.from('battle-media')
+      .upload(assetPath, clip.bytes, { contentType: clip.contentType, upsert: true });
+    if (upClip.error) {
+      console.error(`✗ spot upload failed: ${upClip.error.message}`);
+      Deno.exit(1);
+    }
+    model = clip.model;
+    seed = clip.seed;
   }
 
   const { data: genId, error } = await db.rpc('marketing_generation_record', {
@@ -226,8 +290,47 @@ async function publish(key: string): Promise<void> {
   console.log(`✓ "${key}" marked published — post it to ${(spot.channels ?? []).join(', ')}`);
 }
 
+// Recover a render whose poll loop died — pure retrieval, zero additional spend.
+async function resume(requestId: string): Promise<void> {
+  const key = args.get('spot') ?? '';
+  const spot = (await spots()).find((s) => s.key === key);
+  if (!spot) {
+    console.error('--resume needs --spot=<key> --model=<slug> --seed=<n>');
+    Deno.exit(1);
+  }
+  const cfg = cinematicConfigFromEnv();
+  const model = args.get('model') ?? cfg.seedanceFastModel;
+  const seed = Number(args.get('seed') ?? 0);
+  const clip = await pollUntilDone(cfg, requestId, model, seed);
+  if (!clip.ok) {
+    console.error(`✗ resume failed: ${clip.reason}${clip.detail ? ` — ${clip.detail}` : ''}`);
+    Deno.exit(1);
+  }
+  const assetPath = `marketing/${spot.key}/spot-${clip.seed}.mp4`;
+  const up = await db.storage.from('battle-media')
+    .upload(assetPath, clip.bytes, { contentType: clip.contentType, upsert: true });
+  if (up.error) {
+    console.error(`✗ upload failed: ${up.error.message}`);
+    Deno.exit(1);
+  }
+  // The spend was already ledgered by the render that submitted it — record at 0 so a
+  // recovery never double-counts against the cap.
+  const { data: genId, error } = await db.rpc('marketing_generation_record', {
+    p_spot_id: spot.id, p_model: clip.model, p_mode: 'live', p_render_tier: cfg.renderTier,
+    p_seed: clip.seed, p_prompt: spotPrompt(spot), p_asset_path: assetPath, p_cost_cents: 0,
+  });
+  if (error) {
+    console.error(`✗ ledger write refused: ${error.message}`);
+    Deno.exit(1);
+  }
+  console.log(`✓ resumed → ${db.storage.from('battle-media').getPublicUrl(assetPath).data.publicUrl}`);
+  console.log(`  generation: ${genId}`);
+}
+
 if (args.has('render')) {
   await render(args.get('render')!);
+} else if (args.has('resume')) {
+  await resume(args.get('resume')!);
 } else if (args.has('approve')) {
   await verdict(args.get('approve')!, true);
 } else if (args.has('reject')) {
