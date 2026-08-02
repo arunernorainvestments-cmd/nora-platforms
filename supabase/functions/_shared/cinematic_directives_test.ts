@@ -40,7 +40,28 @@ Deno.test('v2v restyle prompt: post-derived slots are sanitized (Hard Rule 39)',
   });
   // sanitizeSubjectDesc strips {}, <>, |, ` — none may survive into the prompt
   if (/[{}<>|`]/.test(p)) throw new Error('user text must be stripped of markup characters');
-  if (!p.includes('[CONSTRAINTS] an original stylized character design')) {
+  if (!p.includes('[CONSTRAINTS] never any existing anime')) {
     throw new Error('constraints must remain intact after hostile input');
+  }
+});
+
+// Real-person likeness is deliberate (founder decision 2026-08-02) — a restyle that
+// replaces the person is the bug. Copyrighted FICTIONAL characters stay banned: that
+// ban is what the 2026-07-13 DBZ audit added and it was never in scope to relax.
+Deno.test('v2v restyle prompt: keeps the person, still bans fictional characters', () => {
+  for (const provider of ['kling-o3', 'runway-aleph'] as const) {
+    const p = v2vRestylePrompt({
+      subjectDesc: 'a bald, heavily muscled man with a determined grimace',
+      videoDesc: 'he presses two heavy dumbbells overhead',
+      tierIntensity: TIER_INTENSITY.B, provider, withCardArtRef: true,
+    });
+    if (!p.includes('[LIKENESS]')) throw new Error('likeness block missing');
+    if (!p.includes('recognizable')) throw new Error('likeness must ask to keep the person recognizable');
+    if (p.includes('an original stylized character design')) {
+      throw new Error('the replace-the-person directive must be gone');
+    }
+    if (!/never any existing anime, manga, video-game, comic, or cartoon character/.test(p)) {
+      throw new Error('fictional-character ban must survive');
+    }
   }
 });

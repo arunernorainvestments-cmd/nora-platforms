@@ -121,9 +121,15 @@ export function v2vRestylePrompt(args: {
     '[STYLE] house cel-shaded look: bold black ink outlines, flat cel shadows, ' +
       'painterly rim-lit accents, vibrant saturated colors, dark cyber-arena mood, ' +
       `energy effects — ${args.tierIntensity}.`,
-    '[CONSTRAINTS] an original stylized character design; never any existing anime, ' +
-      'manga, video-game, comic, or cartoon character; no photographic realism; ' +
-      'no text, no words, no logos, no watermarks, no UI panels.',
+    // Matches illustrationPrompt's likeness posture (founder decision 2026-08-02):
+    // this is a RESTYLE of real footage, so keeping the person recognizable is the
+    // point — "an original stylized character design" was telling the restyler to
+    // replace them. The fictional-character ban stays.
+    '[LIKENESS] keep the real person recognizable — same build, face, hair and ' +
+      'clothing as in the source video, stylized but not replaced.',
+    '[CONSTRAINTS] never any existing anime, manga, video-game, comic, or cartoon ' +
+      'character; no photographic realism; no text, no words, no logos, no ' +
+      'watermarks, no UI panels.',
   ].filter(Boolean).join('\n');
 }
 
@@ -293,12 +299,22 @@ export function illustrationPrompt(subjectDesc: string, family: Family): string 
     'portrait 4:5 composition,',
     `subject: ${sanitizeSubjectDesc(subjectDesc)},`,
     `${accent.phrase} accent rim-light and energy glow around the subject,`,
-    // 2026-07-13 audit cause #5: without these, an under-specified subject defaulted
-    // to the archetypal shonen-anime hero (a recognizable DBZ likeness) — a quality
-    // AND IP failure. The subject must be an original design derived from the moment.
-    'an original character design unique to this card,',
+    // LIKENESS (founder decision 2026-08-02): the card is minted FROM a real moment, so
+    // the character is a stylized likeness of the real person in it — that is the whole
+    // product promise ("your moment becomes your card"). This block used to say "an
+    // original character design… no celebrity likeness", which fought both the reference
+    // frame and the subject description and produced a stranger on every card. Scope is
+    // deliberately every mint, house seeds of public figures included; the right-of-
+    // publicity exposure that carries is a founder-accepted, PLAN-recorded pre-launch
+    // risk (the lkn_* rail is where it gets cleared).
+    'a faithful stylized likeness of the real person described above,',
+    'keep their build, face, hair and clothing recognizable,',
+    // 2026-07-13 audit cause #5 — UNCHANGED and still load-bearing: an under-specified
+    // subject defaulted to the archetypal shonen-anime hero (a recognizable DBZ
+    // likeness). Real-person likeness is now allowed; COPYRIGHTED FICTIONAL characters
+    // never were and still are not.
     'never any existing anime, manga, video-game, comic, or cartoon character,',
-    'no celebrity likeness, no franchise costume or hairstyle,',
+    'no franchise costume or hairstyle,',
     'no text, no words, no letters, no logos, no card frame, no border, no UI panels,',
     'no photographic realism',
   ].join(' ');

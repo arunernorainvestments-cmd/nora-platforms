@@ -136,7 +136,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   // ── ownership + approval + not-yet-minted (same guards as moment-clip-attach) ─────
   const { data: moment } = await db.from('moments')
-    .select('id, owner_user_id, moderation_status, mint_status, creator_handle, source_url, thumbnail_url, post_title')
+    .select('id, owner_user_id, moderation_status, mint_status, creator_handle, source_url, thumbnail_url, post_title, clip_status, clip_frame_paths')
     .eq('id', momentId).eq('owner_user_id', user.id)
     .maybeSingle();
   if (!moment) return json({ error: 'moment_not_found' }, 404);
@@ -172,7 +172,24 @@ Deno.serve(async (req: Request): Promise<Response> => {
       degraded: null,
     };
   } else if (mode === 'live') {
-    result = await liveClassify(context, moment.thumbnail_url ?? null, handle);
+    // Visual evidence: frames of the ACTUAL uploaded clip (moment-clip-attach stores
+    // f0..f3 in the private mint-staging bucket; the wizard attaches the clip before
+    // this step, so they exist by now) beat the post thumbnail — and they are the ONLY
+    // visual signal a platform-seed moment has, since it carries no post and therefore
+    // no thumbnail. Without them the classifier saw nothing but the title and wrote a
+    // subject line that contradicted the footage (2026-08-02: a dumbbell press
+    // described, and drawn, as a barbell). Falls back to the thumbnail, then to text.
+    const framePaths = moment.clip_status === 'attached'
+      ? ((moment.clip_frame_paths as string[] | null) ?? []) : [];
+    const frameUrls: string[] = [];
+    for (const p of framePaths.slice(0, 3)) {
+      const { data: s } = await db.storage.from('mint-staging').createSignedUrl(p, 900);
+      if (s?.signedUrl) frameUrls.push(s.signedUrl);
+    }
+    const images = frameUrls.length > 0
+      ? frameUrls
+      : (moment.thumbnail_url ? [moment.thumbnail_url as string] : []);
+    result = await liveClassify(context, images, handle);
   } else {
     const family = heuristicFamily(context);
     result = {
@@ -317,8 +334,11 @@ function prettyName(handle: string): string {
 const CLASSIFIER_SYSTEM =
   'You name and classify a collectible battle card minted from a social-media post.\n\n' +
   'Choose "family" = the category of WHAT IS HAPPENING in the moment (the activity and ' +
-  'setting), never merely who posted it. Judge the thumbnail image first (visible ' +
+  'setting), never merely who posted it. Judge the images first (visible ' +
   'activity, setting, props, clothing), then the post title/caption, then the handle.\n' +
+  'The images are frames of the actual uploaded clip when available, otherwise the post ' +
+  'thumbnail. They are the ground truth: when the title and the frames disagree, believe ' +
+  'the frames.\n' +
   'Family definitions:\n' +
   '- athlete: sports, fitness, physical competition or feats (game plays, gym, races, martial arts)\n' +
   '- musician: performing or making music — singing, rapping, instruments, DJing, studio work\n' +
@@ -335,8 +355,11 @@ const CLASSIFIER_SYSTEM =
   '{"family": <one of: athlete, musician, artist, scientist, comedian, influencer, ' +
   'politician, business, gamer, actor>,\n' +
   ' "name": <a short punchy card name, <= 4 words, no quotes>,\n' +
-  ' "subject_desc": <one vivid sentence describing the visible subject for card art, no names of ' +
-  'real third parties>,\n' +
+  ' "subject_desc": <one vivid sentence describing the PERSON for card art — build, face, hair and ' +
+  'facial hair, skin tone, clothing, expression. Describe WHO IS IN FRAME, not what they are doing ' +
+  'and not the setting: the action and the location are captured separately, and a subject line ' +
+  'about the activity makes the card art a scene instead of a character portrait. Name the person ' +
+  'when they are a recognizable public figure>,\n' +
   ' "chit_type": <"creature" for a person/character, "spell_moment" for an effect/action moment>}';
 
 // `degraded` names WHY the placeholder subject_desc is being returned (null = the
@@ -351,7 +374,7 @@ type ClassifyResult = {
 };
 
 async function liveClassify(
-  context: string, thumbnailUrl: string | null, handle: string,
+  context: string, imageUrls: string[], handle: string,
 ): Promise<ClassifyResult> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   const model = Deno.env.get('MODERATION_MODEL') ?? 'claude-sonnet-4-6';
@@ -368,8 +391,8 @@ async function liveClassify(
   };
   if (!apiKey) return fallbackWith('no_api_key');
 
-  const content: unknown[] = [];
-  if (thumbnailUrl) content.push({ type: 'image', source: { type: 'url', url: thumbnailUrl } });
+  const content: unknown[] = imageUrls.slice(0, 3)
+    .map((url) => ({ type: 'image', source: { type: 'url', url } }));
   content.push({ type: 'text', text: `Post title + creator handle + context: ${context}\n\nClassify and name now.` });
 
   let res: Response;

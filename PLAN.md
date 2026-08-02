@@ -106,6 +106,41 @@ i.e. a cel-shaded Goku doing the real bench press, with the real audio.
 **Re-minting the Goggins card:** its clip is already repaired, so retire chit `8b522f3c` to release
 moment `552c6b30` and generate again — but do the API key first, or the art will be generic a third time.
 
+**Key reactivated 03:52 → attempt 3 is a fully healthy run** (`v2v_provider: kling-o3`,
+`audio_source: original`, real vision-derived `subject_desc` + `video_desc`, final MP4 8.14s vs a
+4.4s core = bookends present, zero failure lines in the edge logs). Both faults above are closed.
+
+### ⚠️ FOUNDER DECISION 2026-08-02 — real-person LIKENESS is now allowed on every mint
+
+The art was still "nothing to do with Goggins" after the key came back, because three separate
+layers were *instructing* it not to be him: the classifier wrote `subject_desc` with "no names of
+real third parties", and both `illustrationPrompt` and `v2vRestylePrompt` demanded "an original
+character design / no celebrity likeness". Founder call, made with the exposure stated: **allow a
+stylized likeness of the real person on every mint, house seeds of public figures included.**
+
+- **Changed:** `illustrationPrompt` now asks for "a faithful stylized likeness of the real person…
+  keep their build, face, hair and clothing recognizable"; `v2vRestylePrompt` gained a `[LIKENESS]`
+  block ("stylized but not replaced"); the classifier now describes the PERSON and may name a
+  recognizable public figure.
+- **UNCHANGED and not in scope:** the copyrighted-FICTIONAL-character ban (the 2026-07-13 DBZ audit
+  guardrail) survives in both prompts, with a test pinning it. Real face ≠ Goku.
+- **🔴 ACCEPTED RISK, revisit before public launch:** an unlicensed right-of-publicity likeness of a
+  real public figure can now reach a **tradeable** asset. This is the exposure the `lkn_*` licensing
+  rail exists to clear and it stacks with deferred IP item 7. It is fine for single-operator
+  pre-launch authoring; it is **not** fine at open signup. Options when revisited: gate likeness to
+  OAuth-owned moments only (the user's own face), or clear celebrity seeds through `lkn_agreements`.
+  Consider promoting this to a Hard Rule either way — it is currently prompt text, so a future
+  "cleanup" could silently revert it.
+
+**Second defect fixed in the same pass — the classifier was blind to the footage.** `subject_desc`
+described the ACTIVITY ("bench pressing a heavy barbell in a raw gym setting"), so the model drew a
+*scene* instead of a hero portrait; and because a platform-seed moment has **no thumbnail**, the
+classifier had only the post title to go on and contradicted the real clip (title said bench press,
+the footage is DUMBBELLS — the art came back with a barbell). `moment-classify` now signs up to 3
+frames of the actual uploaded clip and sends those, falling back to the thumbnail, then to text; the
+system prompt tells it the frames are ground truth when they disagree with the title, and to
+describe who is in frame rather than what they are doing.
+
 ---
 
 ## 2026-08-01 — ✅ APPLIED TO PROD: Standard Playset S1–S4 (migs 181–184)
