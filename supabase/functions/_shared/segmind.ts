@@ -416,9 +416,17 @@ export async function generateCutscene(cfg: CinematicConfig, req: CutsceneReques
 //     default false — we set it), mode std|pro, no seed param. Input video width must
 //     be 720–2160px (the trimmer caps long edge at 1280, so small portrait sources
 //     may fall short — a micro-trial finding to watch).
-//   runway-gen4-aleph — video (≤16MB; trims run 1–3MB) + prompt + reference_image +
-//     int seed. Output is SILENT: the caller lays the original clip audio back via
-//     the stitch worker's audio-overlay path.
+//   runway-gen4-aleph — DEAD as of 2026-07-30. Runway sunset the underlying
+//     `gen4_aleph` model that day ("no longer accepts new generations. Use aleph2");
+//     Segmind still LISTS the slug but every call now fails provider_error, so the
+//     V2V core silently falls back to Seedance — no restyle of the source, generated
+//     audio instead of the original, and no plate bookends (they are V2V-only). Prod
+//     moved to kling-o3 on 2026-08-02. Do NOT set CINEMATIC_V2V_PROVIDER back to
+//     runway-aleph until Segmind ships an Aleph 2.0 slug, then point
+//     SEGMIND_ALEPH_V2V_MODEL at it (no code change needed).
+//     Shape, for whenever that lands: video (≤16MB; trims run 1–3MB) + prompt +
+//     reference_image + int seed. Output is SILENT: the caller lays the original clip
+//     audio back via the stitch worker's audio-overlay path.
 //
 // Both run through Segmind's v2 async queue, so submit/poll/park/resume reuse the
 // exact machinery of the Seedance path (pollCutscene is request-id generic).
