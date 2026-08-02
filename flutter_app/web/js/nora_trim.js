@@ -164,14 +164,24 @@
       const args = [
         '-ss', fastSeek.toFixed(3), '-i', input,
         '-ss', fineSeek.toFixed(3), '-t', durS.toFixed(3),
+        // SQUARE PIXELS FIRST: kling-o3 refuses input with a non-1:1 pixel aspect
+        // ratio ("non-square pixels detected, PAR should be 1:1"). Two things produce
+        // one — an anamorphic source, and the `-2` height rounding below, which makes
+        // ffmpeg fudge the SAR to preserve the display aspect (a 1918x1058 source
+        // lands at 1280x706 SAR 30775:30778). Pre-scaling by sar squares an
+        // anamorphic source at its display geometry (no-op when sar is already 1);
+        // the closing setsar=1 pins the output. Both are load-bearing — without them
+        // the V2V core fails and the mint silently degrades to the Seedance fallback,
+        // losing the restyle, the original audio AND the plate bookends.
         // Long edge capped at 1280 (portrait or landscape), even dims for yuv420p,
         // THEN a width floor of 720: the kling-o3 V2V restyler rejects input narrower
         // than 720px, and a portrait source lands on the short edge — a 640x1136 phone
         // clip capped by long edge stays 640 wide and is refused. The second pass only
         // bites when width is already under 720 (max(720,iw) is a no-op otherwise), so
         // nothing is upscaled that doesn't have to be.
-        '-vf', "scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))'," +
-               "scale=w='max(720,iw)':h=-2",
+        '-vf', "scale='if(gt(sar,0),trunc(iw*sar/2)*2,iw)':ih," +
+               "scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))'," +
+               "scale=w='max(720,iw)':h=-2,setsar=1",
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
         '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
       ];

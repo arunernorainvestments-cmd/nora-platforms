@@ -135,7 +135,10 @@ class MintService {
   }
 
   /// The recommend/classify stage: derives the creative inputs generation needs.
-  /// Returns { family, suggested_name, subject_desc, chit_type, effect_* }. Family
+  /// Returns { family, suggested_name, subject_desc, chit_type, effect_*, degraded }.
+  /// `degraded` is non-null when subject_desc is a PLACEHOLDER (classifier down, no
+  /// API key, sim mode) — the card art then has nothing real to draw from, so the
+  /// wizard warns before the user pays for a render. Family
   /// defaults to content-derived (automatic); pass [familyOverride] to let the user
   /// pick one of the 10 families instead — the effect is then re-selected server-side
   /// from that family's authored library, so power never changes (Hard Rule 34).

@@ -60,6 +60,54 @@
 
 ---
 
+## 2026-08-02 — ✅ FIXED: the mint pipeline's two silent degradations (the "Goggins → Goku" run)
+
+> Founder report: minted a David Goggins clip; **card art came back Goku again**, and the cutscene
+> had **no plate bookends and no audio** — the same symptoms as the Arnold-era regression. Traced to
+> **two independent faults**, both of which had been failing SILENTLY (the wizard reported success).
+
+**Fault 1 — kling-o3 rejects our trimmed clips: non-square pixels.** Prod switched the V2V core to
+`kling-o3` on 2026-08-02 (Runway sunset `gen4_aleph` on 07-30). But the 2026-07-14 micro-trial had
+ALREADY found kling's technical input check — *"non-square pixels detected, PAR should be 1:1"* — and
+the fix (`setsar=1` in both trimmers) was **parked** because Aleph was working at the time. Switching
+providers made the parked bug the live bug. The stored Goggins clip: `1280x706, SAR 25247:25252`. The
+SAR comes from our own filter chain — the `-2` height rounding makes ffmpeg fudge the SAR to preserve
+the display aspect (`1918x1058 → 1280x706 SAR 30775:30778`). Every kling call therefore failed
+(`"The model did not produce an output"`), the mint fell back to Seedance, and the fallback costs the
+restyle, the ORIGINAL audio, and the plate bookends (`bookendsOn` requires `v2vUsed !== null`).
+- **Fixed** in BOTH trim paths (must stay in lockstep): square the pixels first
+  (`scale='if(gt(sar,0),trunc(iw*sar/2)*2,iw)':ih`, a no-op at SAR 1:1, and it corrects a true
+  anamorphic source at its display geometry), then the existing 1280 cap + 720 width floor, then
+  `setsar=1`. Verified across odd-ratio / anamorphic (both directions) / portrait / unknown-SAR sources.
+- **PROVEN on prod, not assumed:** the staged clip was repaired in place (`setsar=1` re-encode, original
+  backed up beside it as `clip.presar1.mp4`) and re-submitted through `dev-segmind-probe` — kling-o3
+  **accepted it and rendered** (req `fe8021a9df9228bb0ece4b8c45eb7ce8`, 114s, 5.1MB, 1292x712) **with the
+  original 4.35s AAC soundtrack intact** (`keep_audio`). Same clip, same prompt, same card-art ref that
+  failed 40 minutes earlier. Output parked at `mint-staging/v2v-trials/`.
+
+**Fault 2 — the invalid `ANTHROPIC_API_KEY` is what makes the art generic (this is the "Goku" cause).**
+`MOMENT_CLASSIFY_MODE=live` is set correctly, but prod's key returns **HTTP 401 "API key is invalid"**
+(visible in the edge logs as `pre-gen moderation fail-closed: provider_error_401`). `liveClassify` and
+`describeClipFrames` both **swallowed** the non-OK response and returned the placeholder — so
+`subject_desc` was *"Nora in their signature moment"* and `video_desc` the stub. `{SUBJECT_DESC}` is the
+only post-derived slot in the illustration prompt, so with nothing real in it the model draws the
+archetypal shonen hero — the identical failure as the 2026-07-13 DBZ audit, and an IP exposure as well as
+a quality one. **The V2V restyle then inherits it**: the trial above came back on-model with the card art,
+i.e. a cel-shaded Goku doing the real bench press, with the real audio.
+- **Fixed (visibility, not the key):** both call sites now log status + body, `moment-classify` returns a
+  `degraded` reason, and the wizard warns at Review — *before* the user pays for a render — that the art
+  can only be generic. sim mode reports `classify_mode_sim` for the same reason.
+- ⚠️ **FOUNDER ACTION — nothing else will fix the art:** set a valid key, then restore live moderation:
+  `supabase secrets set ANTHROPIC_API_KEY=sk-ant-…` then `MODERATION_MODE=live` (in that order — live
+  mode fail-closes on a bad key and every mint reports "did not pass content moderation"). The same key
+  breaks Hot Topic scoring (pg_cron, twice daily) and the Emergency Fund evaluator. `MODERATION_MODE=sim`
+  since 2026-08-02 was to be reverted by **2026-08-05**.
+
+**Re-minting the Goggins card:** its clip is already repaired, so retire chit `8b522f3c` to release
+moment `552c6b30` and generate again — but do the API key first, or the art will be generic a third time.
+
+---
+
 ## 2026-08-01 — ✅ APPLIED TO PROD: Standard Playset S1–S4 (migs 181–184)
 
 > **Applied 2026-08-01** (same day, later session). Root cause it fixed: the web app auto-deploys
@@ -427,6 +475,11 @@ live classify → illustration → async render → park/auto-resume → live sc
     detected, PAR should be 1:1": our trimmed clips carry a non-1:1 pixel aspect ratio.
     Fix if Kling is ever wanted: `setsar=1` in both trimmers (nora_trim.js + worker /trim).
     Parked — Aleph + the stitch audio overlay already covers audio.
+    **→ UNPARKED THE HARD WAY (2026-08-02):** Aleph was sunset, prod switched to kling-o3,
+    and this parked bug became the live one — three days of mints silently losing the
+    restyle, the audio and the bookends. Fixed + prod-proven; see the 2026-08-02 entry at
+    the top. Lesson for the next park: a known provider-input defect is only "parked" while
+    that provider is unused — re-read the trial notes BEFORE flipping `CINEMATIC_V2V_PROVIDER`.
 - **Also flipped (founder call 2026-07-14, "IP-exposure is not a block for testing"):**
   `CINEMATIC_SKIP_PROVIDER_MODERATION=true` — sends Seedance's documented `skip_moderation`
   (bypasses the BytePlus INPUT filter only; NORA's own pre/post-gen screens are untouched

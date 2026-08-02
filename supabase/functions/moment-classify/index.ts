@@ -152,7 +152,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   const context = `${title} ${handle} ${moment.source_url ?? ''}`.trim();
 
   const mode = Deno.env.get('MOMENT_CLASSIFY_MODE') === 'live' ? 'live' : 'sim';
-  let result: { family: Family; suggested_name: string; subject_desc: string; chit_type: 'creature' | 'spell_moment' };
+  let result: ClassifyResult;
 
   if (override) {
     // User-chosen family (allowlist-validated above): no family detection runs. The
@@ -166,6 +166,10 @@ Deno.serve(async (req: Request): Promise<Response> => {
       ),
       // Honor the wizard's current card-type choice so the effect pool filters right.
       chit_type: body.chit_type === 'spell_moment' ? 'spell_moment' : 'creature',
+      // An override echoes back the subject_desc the wizard already holds — this call
+      // runs no classifier, so it can neither degrade nor repair it. The wizard keeps
+      // the flag from the classify that produced the description.
+      degraded: null,
     };
   } else if (mode === 'live') {
     result = await liveClassify(context, moment.thumbnail_url ?? null, handle);
@@ -178,6 +182,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
         `${prettyName(handle) || 'a creator'} in their signature ${family} moment`,
       ),
       chit_type: 'creature',
+      // sim is the placeholder description BY DESIGN — still flagged, so the wizard
+      // tells the user the art won't match the moment instead of implying it will.
+      degraded: 'classify_mode_sim',
     };
   }
 
@@ -203,6 +210,9 @@ Deno.serve(async (req: Request): Promise<Response> => {
 
   return json({
     ...result,
+    // `degraded` (null = clean) tells the wizard the subject description is a
+    // placeholder, so it can warn BEFORE the user pays for a render whose art can
+    // only be generic. Never silent — see the ClassifyResult note.
     effect_template_id: effect?.effect_template_id ?? null,
     effect_timing: effect?.timing_type ?? null,
     effect_name: effect?.name ?? null,
@@ -329,18 +339,34 @@ const CLASSIFIER_SYSTEM =
   'real third parties>,\n' +
   ' "chit_type": <"creature" for a person/character, "spell_moment" for an effect/action moment>}';
 
+// `degraded` names WHY the placeholder subject_desc is being returned (null = the
+// classifier really ran). It is not cosmetic: {SUBJECT_DESC} is the only post-derived
+// slot in the illustration prompt, so on the fallback the card art is drawn from
+// "<handle> in their signature moment" and comes back a generic anime hero with no
+// relation to the moment. That failure has now shipped twice (2026-07-13 DBZ audit,
+// 2026-08-02 invalid ANTHROPIC_API_KEY) because every fallback path here was silent.
+type ClassifyResult = {
+  family: Family; suggested_name: string; subject_desc: string;
+  chit_type: 'creature' | 'spell_moment'; degraded: string | null;
+};
+
 async function liveClassify(
   context: string, thumbnailUrl: string | null, handle: string,
-): Promise<{ family: Family; suggested_name: string; subject_desc: string; chit_type: 'creature' | 'spell_moment' }> {
+): Promise<ClassifyResult> {
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY');
   const model = Deno.env.get('MODERATION_MODEL') ?? 'claude-sonnet-4-6';
+  const fallbackWith = (degraded: string): ClassifyResult => {
+    console.warn(`moment-classify: DEGRADED (${degraded}) — card art will be generic`);
+    return { ...fallback, degraded };
+  };
   const fallback = {
     family: heuristicFamily(context),
     suggested_name: prettyName(handle) || 'My Moment',
     subject_desc: sanitizeSubjectDesc(`${prettyName(handle) || 'a creator'} in their signature moment`),
     chit_type: 'creature' as const,
+    degraded: null as string | null,
   };
-  if (!apiKey) return fallback;
+  if (!apiKey) return fallbackWith('no_api_key');
 
   const content: unknown[] = [];
   if (thumbnailUrl) content.push({ type: 'image', source: { type: 'url', url: thumbnailUrl } });
@@ -361,27 +387,33 @@ async function liveClassify(
       }),
     });
   } catch (err) {
-    console.warn('moment-classify live call failed:', err instanceof Error ? err.message : String(err));
-    return fallback;
+    const msg = err instanceof Error ? err.message : String(err);
+    return fallbackWith(`network: ${msg.slice(0, 80)}`);
   }
-  if (res.status === 429) { await res.body?.cancel(); console.warn('moment-classify rate-limited'); return fallback; }
-  if (!res.ok) { await res.body?.cancel(); return fallback; }
+  if (res.status === 429) { await res.body?.cancel(); return fallbackWith('rate_limited'); }
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => '')).slice(0, 200);
+    return fallbackWith(`http_${res.status}: ${detail}`);
+  }
 
   try {
     const data = await res.json();
     const text: string = data.content?.find((b: { type: string }) => b.type === 'text')?.text ?? '';
     const match = text.match(/\{[\s\S]*\}/);
-    if (!match) return fallback;
+    if (!match) return fallbackWith('unparseable_response');
     const raw = JSON.parse(match[0]) as Record<string, unknown>;
     const family = FAMILIES.includes(raw.family as Family) ? (raw.family as Family) : fallback.family;
     const chitType = raw.chit_type === 'spell_moment' ? 'spell_moment' : 'creature';
     const name = typeof raw.name === 'string' && raw.name.trim()
       ? raw.name.trim().slice(0, 40) : fallback.suggested_name;
-    const subject = typeof raw.subject_desc === 'string' && raw.subject_desc.trim()
-      ? sanitizeSubjectDesc(raw.subject_desc) : fallback.subject_desc;
-    return { family, suggested_name: name, subject_desc: subject, chit_type: chitType };
+    const gotSubject = typeof raw.subject_desc === 'string' && !!raw.subject_desc.trim();
+    const subject = gotSubject ? sanitizeSubjectDesc(raw.subject_desc as string) : fallback.subject_desc;
+    return {
+      family, suggested_name: name, subject_desc: subject, chit_type: chitType,
+      degraded: gotSubject ? null : 'no_subject_desc_in_response',
+    };
   } catch (err) {
-    console.warn('moment-classify parse failed:', err instanceof Error ? err.message : String(err));
-    return fallback;
+    const msg = err instanceof Error ? err.message : String(err);
+    return fallbackWith(`parse: ${msg.slice(0, 80)}`);
   }
 }

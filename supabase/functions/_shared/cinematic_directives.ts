@@ -238,7 +238,15 @@ export async function describeClipFrames(
   }
   // Hard Rule 8: rate-limited → skip cleanly (pipeline continues without a description).
   if (res.status === 429) { await res.body?.cancel(); console.warn('describeClipFrames rate-limited'); return null; }
-  if (!res.ok) { await res.body?.cancel(); return null; }
+  // NEVER swallow this: a failure here costs the whole creative chain (the motion
+  // prompt and the card art fall back to generic text), and it used to return null
+  // with nothing logged — an invalid ANTHROPIC_API_KEY looked exactly like a clip
+  // with nothing to say, and the mint completed with art unrelated to the video.
+  if (!res.ok) {
+    const detail = (await res.text().catch(() => '')).slice(0, 200);
+    console.warn(`describeClipFrames failed: HTTP ${res.status} ${detail}`);
+    return null;
+  }
 
   try {
     const data = await res.json();

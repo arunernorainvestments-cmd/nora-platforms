@@ -1325,6 +1325,38 @@ class _MintMomentScreenState extends ConsumerState<MintMomentScreen> {
               fontStyle: FontStyle.italic),
         ),
       ),
+      // The description above is the ONLY part of the card-art prompt that comes
+      // from the moment. When the classifier couldn't read it, that quote is a
+      // placeholder and the art can only come back generic — say so BEFORE the
+      // user spends a render on it (2026-07-13 and 2026-08-02 both shipped a
+      // stranger's card because this failure was silent).
+      if (c['degraded'] != null) ...[
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: AppTheme.danger.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppTheme.danger.withValues(alpha: 0.4)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(Icons.info_outline, size: 18, color: AppTheme.danger),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Heads up — we couldn\'t read your moment, so that description is '
+                  'a placeholder and the card art will be generic rather than a '
+                  'likeness of this clip. (${c['degraded']})',
+                  style: const TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 12, height: 1.35),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
       const SizedBox(height: 16),
       FilledButton.icon(
         onPressed: _familyBusy ? null : _generate,
