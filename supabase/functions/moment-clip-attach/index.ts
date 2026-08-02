@@ -23,7 +23,7 @@
 
 import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { moderationConfigFromEnv, preGenModerate } from '../_shared/moderation.ts';
-import { describeClipFrames } from '../_shared/cinematic_directives.ts';
+import { clipDescribeConfigFromEnv, describeClipFrames } from '../_shared/cinematic_directives.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': 'https://noraplatforms.com',
@@ -174,7 +174,7 @@ Deno.serve(async (req: Request): Promise<Response> => {
   // the moderation mode/key/model. sim_text seeds the deterministic sim description.
   let videoDesc: string | null = null;
   if (attachVerdict === 'attached') {
-    videoDesc = await describeClipFrames(modConfig, frameUrls, body.sim_text);
+    videoDesc = await describeClipFrames(clipDescribeConfigFromEnv(), frameUrls, body.sim_text);
     if (videoDesc) {
       const { error: descErr } = await db.rpc('moment_set_clip_video_desc', {
         p_moment_id: momentId, p_owner: user.id, p_desc: videoDesc,

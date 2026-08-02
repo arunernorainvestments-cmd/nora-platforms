@@ -164,8 +164,14 @@
       const args = [
         '-ss', fastSeek.toFixed(3), '-i', input,
         '-ss', fineSeek.toFixed(3), '-t', durS.toFixed(3),
-        // long edge capped at 1280 (portrait or landscape), even dims for yuv420p
-        '-vf', "scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))'",
+        // Long edge capped at 1280 (portrait or landscape), even dims for yuv420p,
+        // THEN a width floor of 720: the kling-o3 V2V restyler rejects input narrower
+        // than 720px, and a portrait source lands on the short edge — a 640x1136 phone
+        // clip capped by long edge stays 640 wide and is refused. The second pass only
+        // bites when width is already under 720 (max(720,iw) is a no-op otherwise), so
+        // nothing is upscaled that doesn't have to be.
+        '-vf', "scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))'," +
+               "scale=w='max(720,iw)':h=-2",
         '-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
         '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
       ];

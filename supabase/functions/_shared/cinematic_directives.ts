@@ -168,11 +168,32 @@ export function assembleMotionPrompt(
 // another CSAM checkpoint — never described otherwise). sim → a deterministic stub so
 // the pipeline is testable with no spend; live → Claude vision over the same frames the
 // moderator saw. Best-effort: a failure returns null and the pipeline proceeds on
-// {SUBJECT_DESC} alone (never blocks minting). Reuses ModerationConfig's mode/key/model.
+// {SUBJECT_DESC} alone (never blocks minting).
+//
+// MODE (2026-08-02): this follows MOMENT_CLASSIFY_MODE, the CREATIVE flag — NOT
+// MODERATION_MODE. Describing a clip is not a safety gate; it is what gives the
+// motion prompt and the card art something real to work from. It used to be handed
+// the moderation config, which meant flipping moderation to sim for an unrelated
+// reason silently swapped every clip description for the stub and produced cutscenes
+// and card art with no relationship to the uploaded video — with nothing in the UI
+// saying so. Safety posture is unchanged: the CSAM checkpoint at moment-clip-attach
+// still runs on MODERATION_MODE, and it still gates whether we describe at all.
 export interface ClipDescribeConfig {
   mode: 'sim' | 'live';
   apiKey: string | null;
   model: string;
+}
+
+export function clipDescribeConfigFromEnv(
+  env: (k: string) => string | undefined = Deno.env.get.bind(Deno.env),
+): ClipDescribeConfig {
+  // CLIP_DESCRIBE_MODE is an explicit override; otherwise track the classifier.
+  const raw = env('CLIP_DESCRIBE_MODE') ?? env('MOMENT_CLASSIFY_MODE');
+  return {
+    mode: raw === 'live' ? 'live' : 'sim',
+    apiKey: env('ANTHROPIC_API_KEY') ?? null,
+    model: env('MODERATION_MODEL') ?? 'claude-sonnet-4-6',
+  };
 }
 
 const CLIP_DESCRIBE_SYSTEM =

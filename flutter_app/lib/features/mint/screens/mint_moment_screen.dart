@@ -1430,6 +1430,17 @@ class _MintMomentScreenState extends ConsumerState<MintMomentScreen> {
   bool get _clipFellBack =>
       _mint?['clip_attached'] == true && _mint?['clip_reference_used'] == false;
 
+  /// The video-to-video restyle was configured but did NOT run, so the cutscene was
+  /// generated from the description instead of being a restyle of the real footage —
+  /// which also costs the clip's original audio and the plate bookends.
+  ///
+  /// This needs its own signal because [_clipFellBack] cannot see it: the Seedance
+  /// fallback still passes the clip as a reference, so `clip_reference_used` stays
+  /// true and that warning stays silent. When runway-gen4-aleph was sunset
+  /// (2026-07-30) every mint degraded this way and the UI reported plain success.
+  bool get _v2vFellBack =>
+      _mint?['v2v_expected'] != null && _mint?['v2v_provider'] == null;
+
   Widget _buildPreviewStep() {
     final mp4 = _mint?['mp4_cutscene_url']?.toString();
     return _card(children: [
@@ -1462,7 +1473,7 @@ class _MintMomentScreenState extends ConsumerState<MintMomentScreen> {
             'that point.')
       else if (mp4 != null)
         AspectRatio(aspectRatio: 16 / 9, child: CutsceneVideo(url: mp4)),
-      if (_clipFellBack) ...[
+      if (_clipFellBack || _v2vFellBack) ...[
         const SizedBox(height: 10),
         Container(
           padding: const EdgeInsets.all(12),
@@ -1471,18 +1482,25 @@ class _MintMomentScreenState extends ConsumerState<MintMomentScreen> {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(color: AppTheme.danger.withValues(alpha: 0.4)),
           ),
-          child: const Row(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.info_outline, size: 18, color: AppTheme.danger),
-              SizedBox(width: 8),
+              const Icon(Icons.info_outline, size: 18, color: AppTheme.danger),
+              const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'Your uploaded clip couldn\'t be used by the video provider this '
-                  'run, so this cutscene (and its audio) was generated from the '
-                  'card\'s description instead. Cancel & discard below, then '
-                  'Generate again to retry with your clip.',
-                  style: TextStyle(
+                  _clipFellBack
+                      ? 'Your uploaded clip couldn\'t be used by the video provider '
+                          'this run, so this cutscene (and its audio) was generated '
+                          'from the card\'s description instead. Cancel & discard '
+                          'below, then Generate again to retry with your clip.'
+                      : 'This cutscene was generated from the card\'s description '
+                          'rather than restyled from your actual footage — the video '
+                          'restyler was unavailable this run, so the original audio '
+                          'and the intro/impact bookends are missing too. Cancel & '
+                          'discard below and Generate again; if it keeps happening, '
+                          'the restyle provider is down.',
+                  style: const TextStyle(
                       color: AppTheme.textSecondary, fontSize: 12, height: 1.35),
                 ),
               ),

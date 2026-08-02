@@ -210,7 +210,12 @@ async function handleTrim(body) {
     const args = [
       '-ss', fastSeek.toFixed(3), '-i', src,
       '-ss', fineSeek.toFixed(3), '-t', durS.toFixed(3),
-      '-vf', "scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))'",
+      // Long edge capped at 1280, then a width floor of 720 — must stay in lockstep
+      // with the browser trimmer (flutter_app/web/js/nora_trim.js). The kling-o3 V2V
+      // restyler refuses input narrower than 720px, which a portrait source hits on
+      // its short edge; max(720,iw) is a no-op once width already clears the floor.
+      '-vf', "scale='if(gt(iw,ih),min(1280,iw),-2)':'if(gt(iw,ih),-2,min(1280,ih))'," +
+             "scale=w='max(720,iw)':h=-2",
       '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23',
       '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
     ];

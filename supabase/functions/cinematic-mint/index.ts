@@ -24,7 +24,8 @@ import {
   type V2VProvider,
 } from '../_shared/segmind.ts';
 import {
-  assembleMotionPrompt, CLIP_MODE_ENDING_DIRECTIVE, CLIP_MODE_OPENING_DIRECTIVE,
+  assembleMotionPrompt, clipDescribeConfigFromEnv, CLIP_MODE_ENDING_DIRECTIVE,
+  CLIP_MODE_OPENING_DIRECTIVE,
   describeClipFrames, familyAction, illustrationPrompt, sanitizeSubjectDesc,
   selectTemplate, TIER_INTENSITY, v2vRestylePrompt, type Family, type Tier,
 } from '../_shared/cinematic_directives.ts';
@@ -517,7 +518,7 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
     if (!renderResume && (!videoDesc || videoDesc === STUB_CLIP_DESC) && clipFrames.length > 0) {
       const frameUrls = (await Promise.all(clipFrames.slice(0, 4).map(signFrame)))
         .filter((u): u is string => !!u);
-      const fresh = await describeClipFrames(moderationConfigFromEnv(), frameUrls);
+      const fresh = await describeClipFrames(clipDescribeConfigFromEnv(), frameUrls);
       if (fresh && fresh !== STUB_CLIP_DESC) {
         videoDesc = fresh;
         await db.from('moments').update({ clip_video_desc: fresh }).eq('id', momentId);
@@ -952,6 +953,14 @@ async function runMintJob(ctx: MintJobCtx): Promise<void> {
       clip_reference_used: provClipUsed,
       v2v_provider: provV2V,
       audio_source: provAudio,
+      // What the pipeline INTENDED to do. Without this the client cannot tell a
+      // restyle from the Seedance fallback: the fallback still rides the clip as a
+      // reference, so clip_reference_used stays true and the existing
+      // "your clip wasn't used" warning never fires. That is exactly how the
+      // runway-gen4-aleph sunset (2026-07-30) went unnoticed — every mint quietly
+      // lost the restyle, the original audio and the plate bookends, and the UI
+      // reported success. v2v_expected != null && v2v_provider == null = degraded.
+      v2v_expected: cfg.v2vProvider,
       ...(swapOf ? { swapped_out_chit_id: swapOf, swapped_media_deleted: swappedMediaDeleted } : {}),
       next: 'Play the preview battle, then call chit_record_preview + chit_finalize_preview',
     },
