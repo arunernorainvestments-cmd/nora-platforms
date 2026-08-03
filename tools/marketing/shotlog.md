@@ -1,8 +1,14 @@
-# shotlog — "Mint Your Moment" (draft 1)
+# shotlog — "Mint Your Moment" (draft 2)
 
 Brief: `PROMPT_promo_video_mint_your_moment.md`
 Built by: `tools/marketing/build_promo.sh` (pure ffmpeg assembly, reproducible)
-Date: 2026-08-02 · Duration **26.57s** · 1080×1920 · −13.2 LUFS integrated
+Date: 2026-08-03 · Duration **22.93s** · 1080×1920 · −12.6 LUFS integrated
+
+**Draft 2 — note was "clunky, doesn't flow".** Shots are now cross-dissolved (0.32s) rather
+than butt-joined, every shot pushes in at a similar rate so motion never stalls at a cut,
+captions fade up/out inside their shot instead of popping, and one grade + vignette runs
+over the whole cut so ten sources read as one film. Transitions: dissolve throughout, two
+slide-lefts for travel, one white flash on card → cutscene where the card "ignites".
 
 **Deliverable:** `tools/marketing/out/promo_mint_your_moment_9x16.mp4`
 **Durable copy:** `battle-media/marketing/promo-mint-your-moment/promo_mint_your_moment_9x16.mp4`
@@ -61,11 +67,28 @@ tick @4.4/21.0, shimmer @7.2, riser @22.3, impact @23.5. `loudnorm I=-14` then l
 - [ ] 16:9 master not yet built
 - [ ] Human review + `--approve` not yet run (nothing is published)
 
-## Known issues for draft 2
+## Fixed in draft 2
 
-1. **Shot 2** — `@handle` placeholder clips frame right. Tighten crop to `760×428 @360,170`.
-2. **Shot 5** — the in-point at 1.2s lands on a pale transition frame; try @1.9s.
-3. **Shot 3** — wizard body copy is legible but small; consider cropping to the step-rail + URL
-   field only and letting the caption carry the explanation.
-4. **Pacing** — shots average 2.6s. For TikTok, 1.8–2.2s with harder cuts would hold better.
-5. **16:9 master** — needs its own framings (sources are natively 16:9, so no `fill` bed).
+1. **Shot 2 `@handle` placeholder** — located precisely on a grid overlay (both handle blocks at
+   x 121–398 and x 917–1038; card tray from y 597). Crop moved to `500×430 @400,130`, the only
+   window clean at maximum drift. Costs the character in frame — it is now an atmospheric
+   establishing shot — but a compromised frame fails the §7 gate and this does not.
+2. **Shot 5 pale in-point** — moved 1.2s → 1.9s, past the transition frame.
+3. **Pacing** — shot average 2.6s → 2.3s; with overlaps the cut is 22.93s, down from 26.57s.
+
+## Build bug found and fixed
+
+The first draft-2 mux never terminated: `apad` with no bound pads audio forever, and `-shortest`
+had been removed in the same edit to fix a *different* truncation (the mix ended with the last SFX
+tail at 20.6s, clipping 2.4s of video). Unbounded pad + no stop condition = a file that grew past
+24MB with no `moov` atom. Fix is both: `apad=whole_dur=30` **and** `-shortest`, so the pad is
+generated then trimmed to the video length. Either alone is wrong.
+
+## Still open
+
+- [ ] 16:9 master not built — needs its own framings (sources are natively 16:9, no `fill` bed)
+- [ ] Human review + `--approve` not run; nothing is published
+- [ ] Loudness −12.6 LUFS, slightly hot of the −14 target (single-pass `loudnorm` overshoots;
+      two-pass would land it, platforms will normalise anyway)
+- [ ] `Who's Gonna Carry The Boats` still excluded — no founder approval logged
+- [ ] Segmind spend unconfirmed against $36.89 (no balance endpoint)
