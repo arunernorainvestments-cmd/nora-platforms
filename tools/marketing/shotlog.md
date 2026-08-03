@@ -86,7 +86,12 @@ generated then trimmed to the video length. Either alone is wrong.
 
 ## Still open
 
-- [ ] 16:9 master not built — needs its own framings (sources are natively 16:9, no `fill` bed)
+- [x] **16:9 master built** (`promo_mint_your_moment_16x9.mp4`, 23.00s, −12.5 LUFS). Not a crop of
+      the 9:16 — its own framings. Shot 1 needed a 644×362 centre window: the full 16:9 frame
+      exposes the `@handle` placeholder, the **dev menu** (Quit/Fusion/Attack) *and* the excluded
+      character rig. Captions moved to a true lower third; at the 9:16 height they collided with
+      the Verify button and the Market Maker panel.
+- [ ] 16:9 shot 9 caption sits close to the "Market Maker" label — legible, but could drop 20px
 - [ ] Human review + `--approve` not run; nothing is published
 - [ ] Loudness −12.6 LUFS, slightly hot of the −14 target (single-pass `loudnorm` overshoots;
       two-pass would land it, platforms will normalise anyway)

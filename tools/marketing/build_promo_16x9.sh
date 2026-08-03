@@ -41,7 +41,7 @@ FINISH="setsar=1,fps=$FPS,format=yuv420p"
 D1=2.267; D2=2.4; D3=2.6; D4=2.6; D5=3.4; D6=2.4; D7=2.4; D8=2.3; D9=2.3; D10=3.2
 
 echo "── 1  cold open: speed-ramped burst, native 16:9 framing"
-CROP16="crop=644:362:268:150,scale=$W:$H:flags=lanczos,unsharp=6:6:0.8,setsar=1,format=yuv420p"
+CROP16="crop=644:362:268:150,scale=$W:$H:flags=lanczos,unsharp=7:7:0.8,setsar=1,format=yuv420p"
 ffmpeg -v error -ss 9.34 -t 0.36 -i "$A/Chit Throw.mp4" \
   -vf "$CROP16,setpts=PTS/0.5,fps=$FPS" -an -c:v libx264 -crf 17 -preset medium -y "$C/01a.mp4"
 ffmpeg -v error -ss 9.70 -t 1.47 -i "$A/Chit Throw.mp4" \
