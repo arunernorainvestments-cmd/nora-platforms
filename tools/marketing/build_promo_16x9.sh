@@ -51,9 +51,9 @@ ffmpeg -v error -i "$C/01a.mp4" -i "$C/01b.mp4" \
   -filter_complex "[0:v][1:v]concat=n=2:v=1:a=0,eq=brightness='if(between(t,0.70,0.78),0.6,0)':eval=frame,$FINISH[v]" \
   -map "[v]" -c:v libx264 -crf 17 -preset medium -y "$C/01_burst.mp4"
 
-echo "── 2  battle street (I2V) — the 500x430 window is the only text-free region"
-ffmpeg -v error -i "$SRC/i2v_street.mp4" -t $D2 \
-  -vf "crop=500:430:400:130,$(fill 930),$FINISH,$(cap 'THIS IS NORA.' $D2)" \
+echo "── 2  battle street (I2V) — repaired source, both fighters in frame"
+ffmpeg -v error -i "$SRC/i2v_street2.mp4" -t $D2 \
+  -vf "crop=1000:520:240:40,scale=$W:$H:flags=lanczos,$FINISH,$(cap 'THIS IS NORA.' $D2)" \
   -an -c:v libx264 -crf 18 -preset medium -y "$C/02_street.mp4"
 
 echo "── 3  the mint wizard, with the URL typed in (wide framing)"

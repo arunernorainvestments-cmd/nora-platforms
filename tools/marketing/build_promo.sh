@@ -51,18 +51,30 @@ FINISH="setsar=1,fps=$FPS,format=yuv420p"
 push() { echo "scale=iw*1.06:-2,zoompan=z='min(1+0.0006*in,1.05)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${1}x${2}:fps=$FPS"; }
 
 # ── durations (pre-transition). Tighter than draft 1: ~2.3s average, not 2.6s.
-D1=2.2; D2=2.4; D3=2.6; D4=2.6; D5=3.4; D6=2.4; D7=2.4; D8=2.3; D9=2.3; D10=3.2
+D1=2.267; D2=2.4; D3=2.6; D4=2.6; D5=3.4; D6=2.4; D7=2.4; D8=2.3; D9=2.3; D10=3.2
 
-echo "── shot 1  cold open: the summon burst (full-bleed, original audio)"
-ffmpeg -v error -ss 9.55 -i "$A/Chit Throw.mp4" -t $D1 \
-  -vf "crop=373:664:434:0,scale=$W:$H:flags=lanczos,unsharp=5:5:0.6,$FINISH" \
-  -an -c:v libx264 -crf 18 -preset medium -y "$C/01_burst.mp4"
-ffmpeg -v error -ss 9.55 -i "$A/Chit Throw.mp4" -t $D1 -vn \
-  -af "volume=1.0,afade=t=out:st=1.9:d=0.3" -ar 48000 -ac 2 -y "$C/a01.wav"
+echo "── shot 1  cold open: speed-ramped burst (slow settle -> flash -> punch -> burst)"
+# The card settles at HALF speed, a white flash marks the snap back to full speed,
+# and a scale punch settles over 0.3s as the burst blooms. A flat 2.2s of the burst
+# had no beat; this gives the open an anticipation and a payoff.
+# NOTE: -ss/-t must precede -i so the trim applies to the INPUT — with -t after -i
+# the stretched clip is truncated straight back to its original length.
+CROP1="crop=373:664:434:0,scale=$W:$H:flags=lanczos,unsharp=5:5:0.6,setsar=1,format=yuv420p"
+ffmpeg -v error -ss 9.34 -t 0.36 -i "$A/Chit Throw.mp4" \
+  -vf "$CROP1,setpts=PTS/0.5,fps=$FPS" -an -c:v libx264 -crf 17 -preset medium -y "$C/01a.mp4"
+ffmpeg -v error -ss 9.70 -t 1.47 -i "$A/Chit Throw.mp4" \
+  -vf "$CROP1,zoompan=z='max(1.0,1.12-0.0133*in)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=${W}x${H}:fps=$FPS,format=yuv420p" \
+  -an -c:v libx264 -crf 17 -preset medium -y "$C/01b.mp4"
+ffmpeg -v error -i "$C/01a.mp4" -i "$C/01b.mp4" \
+  -filter_complex "[0:v][1:v]concat=n=2:v=1:a=0,eq=brightness='if(between(t,0.70,0.78),0.6,0)':eval=frame,$FINISH[v]" \
+  -map "[v]" -c:v libx264 -crf 17 -preset medium -y "$C/01_burst.mp4"
+ffmpeg -v error -ss 9.70 -t 1.47 -i "$A/Chit Throw.mp4" -vn \
+  -af "adelay=800|800,volume=1.0,afade=t=out:st=2.0:d=0.27,apad=whole_dur=$D1" \
+  -ar 48000 -ac 2 -y "$C/a01.wav"
 
 echo "── shot 2  living battle street (I2V) — crop tightened past the @handle placeholder"
-ffmpeg -v error -i "$SRC/i2v_street.mp4" -t $D2 \
-  -vf "crop=500:430:400:130,$(fill 1080),$FINISH,$(cap 'THIS IS NORA.' $D2)" \
+ffmpeg -v error -i "$SRC/i2v_street2.mp4" -t $D2 \
+  -vf "crop=1000:520:240:40,$(fill 1080),$FINISH,$(cap 'THIS IS NORA.' $D2)" \
   -an -c:v libx264 -crf 18 -preset medium -y "$C/02_street.mp4"
 
 echo "── shot 3  the mint wizard (real UI, 3x capture)"
