@@ -1,2 +1,0 @@
-fade:1.947 slideleft:4.027 fade:6.307 fadewhite:8.587 fade:11.667 slideleft:13.747 fade:15.827 slideleft:17.807 fade:19.787
-22.987

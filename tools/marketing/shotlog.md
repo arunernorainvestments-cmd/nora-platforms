@@ -1,99 +1,158 @@
-# shotlog — "Mint Your Moment" (draft 2)
+# shotlog — "Mint Your Moment" (draft 4)
 
 Brief: `PROMPT_promo_video_mint_your_moment.md`
-Built by: `tools/marketing/build_promo.sh` (pure ffmpeg assembly, reproducible)
-Date: 2026-08-03 · Duration **22.93s** · 1080×1920 · −12.6 LUFS integrated
+Built by: `tools/marketing/build_promo.sh` + `build_promo_16x9.sh` (pure ffmpeg, reproducible)
+Date: 2026-08-03 · **29.27s** 1080×1920 · **28.93s** 1920×1080
+Revision: draft 4b — hero card swapped to "Who's Gonna Carry The Boats" (founder call)
 
-**Draft 2 — note was "clunky, doesn't flow".** Shots are now cross-dissolved (0.32s) rather
-than butt-joined, every shot pushes in at a similar rate so motion never stalls at a cut,
-captions fade up/out inside their shot instead of popping, and one grade + vignette runs
-over the whole cut so ten sources read as one film. Transitions: dissolve throughout, two
-slide-lefts for travel, one white flash on card → cutscene where the card "ignites".
+**The note was:** open on the two-player shot; use the card-throw animation as
+*inspiration* but keep the two-player shot's style and quality dominant, and let that
+reinvent the burst; lengthen it so the whole action is cinematic; when the card freezes,
+convert into the cutscene; then card + finished art → mint wizard → vault → trade →
+profile, all upscaled to marketing-ad quality; profile gets a cinematic pass; end screen.
 
-**Deliverable:** `tools/marketing/out/promo_mint_your_moment_9x16.mp4`
-**Durable copy:** `battle-media/marketing/promo-mint-your-moment/promo_mint_your_moment_9x16.mp4`
+**Deliverables:**
+- `tools/marketing/out/promo_mint_your_moment_9x16.mp4`
+- `tools/marketing/out/promo_mint_your_moment_16x9.mp4`
+- durable copies at `battle-media/marketing/promo-mint-your-moment/`
 
 ---
 
 ## Shots
 
-| # | In–Out | Source | Class | Treatment | Caption |
+| # | In–Out (9:16) | Source | Class | Treatment | Caption |
 |---|---|---|---|---|---|
-| 1 | 0.0–2.0 | `Chit Throw.mp4` @9.55s | REAL VIDEO | crop 373×664 @x434 → 1080×1920 lanczos + unsharp. Full-bleed. Original audio. | — |
-| 2 | 2.0–4.4 | `i2v_street.mp4` | GENERATED (I2V) | crop 820×462 @300,150 → fill. Trimmed at 2.4s, before HUD drift. | THIS IS NORA. |
-| 3 | 4.4–7.2 | `cap_mint.png` (3× live capture) | REAL UI | crop 1660×1180 @1090,660 + 1.10× push-in → fill | Take a post you own… |
-| 4 | 7.2–9.8 | `Card View.jpg` | REAL UI | crop 366×552 @60,6 + 1.13× push-in → fill(940) | Mint it into a card. |
-| 5 | 9.8–13.4 | `66c370f4/cutscene.mp4` (1280×720, battle-media) | REAL VIDEO | @1.2s, 3.6s → fill. Native audio kept, faded. | Every card carries its moment. |
-| 6 | 13.4–16.0 | `i2v_vault.mp4` | GENERATED (I2V) | @0.3s, crop 740×470 @24,130 → fill | Build your deck. |
-| 7 | 16.0–18.6 | `i2v_lobby.mp4` | GENERATED (I2V) | @0.4s, crop 790×580 @70,120 → fill. **Right challenge panel cropped OUT** (§1 garbled text). | Play it in the Arena. |
-| 8 | 18.6–21.0 | `Card View.jpg` | REAL UI | crop 452×132 @16,752 (sell / ascension row) → fill | Trade it. Climb the ladder. |
-| 9 | 21.0–23.4 | `cap_profile.png` (3× live capture) | REAL UI | crop 1960×1120 @940,850 → fill | Your platforms. Your moments. |
-| 10 | 23.4–26.57 | built in ffmpeg | GENERATED (type) | #0A0A0F, staggered alpha fades, house palette | MINT YOUR MOMENT / noraplatforms.com |
+| 1 | 0.00–9.70 | `opener_9x16.mp4` | **GENERATED (new)** | cover-crop to frame, unsharp, last 0.45s ramped to white. Native audio. | THIS IS NORA. (5.0–7.7s) |
+| 2 | 9.38–12.98 | `552c6b30/attempt4/cutscene.mp4` (1280×720) | REAL VIDEO | in-point 2.0s (past the plate flash); out-point lands on the cutscene's OWN next flash. Native audio. | Every card carries its moment. |
+| 3 | 12.66–16.26 | `card_face_boats.png` (re-rendered, 2×) + `card_art.png` (2048²) | REAL UI | `cine_ui`, panel 660, **stage = the card's own artwork** (blur 12), sweep | A real moment. A real card. |
+| 4 | 15.94–19.34 | `Mint Flow.jpg` | REAL UI | `cine_ui`, panel 940, URL typed in panel space + Verify press | Take a post you own. Mint it. |
+| 5 | 19.02–21.82 | `i2v_vault.mp4` | GENERATED (I2V, draft 2) | `cine_ui`, panel 1010, crop to 3 cards (5 in 16:9) | Build your deck. |
+| 6 | 21.50–24.10 | `Card View.jpg` | REAL UI | `cine_ui`, panel 820, **neutral stage** (see the seed-card note), sweep | Trade it. Climb the ladder. |
+| 7 | 23.78–26.38 | `Profile.jpg` | REAL UI | `cine_ui`, panel 1000 | Your platforms. Your moments. |
+| 8 | 26.06–29.27 | built in ffmpeg | GENERATED (type) | #0A0A0F, staggered alpha fades, house palette | MINT YOUR MOMENT / noraplatforms.com |
+
+## The new cold open
+
+Draft 3's `01_burst` was raw Unity footage. Draft 4 authors the same action in the battle
+street's own cel-shaded look, at 4× the length, as one continuous 10s Seedance 2.0 render
+conditioned on a bookend pair:
+
+- **first frame** — the street standoff, redrawn from `gameplay-clean.jpg` with every HUD
+  element removed and the card held coiled at the hip
+- **last frame** — the **house agnostic end plate** (`plates/agnostic/v1/end.png`,
+  Hard Rule 39) restated in each aspect. Landing the cold open on the product's own
+  impact seam is what makes the next cut a continuation instead of an edit.
+
+Prompted as five timed beats (hold / hurl / tumble / **freeze** / detonation), because a
+10s render given one sentence spends ten seconds drifting.
 
 ## Generation record (Segmind)
 
-Model `seedance-2.0-fast`, 720p, 5s, `generate_audio:false`, v2 async queue.
-Prompts verbatim from brief §3 ("preserve the artwork exactly", no content invention).
+Images `seedream-4` (2K), motion `seedance-2.0` 1080p `bitrate_mode=high`, 10s,
+`generate_audio` on.
 
-| Shot | request_id | seed | source image |
-|---|---|---|---|
-| street | `90be35ee1ac6a7a33a217e870edf5ae3` | 711661434 | `src/gameplay-format.jpg` |
-| vault | `3bf932bdeb36fe92e3129e7c6ef25d66` | 1703996838 | `src/the-vault.jpg` |
-| lobby | `7dd98e9ee4bb0cc210c0a15004a790ea` | 278778046 | `src/main-lobby-screen.jpg` |
+| Artifact | Model | Seed | Request | Conditioned on |
+|---|---|---|---|---|
+| `9x16_openb.png` | seedream-4 | 806746134 | — | `src/gameplay-clean.jpg` |
+| `9x16_closeb.png` | seedream-4 | 3320552 | — | `plates/agnostic/v1/end.png` |
+| `16x9_openb.png` | seedream-4 | 1520447 | — | `src/gameplay-clean.jpg` |
+| `16x9_closeb.png` | seedream-4 | 806746135 | — | `plates/agnostic/v1/end.png` |
+| `opener_16x9.mp4` | seedance-2.0 | 267941123 | `3eb108b8505dfd939d807a49a8fd91e5` | the 16x9 pair |
+| `opener_9x16.mp4` | seedance-2.0 | 605596137 | `6129220784c4b8a4960909f60e04b5d1` | the 9x16 pair |
 
-All three parked at `battle-media/marketing/promo-mint-your-moment/renders/` — never re-buy.
+All parked at `battle-media/marketing/promo-mint-your-moment/opener/` — never re-buy.
 
-**Spend:** 3 fast-tier I2V renders + 1 accidental `kling-image2video` probe call (empty-body test
-that the model accepted; connection timed out at 25s). Segmind gives no balance endpoint —
-**confirm actual spend against $36.89 on the dashboard.**
+**Spend this draft:** 8 seedream-4 images (4 kept, 4 rejected on the reviewer checklist —
+see below) + 3 seedance-2.0 1080p 10s renders (one of them wasted, see the aspect finding).
+Segmind exposes no balance endpoint; **confirm actual spend on the dashboard.**
+
+## Two findings worth keeping
+
+1. **Seedance `aspect_ratio` defaults to 16:9 and does NOT infer from the conditioning
+   frames.** The first vertical submit — 1152×2048 first frame, 1152×2048 last frame —
+   came back 1920×1080 landscape, a wasted 10s 1080p render. The shared client
+   (`_shared/segmind.ts`) never sends the field because the mint path is 16:9 by
+   definition, so `generate_opener.ts` posts its own body rather than widening a
+   mint-critical function for a marketing need.
+2. **`seedream-4` takes `image_input` + `size`/`aspect_ratio`, not `image_urls` +
+   `width`/`height`.** With the shared client's spelling the reference image was silently
+   ignored (the model invented a different alley and a different rival) and every frame
+   came back 2048×2048 square. Same workaround, same reason. **Worth a look on the mint
+   path** — if `generateIllustration`'s `referenceImageUrl` is being dropped there too,
+   card art is not seeing its post thumbnail.
+
+## Rejected on the reviewer checklist (G-IP)
+
+The first rival design came back as an unmistakable red-and-gold superhero suit — glowing
+chest disc, face-shaped mask. Cut, and the cast block rewritten to specify the rival by
+what it must *not* have (no chest light, no gold, no mask features, no cape). Faces are
+kept hidden throughout for the same reason: a clearly rendered face is a likeness question
+the spot does not need to open.
+
+## The hero-card swap (draft 4b)
+
+Founder call: `Who's Gonna Carry The Boats` replaces `You're Fired` as the card the film
+follows. Live chit `7d7457d2-3c96-47a9-b326-66bd9d901076` (moment `552c6b30`, attempt 4,
+NORA-0228, Tier A, athlete, aura 8). It touches three beats — the cutscene, the card face
+and the stage art — and both build scripts now hold the card in four `HERO_*` variables so
+the next swap is a one-line edit rather than an archaeology exercise.
+
+**The card face had to be re-rendered.** `assets/Card View.jpg` is a detail screenshot of
+*You're Fired* specifically; there is no equivalent capture for this chit and the app can't
+be driven headlessly here. `make_card_face.sh` therefore composites the real screenshot's
+chrome (at 2×) with the 2048px artwork master and the live `moment_chits` column values,
+following the layout rules in `card_face.dart` — family-accent hexagon (athlete `#FF5A1F`),
+`_readableOn` letter colour, the type-line and footer formats. It is a re-render of real
+data, not an invention, and it comes out **sharper** than the beat it replaces because the
+art no longer arrives via a 320px region of a JPEG. If `card_face.dart` changes, that
+script is what goes stale.
+
+**One truth problem, handled.** This chit is `is_generic = true, seed_source = 'platform'`
+— an operator-seed house card. Hard Rules 41/43 mean a generic card can **never** be
+listed, traded, bartered, staked, collected or ascended. Staging the Sell / Ascension rail
+on *its* artwork would advertise something the product structurally refuses for that exact
+card, which fails QC gate item 5 (truth). The trade beat therefore keeps the real rail — it
+is true of consent-minted cards, which is what the film is selling — on the neutral stage,
+with no hero art behind it. `You're Fired` had no such problem: it is `is_generic = false`,
+minted from a YouTube post, which is why its detail page shows those buttons at all.
+
+**Worth a decision:** if the founder wants the film's hero card to also be its trade
+example, the fix is to re-mint this moment through the normal consent path rather than the
+operator seed lane, and rebuild shot 6 on its art.
 
 ## Audio
 
-**No music** (§5 — founder layers trend audio at post time). Native clip audio on shots 1 and 5.
-SFX **synthesized in ffmpeg** (`tools/marketing/out/`-adjacent, from `sine`/`anoisesrc` + envelopes)
-— cleared by construction, nothing licensed or ripped. Events: impact @0.06s, whoosh @2.0/13.4/16.0,
-tick @4.4/21.0, shimmer @7.2, riser @22.3, impact @23.5. `loudnorm I=-14` then limiter.
-
-## QC gate (§7)
-
-- [x] No UI screenshot through a generative model — shots 3/4/8/9 are ffmpeg crop+zoom only
-- [x] Card video not full-screen-scaled from low-res — used the 1280×720 `battle-media` original, not the 386×226 copy
-- [x] Lobby's garbled "Daily Challenges" panel cropped out of every framing
-- [x] `Who's Gonna Carry The Boats` **excluded** (brief default; no founder approval logged)
-- [x] Unfinished character rig excluded (founder call 2026-08-02) — no rig footage in the cut
-- [x] No appreciation/investment language — "Trade it" is the ceiling
-- [x] No music; clip audio + SFX only; −13.2 LUFS; 26.57s ≤ 35s
-- [ ] **Shot 2 still shows a partial `@handle` placeholder at frame right** — needs a tighter crop
-- [ ] 16:9 master not yet built
-- [ ] Human review + `--approve` not yet run (nothing is published)
-
-## Fixed in draft 2
-
-1. **Shot 2 `@handle` placeholder** — located precisely on a grid overlay (both handle blocks at
-   x 121–398 and x 917–1038; card tray from y 597). Crop moved to `500×430 @400,130`, the only
-   window clean at maximum drift. Costs the character in frame — it is now an atmospheric
-   establishing shot — but a compromised frame fails the §7 gate and this does not.
-2. **Shot 5 pale in-point** — moved 1.2s → 1.9s, past the transition frame.
-3. **Pacing** — shot average 2.6s → 2.3s; with overlaps the cut is 22.93s, down from 26.57s.
+**No music** (§5). Native clip audio on shots 1 and 2 — the opener's generated track is
+broadband and low-frequency (spectral flatness 0.34, energy at 38–81 Hz): rain, the throw,
+the detonation. Nothing tonal, so the beeps cut in draft 3 stay gone. Room tone plus four
+whooshes, a riser and one low impact are synthesized in the build script itself, from
+`anoisesrc` — so a rebuild on a clean machine sounds identical, instead of depending on a
+scratch directory that no longer exists.
 
 ## Build bug found and fixed
 
-The first draft-2 mux never terminated: `apad` with no bound pads audio forever, and `-shortest`
-had been removed in the same edit to fix a *different* truncation (the mix ended with the last SFX
-tail at 20.6s, clipping 2.4s of video). Unbounded pad + no stop condition = a file that grew past
-24MB with no `moov` atom. Fix is both: `apad=whole_dur=30` **and** `-shortest`, so the pad is
-generated then trimmed to the video length. Either alone is wrong.
+The mint beat typed `https` and then stopped. It looked like a slow animation; it was a
+parse failure — an unescaped `:` in a `drawtext` `text=` **silently truncates the argument
+at the first colon** rather than erroring. A URL is nothing but drawtext metacharacters.
+Both build scripts now escape `\ : ' %` before interpolating, and cap the typed string's
+length so it still fits the field at a legible size.
 
-## Still open
+Also fixed: `blend=all_mode=screen` on `yuv420p` screens the **chroma** planes too, which
+is not a highlight — it dragged every product beat toward saturated magenta. Both blends
+in `cine.sh` now run in `gbrp`.
 
-- [x] **16:9 master built** (`promo_mint_your_moment_16x9.mp4`, 23.00s, −12.5 LUFS). Not a crop of
-      the 9:16 — its own framings. Shot 1 needed a 644×362 centre window: the full 16:9 frame
-      exposes the `@handle` placeholder, the **dev menu** (Quit/Fusion/Attack) *and* the excluded
-      character rig. Captions moved to a true lower third; at the 9:16 height they collided with
-      the Verify button and the Market Maker panel.
-- [x] 16:9 shot 9 recropped to the "Create Your BattleChit" panel — caption clear, better copy on screen
-- [ ] Human review + `--approve` not run; nothing is published
-- [ ] Loudness −12.6 LUFS, slightly hot of the −14 target (single-pass `loudnorm` overshoots;
-      two-pass would land it, platforms will normalise anyway)
-- [ ] `Who's Gonna Carry The Boats` still excluded — no founder approval logged
-- [ ] Segmind spend unconfirmed against $36.89 (no balance endpoint)
+## QC gate (§7)
+
+- [x] No UI screenshot through a generative model — shots 3/4/6/7 are ffmpeg compositing only
+- [x] Card video not scaled up from a low-res copy — the 1280×720 `battle-media` original
+- [x] No dev menu, no `@handle` placeholder, no HUD anywhere (the opener is authored clean)
+- [x] `Who's Gonna Carry The Boats` **approved by the founder 2026-08-03** and promoted to hero card — the draft-1 exclusion existed only for want of that approval
+- [x] Unfinished character rig excluded (founder call 2026-08-02)
+- [x] G-IP: no real people, no third-party characters or branding; rival redesigned (above)
+- [x] No appreciation/investment language — "Trade it" is the ceiling
+- [x] No music; clip audio + noise SFX only; −15.2 / −15.8 LUFS; 29.3s ≤ 35s
+- [ ] **Human review + `--approve` not run; nothing is published**
+- [ ] LRA 21 LU is wide by design (loud cold open, quiet product half) — platforms normalise
+- [ ] Segmind spend unconfirmed (no balance endpoint)
+- [ ] The vault beat still rides the draft-2 I2V render; a fresh one would match the new
+      opener's fidelity better, but it is 2.8s behind a caption and did not justify the spend
