@@ -1,3 +1,9 @@
-# intermediate cuts — regenerate with build_promo.sh
+# intermediates — regenerate with build_promo.sh / build_promo_16x9.sh
 cuts/
+cuts16/
+sfx/
+sweep_*.png
 concat.txt
+*.filter
+xfade*.txt
+offsets*.txt

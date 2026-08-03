@@ -226,6 +226,8 @@ Everything queued in PLAN.md must respect these, in addition to the Hard Rules a
   · **operator seed lane** (mig 185 + `admin-seed-moment` edge fn): run the FULL cinematic pipeline on a
   card with no post behind it — admin-only, in the mint wizard behind "Admin: seed a house card". Hard Rule 37.
   · cohort runbook `tools/playset/FOUNDING_COHORT_RUNBOOK.md` · marketing review gate `tools/marketing/README.md`
+  · **"Mint Your Moment" promo — status, links, open decisions: the ⚑ block at the top of
+    `tools/marketing/README.md`** (running order `SHOTS.md`, full build record `shotlog.md`)
 - Effect system: design principles **NORA_CHIT_EFFECT_DESIGN_FRAMEWORK.md** · reactive-depth roadmap
   **NORA_INTERACTION_LAYER_SPEC.md** (the live Wave-1 library is the DB `effect_templates`; design record in ARCHIVE)
 - Where we're going, with build checklists (incl. the v3 P7 remainder): **PLAN.md**
