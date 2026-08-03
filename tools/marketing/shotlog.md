@@ -91,7 +91,7 @@ generated then trimmed to the video length. Either alone is wrong.
       exposes the `@handle` placeholder, the **dev menu** (Quit/Fusion/Attack) *and* the excluded
       character rig. Captions moved to a true lower third; at the 9:16 height they collided with
       the Verify button and the Market Maker panel.
-- [ ] 16:9 shot 9 caption sits close to the "Market Maker" label — legible, but could drop 20px
+- [x] 16:9 shot 9 recropped to the "Create Your BattleChit" panel — caption clear, better copy on screen
 - [ ] Human review + `--approve` not run; nothing is published
 - [ ] Loudness −12.6 LUFS, slightly hot of the −14 target (single-pass `loudnorm` overshoots;
       two-pass would land it, platforms will normalise anyway)

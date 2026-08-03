@@ -124,8 +124,8 @@ $(fill 420),$FINISH,$(cap 'Trade it. Climb the ladder.' $D8)" \
 
 echo "── 9  your platforms (real UI, wide crop)"
 ffmpeg -v error -loop 1 -i "$SRC/shots/cap_profile.png" -t $D9 -r $FPS \
-  -vf "crop=2400:1350:720:760,zoompan=z='min(1+0.001*in,1.09)':d=1:\
-x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=2400x1350:fps=$FPS,\
+  -vf "crop=2133:1200:850:690,zoompan=z='min(1+0.001*in,1.09)':d=1:\
+x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=2133x1200:fps=$FPS,\
 $(fill 900),$FINISH,$(cap 'Your platforms. Your moments.' $D9)" \
   -c:v libx264 -crf 18 -preset medium -y "$C/09_profile.mp4"
 
